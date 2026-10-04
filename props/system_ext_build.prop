@@ -1,0 +1,36 @@
+####################################
+# from generate-common-build-props
+# These properties identify this partition image.
+####################################
+ro.product.system_ext.brand=google
+ro.product.system_ext.device=redfin
+ro.product.system_ext.manufacturer=Google
+ro.product.system_ext.model=Pixel 5
+ro.product.system_ext.name=redfin
+ro.system_ext.build.date=Mon May 27 15:55:42 UTC 2024
+ro.system_ext.build.date.utc=1716825342
+ro.system_ext.build.fingerprint=google/redfin/redfin:14/UP1A.231105.001.B2/11261383:user/release-keys
+ro.system_ext.build.id=UP1A.231105.001.B2
+ro.system_ext.build.tags=release-keys
+ro.system_ext.build.type=user
+ro.system_ext.build.version.incremental=11261383
+ro.system_ext.build.version.release=14
+ro.system_ext.build.version.release_or_codename=14
+ro.system_ext.build.version.sdk=34
+####################################
+# from build/make/target/board/gsi_system_ext.prop
+####################################
+# GSI always generate dex pre-opt in system image
+ro.cp_system_other_odex=0
+# GSI always disables adb authentication
+ro.adb.secure=0
+# GSI disables non-AOSP nnapi extensions on product partition
+ro.nnapi.extensions.deny_on_product=true
+# TODO(b/120679683): disable RescueParty before all problem apps solved
+persist.sys.disable_rescue=true
+# TODO(b/78105955): disable privapp_permissions checking before the bug solved
+ro.control_privapp_permissions=disable
+####################################
+# from variable PRODUCT_SYSTEM_EXT_PROPERTIES
+####################################
+# end of file

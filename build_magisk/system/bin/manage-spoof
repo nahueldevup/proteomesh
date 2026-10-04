@@ -1,0 +1,49 @@
+#!/system/bin/sh
+# manage-spoof: Gestiona el alcance (scope) del spoofing de LSPosed (Wi-Fi y Sensores)
+DB="/data/adb/lspd/config/modules_config.db"
+MID=$(sqlite3 "$DB" "SELECT mid FROM modules WHERE module_pkg_name='eu.chylek.adam.fakewifi';" 2>/dev/null)
+if [ -z "$MID" ]; then
+    MID=39
+fi
+
+
+# Asegurar privilegios root
+if [ "$(id -u)" != "0" ]; then
+    exec su -c "$0 $*"
+fi
+
+case "$1" in
+    list)
+        echo "=== Apps con Spoofing Activo (Scope) ==="
+        sqlite3 "$DB" "SELECT app_pkg_name FROM scope WHERE mid=$MID;" 2>/dev/null
+        ;;
+    add)
+        if [ -z "$2" ]; then
+            echo "Uso: manage-spoof add <nombre.del.paquete>"
+            exit 1
+        fi
+        sqlite3 "$DB" "INSERT OR REPLACE INTO scope (mid, app_pkg_name, user_id) VALUES ($MID, '$2', 0);" 2>/dev/null
+        echo "[+] Spoofing de LSPosed activado para: $2"
+        ;;
+    remove|rm)
+        if [ -z "$2" ]; then
+            echo "Uso: manage-spoof remove <nombre.del.paquete>"
+            exit 1
+        fi
+        sqlite3 "$DB" "DELETE FROM scope WHERE mid=$MID AND app_pkg_name='$2';" 2>/dev/null
+        echo "[-] Spoofing removido para: $2"
+        ;;
+    all-browsers|auto)
+        echo "Detectando navegadores y herramientas instaladas..."
+        for pkg in mark.via.gp org.mozilla.firefox com.android.chrome com.amiunique.amiuniqueapp com.liuzh.deviceinfo com.inkwired.droidinfo com.chrystianvieyra.physicstoolboxsuite github.umer0586.sensorserver com.fingerprintjs.android.fpjs_pro_demo com.ytheekshana.deviceinfo flar2.devcheck ru.andr7e.deviceinfohw; do
+            if pm list packages | grep -q "package:$pkg"; then
+                sqlite3 "$DB" "INSERT OR REPLACE INTO scope (mid, app_pkg_name, user_id) VALUES ($MID, '$pkg', 0);" 2>/dev/null
+                echo "  -> Activado para: $pkg"
+            fi
+        done
+        echo "[✓] Configuración actualizada."
+        ;;
+    *)
+        echo "Uso: manage-spoof {list|add <pkg>|remove <pkg>|all-browsers}"
+        ;;
+esac

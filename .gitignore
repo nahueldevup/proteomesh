@@ -1,0 +1,27 @@
+# ==============================================================================
+# ProteoMesh — Git Ignore Rules
+# ==============================================================================
+
+# Android persistent and runtime data
+data-clean/
+data/
+
+# Heavy GApps and APK bundles (> 100 MB, violates GitHub limits)
+apk/
+build_gapps/
+
+# Temporary and build artifacts
+*.log
+*.tmp
+*.bak
+*.orig
+__pycache__/
+*.py[cod]
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

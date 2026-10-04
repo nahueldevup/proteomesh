@@ -1,0 +1,1 @@
+console=ttyMSM0,115200,n8 androidboot.hardware=qcom androidboot.console=ttyMSM0 androidboot.verifiedbootstate=green androidboot.flash.locked=1 androidboot.veritymode=enforcing androidboot.bootdevice=7824900.sdhci buildvariant=user
