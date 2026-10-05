@@ -1,4 +1,5 @@
 service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-system-server --socket-name=zygote
+    setenv LD_PRELOAD /system/lib64/libpixel_hw.so
     class main
     priority -20
     user root

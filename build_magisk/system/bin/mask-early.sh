@@ -61,8 +61,16 @@ if [ -x "$RP" ]; then
         $RP -n "ro.${part}.build.fingerprint" "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys"
         $RP -n "ro.${part}.build.type" "user"
         $RP -n "ro.${part}.build.tags" "release-keys"
-        # $RP -n "ro.${part}.product.cpu.abi" "arm64-v8a"
+        $RP -n "ro.${part}.product.cpu.abi" "arm64-v8a"
+        $RP -n "ro.${part}.product.cpu.abilist" "arm64-v8a,armeabi-v7a,armeabi"
+        $RP -n "ro.${part}.product.cpu.abilist64" "arm64-v8a"
+        $RP -n "ro.${part}.product.cpu.abilist32" "armeabi-v7a,armeabi"
     done
+    
+    $RP -n ro.product.cpu.abi "arm64-v8a"
+    $RP -n ro.product.cpu.abilist "arm64-v8a,armeabi-v7a,armeabi"
+    $RP -n ro.product.cpu.abilist64 "arm64-v8a"
+    $RP -n ro.product.cpu.abilist32 "armeabi-v7a,armeabi"
 fi
 
 # Aislar la propagación de montajes para evitar loops de multiplicación

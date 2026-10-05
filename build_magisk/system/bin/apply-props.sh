@@ -109,6 +109,9 @@ setprop "ro.boot.hardware.color" "just_black"
 # Arquitectura CPU ABI oficial Pixel 5
 for part in "" "system." "vendor." "odm." "product." "system_ext."; do
     setprop "ro.${part}product.cpu.abi" "arm64-v8a"
+    setprop "ro.${part}product.cpu.abilist" "arm64-v8a,armeabi-v7a,armeabi"
+    setprop "ro.${part}product.cpu.abilist64" "arm64-v8a"
+    setprop "ro.${part}product.cpu.abilist32" "armeabi-v7a,armeabi"
 done
 
 

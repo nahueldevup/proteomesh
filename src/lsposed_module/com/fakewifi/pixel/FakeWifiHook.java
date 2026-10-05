@@ -379,6 +379,39 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
+        // 0.5 Hook android.os.Build & SystemProperties
+        // ==========================================
+        try {
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "SUPPORTED_ABIS", new String[]{"arm64-v8a", "armeabi-v7a", "armeabi"});
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "SUPPORTED_64_BIT_ABIS", new String[]{"arm64-v8a"});
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "SUPPORTED_32_BIT_ABIS", new String[]{"armeabi-v7a", "armeabi"});
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI", "arm64-v8a");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI2", "");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "HARDWARE", "qcom");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", "redfin");
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: Error spoofing Build ABIs: " + t);
+        }
+
+        try {
+            Class<?> spClass = XposedHelpers.findClass("android.os.SystemProperties", lpparam.classLoader);
+            XC_MethodHook propHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    String key = (String) param.args[0];
+                    if ("ro.product.cpu.abi".equals(key)) param.setResult("arm64-v8a");
+                    else if ("ro.product.cpu.abilist".equals(key)) param.setResult("arm64-v8a,armeabi-v7a,armeabi");
+                    else if ("ro.product.cpu.abilist64".equals(key)) param.setResult("arm64-v8a");
+                    else if ("ro.product.cpu.abilist32".equals(key)) param.setResult("armeabi-v7a,armeabi");
+                    else if ("ro.board.platform".equals(key)) param.setResult("sm7250");
+                    else if ("ro.hardware".equals(key)) param.setResult("qcom");
+                }
+            };
+            XposedHelpers.findAndHookMethod(spClass, "get", String.class, propHook);
+            XposedHelpers.findAndHookMethod(spClass, "get", String.class, String.class, propHook);
+        } catch (Throwable ignored) {}
+
+        // ==========================================
         // 1. Hook NetworkCapabilities & Wi-Fi
         // ==========================================
         try {
