@@ -1,0 +1,153 @@
+#!/system/bin/sh
+# ==============================================================================
+# set-gps: Controlador dinámico de ubicación GPS simulada para ProteoMesh
+# Permite cambiar coordenadas sobre la marcha sin reiniciar el contenedor.
+# ==============================================================================
+
+CONF="/data/local/tmp/fake_gps.conf"
+
+show_current() {
+    if [ -f "$CONF" ]; then
+        echo "=== Ubicación GPS Actual ==="
+        cat "$CONF"
+    else
+        echo "=== Ubicación GPS Actual ==="
+        echo "lat=-34.603722"
+        echo "lon=-58.381592"
+        echo "alt=25.0"
+        echo "acc=4.2"
+        echo "(Por defecto: Buenos Aires - Obelisco)"
+    fi
+}
+
+show_help() {
+    echo "Uso: set-gps <latitud> <longitud> [altitud]"
+    echo "  O: set-gps <ciudad_preset>"
+    echo ""
+    echo "Presets disponibles:"
+    echo "  ba | buenos-aires   -> Buenos Aires (-34.603722, -58.381592)"
+    echo "  cordoba             -> Córdoba (-31.420083, -64.188776)"
+    echo "  rosario             -> Rosario (-32.958700, -60.693000)"
+    echo "  mendoza             -> Mendoza (-32.889458, -68.845839)"
+    echo "  bariloche           -> Bariloche (-41.133472, -71.310278)"
+    echo "  miami               -> Miami (25.761680, -80.191790)"
+    echo "  ny | new-york       -> Nueva York (40.712776, -74.005974)"
+    echo "  madrid              -> Madrid (40.416775, -3.703790)"
+    echo "  barcelona           -> Barcelona (41.385064, 2.173403)"
+    echo "  sao-paulo           -> São Paulo (-23.550520, -46.633309)"
+    echo "  santiago            -> Santiago de Chile (-33.448890, -70.669265)"
+    echo ""
+    show_current
+}
+
+if [ -z "$1" ]; then
+    show_help
+    exit 0
+fi
+
+LAT=""
+LON=""
+ALT="25.0"
+ACC="4.2"
+CIUDAD=""
+
+case "$1" in
+    ba|buenos-aires)
+        LAT="-34.603722"
+        LON="-58.381592"
+        ALT="25.0"
+        CIUDAD="Buenos Aires, Argentina (Obelisco)"
+        ;;
+    cordoba)
+        LAT="-31.420083"
+        LON="-64.188776"
+        ALT="390.0"
+        CIUDAD="Córdoba, Argentina"
+        ;;
+    rosario)
+        LAT="-32.958700"
+        LON="-60.693000"
+        ALT="31.0"
+        CIUDAD="Rosario, Argentina"
+        ;;
+    mendoza)
+        LAT="-32.889458"
+        LON="-68.845839"
+        ALT="746.0"
+        CIUDAD="Mendoza, Argentina"
+        ;;
+    bariloche)
+        LAT="-41.133472"
+        LON="-71.310278"
+        ALT="840.0"
+        CIUDAD="San Carlos de Bariloche, Argentina"
+        ;;
+    miami)
+        LAT="25.761680"
+        LON="-80.191790"
+        ALT="2.0"
+        CIUDAD="Miami, Florida, EE.UU."
+        ;;
+    ny|new-york)
+        LAT="40.712776"
+        LON="-74.005974"
+        ALT="10.0"
+        CIUDAD="Nueva York, EE.UU. (Times Square)"
+        ;;
+    madrid)
+        LAT="40.416775"
+        LON="-3.703790"
+        ALT="657.0"
+        CIUDAD="Madrid, España (Puerta del Sol)"
+        ;;
+    barcelona)
+        LAT="41.385064"
+        LON="2.173403"
+        ALT="12.0"
+        CIUDAD="Barcelona, España"
+        ;;
+    sao-paulo)
+        LAT="-23.550520"
+        LON="-46.633309"
+        ALT="760.0"
+        CIUDAD="São Paulo, Brasil"
+        ;;
+    santiago)
+        LAT="-33.448890"
+        LON="-70.669265"
+        ALT="570.0"
+        CIUDAD="Santiago, Chile"
+        ;;
+    *)
+        if [ -n "$2" ]; then
+            LAT="$1"
+            LON="$2"
+            if [ -n "$3" ]; then
+                ALT="$3"
+            fi
+            CIUDAD="Coordenadas personalizadas"
+        else
+            echo "Error: Ciudad o parámetro no reconocido."
+            show_help
+            exit 1
+        fi
+        ;;
+esac
+
+# Escribir configuración
+cat << EOF > "$CONF"
+lat=$LAT
+lon=$LON
+alt=$ALT
+acc=$ACC
+EOF
+
+chmod 666 "$CONF" 2>/dev/null || true
+
+echo "[✓] Ubicación GPS actualizada exitosamente:"
+echo "    Destino: $CIUDAD"
+echo "    Latitud:  $LAT"
+echo "    Longitud: $LON"
+echo "    Altitud:  ${ALT}m"
+echo "    Precisión: ${ACC}m"
+echo "    Archivo:  $CONF"

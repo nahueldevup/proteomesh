@@ -17,6 +17,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | **Red Wi-Fi 5 GHz** | **100% Funcional** | `FakeWifiHook.java` interceptando `WifiManager`, `WifiInfo` y `NetworkCapabilities`. | Reporta `wlan0`, 866 Mbps, 5180 MHz (Canal 36), RSSI -52 dBm y DHCP válido. |
 | **Telefonía y SIM Móvil** | **100% Funcional** | `FakeWifiHook.java` interceptando `TelephonyManager`. | SIM Personal Argentina (MCC/MNC `72234`), red `LTE` 4G, SIM lista y 1 módem. |
 | **Sensores de Hardware (11)** | **100% Funcional** | `FakeSensors.java` con hilos concurrentes y micro-ruido termal. | 11 sensores activos en `Device Info` y liveness test aprobado en `Pixelscan`. |
+| **Ubicación GPS y GNSS** | **100% Funcional** | `FakeGps.java` + CLI `/system/bin/set-gps` + `handheld_core_hardware.xml`. | `GPS hardware: Present` en Pixelscan, anti-mocking activo, control dinámico de ciudades. |
 | **Cámaras Pixel 5 (x3)** | **100% Funcional** | `FakeWifiHook.java` (39 claves `CameraCharacteristics`) + `handheld_core_hardware.xml`. | Principal (12.2 MP f/1.7), Frontal (8 MP) y Gran angular (16 MP f/2.2) activas. |
 | **Zygisk 64-bit y Magisk 30.6** | **100% Funcional** | Parche `isCompatibleWith` en offset `0x3284f` (`\xb0\x01`) en `libzygisk.solibnb.so`. | Daemons `zygiskd64` y `zygiskd32` activos concurrentemente en el boot. |
 | **Framework LSPosed (v1.9.2)** | **100% Funcional** | Exclusión de `/data/adb/lspd` en filtro root de `pixel_hw64.c`. | Estado **Activado** en LSPosed Manager e inyección en apps cliente. |

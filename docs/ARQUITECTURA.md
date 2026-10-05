@@ -22,6 +22,7 @@ El sistema opera en tres capas complementarias sin tocar ni requerir parches en 
 │  - android.os.Build (ABIs, Hardware, Board)            │
 │  - android.hardware.camera2 (CameraCharacteristics)     │
 │  - android.hardware.SensorManager & SystemSensorManager │
+│  - android.location.LocationManager & Location (FakeGps)│
 │  - android.net.wifi.WifiManager & WifiInfo             │
 │  - android.telephony.TelephonyManager                   │
 └────────────────────────────────────────────────────────┘
@@ -73,6 +74,11 @@ Compilado como APK firmado (`FakeWifiPixel.apk`) con `javac --release 8` y R8/D8
   * Simula los 11 sensores físicos de hardware oficiales del Pixel 5 (Bosch Sensortec BMI260 para acelerómetro y giroscopio, Asahi Kasei AK09918 para magnetómetro, AMS TMD3702 para luz y proximidad, Bosch BMP380 para presión barométrica, contador de pasos y sensores compuestos).
   * Despacha eventos en hilos concurrentes simulando gravedad ($9.80665\ \text{m/s}^2$) y micro-fluctuaciones térmicas dinámicas para superar pruebas de liveness físicas.
   * Intercepta `SystemSensorManager.getFullSensorList()` y los métodos de registro de listeners (`registerListenerImpl` / `unregisterListenerImpl`).
+* **`FakeGps.java`:**
+  * **Emulación GNSS / GPS:** Intercepta `LocationManager` (`getLastKnownLocation`, `getCurrentLocation`, `requestLocationUpdates`, `getAllProviders`, `getProviders`, `isProviderEnabled`, `isLocationEnabled`) proveyendo el proveedor `"gps"` ausente en contenedores ReDroid.
+  * **Anti-Detección Mock:** Neutraliza las llamadas a `Location.isFromMockProvider()` y `Location.isMock()` retornando siempre `false`. Inserta metadatos satelitales realistas (14 a 18 satélites GNSS) en `extras` y reporta hardware de chip `Qualcomm SM7250 GNSS` (año 2020).
+  * **Micro-ruido Browniano:** Aplica variación física natural de sub-metro ($\pm 0.8\text{ m}$) a las coordenadas fijadas para eludir heurísticas que detectan coordenadas congeladas artificiales.
+  * **Controlador Dinámico `set-gps`:** Monitorea cambios en `/data/local/tmp/fake_gps.conf` en tiempo de ejecución, permitiendo cambiar de ciudad o coordenadas al vuelo mediante `/system/bin/set-gps` sin necesidad de reiniciar el contenedor ni reinstalar módulos.
 
 ### C. Zygisk 64-bit y Cadena de NativeBridge
 * En Android 13, `LoadNativeBridge` verifica la compatibilidad de API mediante `callbacks->isCompatibleWith(3)`. En binarios Magisk, esto finalizaba con `xor eax, eax` (retornando `0` / incompatible).

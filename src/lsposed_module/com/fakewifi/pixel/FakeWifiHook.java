@@ -136,6 +136,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
     private static boolean isSupportedFeature(String feature) {
         if (feature == null) return false;
         return feature.startsWith("android.hardware.camera") ||
+               feature.startsWith("android.hardware.location") ||
                feature.equals("android.hardware.bluetooth") ||
                feature.equals("android.hardware.bluetooth_le") ||
                feature.equals("android.hardware.nfc") ||
@@ -1033,6 +1034,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
 
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Camera hook error: " + t);
+        }
+
+        // ==========================================
+        // 5. Hook LocationManager & GPS (Pixel 5 GNSS)
+        // ==========================================
+        try {
+            FakeGps.hook(lpparam);
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: FakeGps hook error: " + t);
         }
     }
 }

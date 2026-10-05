@@ -142,9 +142,26 @@ El contenedor arranca con Magisk y Zygisk preinstalados en `/data`. Para asegura
    adb connect localhost:5580
    ```
 
+### 4. Control Dinámico de Ubicación GPS (`set-gps`)
+Puedes cambiar la ubicación simulada en cualquier momento desde la terminal de ADB:
+```bash
+# Ver ubicación actual y ciudades disponibles:
+adb -s localhost:5580 shell "set-gps"
+
+# Cambiar a una ciudad preset:
+adb -s localhost:5580 shell "set-gps cordoba"
+adb -s localhost:5580 shell "set-gps miami"
+adb -s localhost:5580 shell "set-gps madrid"
+adb -s localhost:5580 shell "set-gps buenos-aires"
+
+# O configurar coordenadas exactas personalizadas:
+adb -s localhost:5580 shell "set-gps -34.603722 -58.381592 25.0"
+```
+Cualquier aplicación cliente (Google Maps, Facebook, Chrome, Tinder) reflejará el cambio inmediatamente sin reiniciar el contenedor.
+
 ---
 
-## 6. Verificación de Funcionamiento
+## 7. Verificación de Funcionamiento
 
 Ejecuta las siguientes comprobaciones para validar que todas las capas están operativas:
 
