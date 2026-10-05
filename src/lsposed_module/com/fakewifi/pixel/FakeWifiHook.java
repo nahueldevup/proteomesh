@@ -400,6 +400,36 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                                 XposedHelpers.findAndHookMethod(appPmClass, "getApplicationInfo", String.class, appFlagsClass, hidePkgHook);
                             }
                         }
+
+                        XC_MethodHook hideInstalledAppsHook = new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) {
+                                List<?> list = (List<?>) param.getResult();
+                                if (list == null) return;
+                                List<Object> clean = new ArrayList<>();
+                                for (Object item : list) {
+                                    String pkg = null;
+                                    if (item instanceof android.content.pm.PackageInfo) {
+                                        pkg = ((android.content.pm.PackageInfo) item).packageName;
+                                    } else if (item instanceof android.content.pm.ApplicationInfo) {
+                                        pkg = ((android.content.pm.ApplicationInfo) item).packageName;
+                                    }
+                                    if (pkg != null && (pkg.contains("magisk") || pkg.contains("lsposed") || pkg.contains("rootcheck") || pkg.contains("fakewifi"))) {
+                                        continue;
+                                    }
+                                    clean.add(item);
+                                }
+                                param.setResult(clean);
+                            }
+                        };
+                        XposedHelpers.findAndHookMethod(appPmClass, "getInstalledPackages", int.class, hideInstalledAppsHook);
+                        XposedHelpers.findAndHookMethod(appPmClass, "getInstalledApplications", int.class, hideInstalledAppsHook);
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            Class<?> pFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$PackageInfoFlags", lpparam.classLoader);
+                            Class<?> aFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$ApplicationInfoFlags", lpparam.classLoader);
+                            if (pFlagsClass != null) XposedHelpers.findAndHookMethod(appPmClass, "getInstalledPackages", pFlagsClass, hideInstalledAppsHook);
+                            if (aFlagsClass != null) XposedHelpers.findAndHookMethod(appPmClass, "getInstalledApplications", aFlagsClass, hideInstalledAppsHook);
+                        }
                     } catch (Throwable ignored) {}
                 }
             } catch (Throwable ignored) {}
@@ -439,11 +469,75 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     else if ("ro.build.tags".equals(key)) param.setResult("release-keys");
                     else if ("ro.build.type".equals(key)) param.setResult("user");
                     else if ("ro.build.description".equals(key)) param.setResult("redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
+                    else if ("init.svc.adbd".equals(key)) param.setResult("stopped");
+                    else if ("sys.usb.config".equals(key)) param.setResult("none");
+                    else if ("sys.usb.state".equals(key)) param.setResult("none");
+                    else if ("ro.debuggable".equals(key)) param.setResult("0");
                 }
             };
             XposedHelpers.findAndHookMethod(spClass, "get", String.class, propHook);
             XposedHelpers.findAndHookMethod(spClass, "get", String.class, String.class, propHook);
         } catch (Throwable ignored) {}
+
+        // ==========================================
+        // 0.8 Hook Settings.Global / Settings.Secure (Developer Options & ADB)
+        // ==========================================
+        try {
+            Class<?> contentResolverClass = XposedHelpers.findClass("android.content.ContentResolver", lpparam.classLoader);
+            Class<?> settingsGlobal = XposedHelpers.findClass("android.provider.Settings.Global", lpparam.classLoader);
+            if (settingsGlobal != null && contentResolverClass != null) {
+                XC_MethodHook devOptionsHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String name = (String) param.args[1];
+                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                            param.setResult(0);
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(settingsGlobal, "getInt", contentResolverClass, String.class, devOptionsHook);
+                XposedHelpers.findAndHookMethod(settingsGlobal, "getInt", contentResolverClass, String.class, int.class, devOptionsHook);
+
+                XC_MethodHook devStringHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String name = (String) param.args[1];
+                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                            param.setResult("0");
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(settingsGlobal, "getString", contentResolverClass, String.class, devStringHook);
+            }
+
+            Class<?> settingsSecure = XposedHelpers.findClass("android.provider.Settings.Secure", lpparam.classLoader);
+            if (settingsSecure != null && contentResolverClass != null) {
+                XC_MethodHook secureOptionsHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String name = (String) param.args[1];
+                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                            param.setResult(0);
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(settingsSecure, "getInt", contentResolverClass, String.class, secureOptionsHook);
+                XposedHelpers.findAndHookMethod(settingsSecure, "getInt", contentResolverClass, String.class, int.class, secureOptionsHook);
+
+                XC_MethodHook secureStringHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String name = (String) param.args[1];
+                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                            param.setResult("0");
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(settingsSecure, "getString", contentResolverClass, String.class, secureStringHook);
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: Settings hook error: " + t);
+        }
 
         // ==========================================
         // 1. Hook NetworkCapabilities & Wi-Fi
@@ -1152,6 +1246,69 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             }
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: MediaDrm hook error: " + t);
+        }
+
+        // ==========================================
+        // 8. Hook Fingerprint Pro (Smart Signals & Score)
+        // ==========================================
+        try {
+            Class<?> fpRespClass = XposedHelpers.findClass("com.fingerprint.android.FingerprintResponse", lpparam.classLoader);
+            if (fpRespClass != null) {
+                XposedBridge.hookAllConstructors(fpRespClass, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (param.args != null && param.args.length >= 5) {
+                            param.args[2] = Integer.valueOf(0); // suspectScore = 0
+                            String json = (String) param.args[4];
+                            if (json != null) {
+                                json = json.replace("\"emulator\": true", "\"emulator\": false")
+                                           .replace("\"emulator\":true", "\"emulator\":false")
+                                           .replace("\"rootApps\": true", "\"rootApps\": false")
+                                           .replace("\"rootApps\":true", "\"rootApps\":false")
+                                           .replace("\"developerTools\": true", "\"developerTools\": false")
+                                           .replace("\"developerTools\":true", "\"developerTools\":false")
+                                           .replaceAll("\"suspectScore\":\\s*\\d+", "\"suspectScore\": 0");
+                                param.args[4] = json;
+                            }
+                        }
+                    }
+                });
+            }
+
+            XC_MethodHook falseSignalHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.args != null) {
+                        for (int i = 0; i < param.args.length; i++) {
+                            if (param.args[i] instanceof Boolean) {
+                                param.args[i] = Boolean.FALSE;
+                            }
+                        }
+                    }
+                }
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        XposedHelpers.setBooleanField(param.thisObject, "a", false);
+                    } catch (Throwable ignored) {}
+                }
+            };
+
+            try {
+                Class<?> emuSignalClass = XposedHelpers.findClass("o4.d0", lpparam.classLoader);
+                if (emuSignalClass != null) {
+                    XposedBridge.hookAllConstructors(emuSignalClass, falseSignalHook);
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                Class<?> rootSignalClass = XposedHelpers.findClass("o4.q1", lpparam.classLoader);
+                if (rootSignalClass != null) {
+                    XposedBridge.hookAllConstructors(rootSignalClass, falseSignalHook);
+                }
+            } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: FingerprintResponse hook error: " + t);
         }
     }
 }

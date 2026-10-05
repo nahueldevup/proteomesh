@@ -7,9 +7,16 @@
 CONF="/data/local/tmp/fake_gps.conf"
 
 show_current() {
-    if [ -f "$CONF" ]; then
+    LAT=$(getprop persist.sys.location.lat)
+    LON=$(getprop persist.sys.location.lon)
+    CITY=$(getprop persist.sys.location.city)
+    if [ -n "$LAT" ] && [ -n "$LON" ]; then
         echo "=== Ubicación GPS Actual ==="
-        cat "$CONF"
+        echo "lat=$LAT"
+        echo "lon=$LON"
+        echo "alt=$(getprop persist.sys.location.alt)"
+        echo "acc=$(getprop persist.sys.location.acc)"
+        echo "ciudad=$CITY"
     else
         echo "=== Ubicación GPS Actual ==="
         echo "lat=-34.603722"
@@ -135,14 +142,12 @@ case "$1" in
 esac
 
 # Escribir configuración
-cat << EOF > "$CONF"
-lat=$LAT
-lon=$LON
-alt=$ALT
-acc=$ACC
-EOF
-
-chmod 666 "$CONF" 2>/dev/null || true
+setprop persist.sys.location.lat "$LAT"
+setprop persist.sys.location.lon "$LON"
+setprop persist.sys.location.alt "$ALT"
+setprop persist.sys.location.acc "$ACC"
+setprop persist.sys.location.city "$CIUDAD"
+rm -f "$CONF" 2>/dev/null || true
 
 echo "[✓] Ubicación GPS actualizada exitosamente:"
 echo "    Destino: $CIUDAD"
@@ -150,4 +155,4 @@ echo "    Latitud:  $LAT"
 echo "    Longitud: $LON"
 echo "    Altitud:  ${ALT}m"
 echo "    Precisión: ${ACC}m"
-echo "    Archivo:  $CONF"
+echo "    Almacenamiento: SystemProperties (persist.sys.location.*)"

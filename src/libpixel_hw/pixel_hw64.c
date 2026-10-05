@@ -316,6 +316,16 @@ static int str_starts_with(const char *str, const char *prefix) {
     return 1;
 }
 
+static int str_ends_with(const char *str, const char *suffix) {
+    if (!str || !suffix) return 0;
+    int len_str = 0, len_suf = 0;
+    while (str[len_str]) len_str++;
+    while (suffix[len_suf]) len_suf++;
+    if (len_suf > len_str) return 0;
+    const char *p = str + (len_str - len_suf);
+    return str_eq(p, suffix);
+}
+
 static int is_root_artifact(const char *path) {
     if (!path) return 0;
     if (str_starts_with(path, "/data/adb/lspd")) return 0;
@@ -345,7 +355,8 @@ static const char *redirect_path(const char *path) {
         return "/sys/fs";
     }
     if (my_getuid() >= 10000) {
-        if (str_eq(path, "/proc/self/mountinfo") || str_eq(path, "/proc/mountinfo")) {
+        if (str_eq(path, "/proc/self/mountinfo") || str_eq(path, "/proc/mountinfo") ||
+            str_eq(path, "/proc/self/mountstats") || str_eq(path, "/proc/mountstats")) {
             return "/data/local/tmp/fake_proc/mountinfo";
         }
         if (str_eq(path, "/proc/self/mounts") || str_eq(path, "/proc/mounts")) {
@@ -627,9 +638,25 @@ ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
 }
 
 int execve(const char *pathname, char *const argv[], char *const envp[]) {
-    if (my_getuid() >= 10000 && is_root_artifact(pathname)) {
-        set_enoent();
-        return -1;
+    if (my_getuid() >= 10000) {
+        if (is_root_artifact(pathname)) {
+            set_enoent();
+            return -1;
+        }
+        if (pathname && (str_eq(pathname, "/system/bin/getprop") || str_ends_with(pathname, "/getprop"))) {
+            pathname = "/system/bin/fake_getprop.sh";
+            if (argv && argv[0]) ((char **)argv)[0] = "/system/bin/fake_getprop.sh";
+        }
+        if (argv && argv[1]) {
+            if (str_eq(argv[1], "/proc/self/mountstats") ||
+                str_eq(argv[1], "/proc/mountstats") ||
+                str_eq(argv[1], "/proc/self/mountinfo") ||
+                str_eq(argv[1], "/proc/mountinfo") ||
+                str_eq(argv[1], "/proc/self/mounts") ||
+                str_eq(argv[1], "/proc/mounts")) {
+                ((char **)argv)[1] = "/data/local/tmp/fake_proc/mountinfo";
+            }
+        }
     }
     static int (*real_fn)(const char *, char *const [], char *const []) = (void *)0;
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "execve");

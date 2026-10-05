@@ -60,6 +60,22 @@ public class FakeGps {
         if (now - sLastFileCheck < 1500) return;
         sLastFileCheck = now;
 
+        try {
+            Class<?> spClass = Class.forName("android.os.SystemProperties");
+            Method getMethod = spClass.getMethod("get", String.class, String.class);
+            String latStr = (String) getMethod.invoke(null, "persist.sys.location.lat", "");
+            String lonStr = (String) getMethod.invoke(null, "persist.sys.location.lon", "");
+            if (latStr != null && !latStr.isEmpty() && lonStr != null && !lonStr.isEmpty()) {
+                sLat = Double.parseDouble(latStr);
+                sLon = Double.parseDouble(lonStr);
+                String altStr = (String) getMethod.invoke(null, "persist.sys.location.alt", "");
+                if (altStr != null && !altStr.isEmpty()) sAlt = Double.parseDouble(altStr);
+                String accStr = (String) getMethod.invoke(null, "persist.sys.location.acc", "");
+                if (accStr != null && !accStr.isEmpty()) sAcc = Float.parseFloat(accStr);
+                return;
+            }
+        } catch (Throwable ignored) {}
+
         File f = new File(GPS_FILE);
         if (!f.exists() || !f.canRead()) return;
 
