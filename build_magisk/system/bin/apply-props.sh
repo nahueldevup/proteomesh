@@ -218,7 +218,8 @@ if [ -x /sbin/magisk ]; then
     if [ -f /data/adb/lspd/config/modules_config.db ]; then
         REAL_APK=$(pm path eu.chylek.adam.fakewifi 2>/dev/null | cut -d: -f2)
         if [ -n "$REAL_APK" ]; then
-            sqlite3 /data/adb/lspd/config/modules_config.db "UPDATE modules SET apk_path='$REAL_APK', enabled=1 WHERE module_pkg_name='eu.chylek.adam.fakewifi';" 2>/dev/null || true
+            sqlite3 /data/adb/lspd/config/modules_config.db "INSERT OR REPLACE INTO modules (mid, module_pkg_name, apk_path, enabled) VALUES (39, 'eu.chylek.adam.fakewifi', '$REAL_APK', 1);" 2>/dev/null || true
+            manage-spoof auto >/dev/null 2>&1 || true
         fi
     fi
 

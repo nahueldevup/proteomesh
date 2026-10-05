@@ -18,6 +18,9 @@ import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.telephony.TelephonyManager;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import android.util.Range;
 import android.util.Rational;
 import android.util.Size;
@@ -390,6 +393,8 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI2", "");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "HARDWARE", "qcom");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", "redfin");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "TAGS", "release-keys");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "TYPE", "user");
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Error spoofing Build ABIs: " + t);
         }
@@ -406,6 +411,9 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     else if ("ro.product.cpu.abilist32".equals(key)) param.setResult("armeabi-v7a,armeabi");
                     else if ("ro.board.platform".equals(key)) param.setResult("sm7250");
                     else if ("ro.hardware".equals(key)) param.setResult("qcom");
+                    else if ("ro.build.tags".equals(key)) param.setResult("release-keys");
+                    else if ("ro.build.type".equals(key)) param.setResult("user");
+                    else if ("ro.build.description".equals(key)) param.setResult("redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
                 }
             };
             XposedHelpers.findAndHookMethod(spClass, "get", String.class, propHook);
@@ -1043,6 +1051,36 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             FakeGps.hook(lpparam);
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: FakeGps hook error: " + t);
+        }
+
+        // ==========================================
+        // 6. Hook Pixelscan (Compromise & Tags)
+        // ==========================================
+        if ("net.pixelscan.check".equals(lpparam.packageName)) {
+            try {
+                Class<?> mainAct = XposedHelpers.findClass("net.pixelscan.check.MainActivity", lpparam.classLoader);
+                if (mainAct != null) {
+                    XposedHelpers.findAndHookMethod(mainAct, "m", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("is_debuggable", false);
+                            map.put("is_debugger_connected", false);
+                            map.put("installed_root_apps", Collections.emptyList());
+                            map.put("build_tags", "release-keys");
+                            param.setResult(map);
+                        }
+                    });
+                    XposedHelpers.findAndHookMethod(mainAct, "s", String.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(false);
+                        }
+                    });
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: Pixelscan compromise hook error: " + t);
+            }
         }
     }
 }
