@@ -88,3 +88,8 @@ Compilado como APK firmado (`FakeWifiPixel.apk`) con `javac --release 8` y R8/D8
 ### D. Declaración de Permisos de Sistema
 * **`build_magisk/vendor/etc/permissions/handheld_core_hardware.xml`:**
   Declara los descriptores de hardware oficiales que `PackageManager.hasSystemFeature` inspecciona en tiempo de arranque: cámaras (`android.hardware.camera.any`, `front`, `autofocus`, `flash`, `full`), sensores de hardware y telefonía celular.
+
+### E. Gestión de ABIs y Compatibilidad de APEX en el Sistema Operativo
+* **Requisito del Sistema Base:** En contenedores ReDroid x86_64, los módulos y paquetes APEX esenciales del framework (`ExtServices`, `Bluetooth`, `AdServices`, `ART`) contienen bibliotecas binarias compiladas para la arquitectura nativa `x86_64`.
+* **Regla de Aislamiento:** Las propiedades `ro.system.product.cpu.abilist` y `ro.vendor.product.cpu.abilist` deben conservar obligatoriamente las arquitecturas nativas (`x86_64,x86,arm64-v8a,armeabi-v7a,armeabi`). Si `x86_64` se retira de la configuración del sistema operativo, `PackageManagerService` rechaza los módulos APEX (`INSTALL_FAILED_NO_MATCHING_ABIS`), produciendo una falla crítica en `system_server` (`Required services extension package is missing`) que deja al contenedor en bootloop y sin conectividad ADB.
+* **Separación de Responsabilidades:** El reporte exclusivo de arquitecturas móviles ARM (`arm64-v8a, armeabi-v7a, armeabi`) hacia aplicaciones de diagnóstico y seguridad se implementa de manera aislada en espacio de usuario a través de los ganchos Java de LSPosed (`FakeWifiPixel`) y la intercepción en `libpixel_hw.so`.
