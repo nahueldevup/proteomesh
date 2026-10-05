@@ -28,6 +28,7 @@ services:
       - ./build_magisk/system/build.prop:/system/build.prop:ro
       - ./build_magisk/vendor/build.prop:/vendor/build.prop:ro
       - ./build_magisk/vendor/lib64/libreference-ril.so:/vendor/lib64/libreference-ril.so:ro
+      - ./build_magisk/vendor/etc/permissions/handheld_core_hardware.xml:/vendor/etc/permissions/handheld_core_hardware.xml:ro
       - ./build_magisk/system/etc/init/integrity_props.rc:/system/etc/init/integrity_props.rc:ro
       - ./build_magisk/system/etc/init/mask_proc.rc:/system/etc/init/mask_proc.rc:ro
       - ./build_magisk/system/bin/apply-props.sh:/system/bin/apply-props.sh:ro

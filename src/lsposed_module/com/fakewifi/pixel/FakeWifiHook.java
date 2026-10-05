@@ -1,12 +1,14 @@
 package com.fakewifi.pixel;
 
 import android.content.pm.PackageManager;
+import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.hardware.Camera;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
@@ -15,9 +17,11 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.telephony.TelephonyManager;
 import android.util.Range;
+import android.util.Rational;
 import android.util.Size;
 import android.util.SizeF;
 
+import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.ArrayList;
@@ -37,6 +41,29 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
     private static final String SSID = "Personal-WiFi-5.8G";
     private static final String BSSID = "00:1a:2b:3c:4d:5e";
     private static final String MAC = "4e:b7:d0:03:31:a9";
+
+    private static Object sUnsafe = null;
+    private static java.lang.reflect.Method sAllocateInstance = null;
+    static {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field f = unsafeClass.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            sUnsafe = f.get(null);
+            sAllocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: Unsafe initialization failed: " + t);
+        }
+    }
+
+    private static Object allocateInstance(Class<?> clazz) {
+        if (sUnsafe != null && sAllocateInstance != null) {
+            try {
+                return sAllocateInstance.invoke(sUnsafe, clazz);
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
 
     private static List<Sensor> sCachedSensors = null;
 
@@ -125,6 +152,198 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                feature.equals("android.hardware.telephony.ims");
     }
 
+    private static Object createStreamConfigurationMap(String id) {
+        try {
+            Object map = allocateInstance(StreamConfigurationMap.class);
+            if (map != null) {
+                XposedHelpers.setAdditionalInstanceField(map, "fakeMapCameraId", id);
+                return map;
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: createStreamConfigurationMap error: " + t);
+        }
+        return null;
+    }
+
+    private static Size[] getSizesForCamera(String id, boolean isVideo) {
+        if ("1".equals(id)) {
+            // Front (8.0 MP)
+            if (isVideo) {
+                return new Size[]{ new Size(1920, 1080), new Size(1280, 720), new Size(640, 480) };
+            }
+            return new Size[]{ new Size(3264, 2448), new Size(1920, 1080), new Size(1280, 720) };
+        } else if ("2".equals(id)) {
+            // Ultrawide (16.0 MP)
+            if (isVideo) {
+                return new Size[]{ new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+            }
+            return new Size[]{ new Size(4608, 3456), new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+        } else {
+            // Back main (12.2 MP)
+            if (isVideo) {
+                return new Size[]{ new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+            }
+            return new Size[]{ new Size(4032, 3024), new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+        }
+    }
+
+    private static Object getCameraCharacteristicValue(String id, String name) {
+        boolean isFront = "1".equals(id);
+        boolean isWide = "2".equals(id);
+
+        if ("android.colorCorrection.availableAberrationModes".equals(name)) {
+            return new int[]{ 0, 1, 2 }; // OFF, FAST, HIGH_QUALITY
+        }
+        if ("android.control.aeAvailableAntibandingModes".equals(name)) {
+            return new int[]{ 0, 1, 2, 3 }; // OFF, 50HZ, 60HZ, AUTO
+        }
+        if ("android.control.aeAvailableModes".equals(name)) {
+            return isFront ? new int[]{ 0, 1 } : new int[]{ 0, 1, 2, 3 };
+        }
+        if ("android.control.aeCompensationRange".equals(name)) {
+            return new Range<>(-24, 24);
+        }
+        if ("android.control.aeCompensationStep".equals(name)) {
+            return new Rational(1, 6);
+        }
+        if ("android.control.aeLockAvailable".equals(name)) {
+            return true;
+        }
+        if ("android.control.aeAvailableTargetFpsRanges".equals(name)) {
+            return new Range<?>[]{ new Range<>(15, 30), new Range<>(30, 30), new Range<>(15, 60), new Range<>(60, 60) };
+        }
+        if ("android.control.afAvailableModes".equals(name)) {
+            return isFront ? new int[]{ 0, 1 } : new int[]{ 0, 1, 2, 3, 4 };
+        }
+        if ("android.control.availableEffects".equals(name)) {
+            return new int[]{ 0 };
+        }
+        if ("android.control.availableSceneModes".equals(name)) {
+            return new int[]{ 0 };
+        }
+        if ("android.control.availableVideoStabilizationModes".equals(name)) {
+            return new int[]{ 0, 1 };
+        }
+        if ("android.control.awbAvailableModes".equals(name)) {
+            return new int[]{ 0, 1, 2, 3, 4, 5, 6, 7 };
+        }
+        if ("android.control.awbLockAvailable".equals(name)) {
+            return true;
+        }
+        if ("android.control.maxRegionsAe".equals(name)) {
+            return 1;
+        }
+        if ("android.control.maxRegionsAf".equals(name)) {
+            return 1;
+        }
+        if ("android.control.maxRegionsAwb".equals(name)) {
+            return 1;
+        }
+        if ("android.edge.availableEdgeModes".equals(name)) {
+            return new int[]{ 0, 1, 2, 3 };
+        }
+        if ("android.flash.info.available".equals(name)) {
+            return !isFront;
+        }
+        if ("android.hotPixel.availableHotPixelModes".equals(name)) {
+            return new int[]{ 0, 1, 2 };
+        }
+        if ("android.info.supportedHardwareLevel".equals(name)) {
+            return CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL;
+        }
+        if ("android.jpeg.availableThumbnailSizes".equals(name)) {
+            return new Size[]{ new Size(0, 0), new Size(160, 120), new Size(240, 144), new Size(256, 144) };
+        }
+        if ("android.lens.facing".equals(name)) {
+            return isFront ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK;
+        }
+        if ("android.lens.info.availableApertures".equals(name)) {
+            return isFront ? new float[]{ 2.00f } : (isWide ? new float[]{ 2.20f } : new float[]{ 1.73f });
+        }
+        if ("android.lens.info.availableFilterDensities".equals(name)) {
+            return new float[]{ 0.0f };
+        }
+        if ("android.lens.info.availableFocalLengths".equals(name)) {
+            return isFront ? new float[]{ 2.00f } : (isWide ? new float[]{ 2.22f } : new float[]{ 4.38f });
+        }
+        if ("android.lens.info.availableOpticalStabilization".equals(name)) {
+            return isFront ? new int[]{ 0 } : new int[]{ 0, 1 };
+        }
+        if ("android.lens.info.focusDistanceCalibration".equals(name)) {
+            return isFront ? 0 : 2; // CALIBRATED
+        }
+        if ("android.lens.info.hyperfocalDistance".equals(name)) {
+            return isFront ? 0.0f : 0.45f;
+        }
+        if ("android.lens.info.minimumFocusDistance".equals(name)) {
+            return isFront ? 0.0f : 10.0f;
+        }
+        if ("android.request.availableCapabilities".equals(name)) {
+            return new int[]{ 0, 1, 2, 3, 4 };
+        }
+        if ("android.request.maxNumOutputProc".equals(name)) {
+            return 3;
+        }
+        if ("android.request.maxNumOutputProcStalling".equals(name)) {
+            return 1;
+        }
+        if ("android.request.maxNumOutputRaw".equals(name)) {
+            return 1;
+        }
+        if ("android.request.partialResultCount".equals(name)) {
+            return 1;
+        }
+        if ("android.request.pipelineMaxDepth".equals(name)) {
+            return (byte) 8;
+        }
+        if ("android.scaler.availableMaxDigitalZoom".equals(name)) {
+            return isFront ? 4.0f : 7.0f;
+        }
+        if ("android.scaler.croppingType".equals(name)) {
+            return 0; // CENTER_ONLY
+        }
+        if ("android.scaler.streamConfigurationMap".equals(name)) {
+            return createStreamConfigurationMap(id);
+        }
+        if ("android.sensor.availableTestPatternModes".equals(name)) {
+            return new int[]{ 0 };
+        }
+        if ("android.sensor.info.activeArraySize".equals(name)) {
+            return isFront ? new Rect(0, 0, 3264, 2448) : (isWide ? new Rect(0, 0, 4608, 3456) : new Rect(0, 0, 4032, 3024));
+        }
+        if ("android.sensor.info.colorFilterArrangement".equals(name)) {
+            return 0; // RGGB
+        }
+        if ("android.sensor.info.exposureTimeRange".equals(name)) {
+            return new Range<>(10000L, 30000000000L);
+        }
+        if ("android.sensor.info.physicalSize".equals(name)) {
+            return isFront ? new SizeF(3.600f, 2.700f) : (isWide ? new SizeF(6.170f, 4.630f) : new SizeF(5.645f, 4.234f));
+        }
+        if ("android.sensor.info.pixelArraySize".equals(name)) {
+            return isFront ? new Size(3264, 2448) : (isWide ? new Size(4608, 3456) : new Size(4032, 3024));
+        }
+        if ("android.sensor.info.sensitivityRange".equals(name)) {
+            return new Range<>(55, 6400);
+        }
+        if ("android.sensor.info.timestampSource".equals(name)) {
+            return 1; // REALTIME
+        }
+        if ("android.sensor.maxAnalogSensitivity".equals(name)) {
+            return 1600;
+        }
+        if ("android.sensor.orientation".equals(name)) {
+            return isFront ? 270 : 90;
+        }
+        if ("android.statistics.info.availableFaceDetectModes".equals(name)) {
+            return new int[]{ 0, 1, 2 };
+        }
+        if ("android.statistics.info.maxFaceCount".equals(name)) {
+            return 10;
+        }
+        return null;
+    }
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         XposedBridge.log("FakeWifiPixel: Hooking package: " + lpparam.packageName);
@@ -135,7 +354,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         try {
             XC_MethodHook featureHook = new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) {
+                protected void beforeHookedMethod(MethodHookParam param) {
                     String feature = (String) param.args[0];
                     if (isSupportedFeature(feature)) {
                         param.setResult(true);
@@ -486,9 +705,10 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         // 4. Hook CameraManager & Camera (Pixel 5 Cameras)
         // ==========================================
         try {
+            // A. CameraManager getCameraIdList
             XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraIdList", new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) {
+                protected void beforeHookedMethod(MethodHookParam param) {
                     param.setResult(new String[]{"0", "1", "2"});
                 }
             });
@@ -496,18 +716,103 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             try {
                 XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraIdListNoCache", new XC_MethodHook() {
                     @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
+                    protected void beforeHookedMethod(MethodHookParam param) {
                         param.setResult(new String[]{"0", "1", "2"});
                     }
                 });
             } catch (Throwable ignored) {}
 
+            // B. CameraManager getCameraCharacteristics
+            XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraCharacteristics", String.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    String id = (String) param.args[0];
+                    if (id == null) id = "0";
+                    try {
+                        Object chars = allocateInstance(CameraCharacteristics.class);
+                        if (chars != null) {
+                            XposedHelpers.setAdditionalInstanceField(chars, "fakeCameraId", id);
+                            param.setResult(chars);
+                        }
+                    } catch (Throwable t) {
+                        XposedBridge.log("FakeWifiPixel: Error allocating CameraCharacteristics: " + t);
+                    }
+                }
+            });
+
+            // C. CameraCharacteristics.get(Key)
+            XposedHelpers.findAndHookMethod(CameraCharacteristics.class, "get", CameraCharacteristics.Key.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    CameraCharacteristics.Key<?> key = (CameraCharacteristics.Key<?>) param.args[0];
+                    if (key == null) return;
+                    String name = key.getName();
+
+                    String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeCameraId");
+                    if (id == null) id = "0";
+
+                    Object val = getCameraCharacteristicValue(id, name);
+                    param.setResult(val);
+                }
+            });
+
+            // D. CameraCharacteristics getPhysicalCameraIds
+            try {
+                XposedHelpers.findAndHookMethod(CameraCharacteristics.class, "getPhysicalCameraIds", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(Collections.emptySet());
+                    }
+                });
+            } catch (Throwable ignored) {}
+
+            // E. CameraCharacteristics getKeys
+            try {
+                XposedHelpers.findAndHookMethod(CameraCharacteristics.class, "getKeys", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(Collections.emptyList());
+                    }
+                });
+            } catch (Throwable ignored) {}
+
+            // F. StreamConfigurationMap getOutputSizes
+            try {
+                XposedHelpers.findAndHookMethod(StreamConfigurationMap.class, "getOutputSizes", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeMapCameraId");
+                        if (id == null) id = "0";
+                        param.setResult(getSizesForCamera(id, false));
+                    }
+                });
+
+                XposedHelpers.findAndHookMethod(StreamConfigurationMap.class, "getOutputSizes", Class.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeMapCameraId");
+                        if (id == null) id = "0";
+                        param.setResult(getSizesForCamera(id, true));
+                    }
+                });
+
+                XposedHelpers.findAndHookMethod(StreamConfigurationMap.class, "getOutputFormats", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(new int[]{ ImageFormat.JPEG, ImageFormat.YUV_420_888 });
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: StreamConfigurationMap hook error: " + t);
+            }
+
+            // G. Legacy Camera API 1 (android.hardware.Camera)
             try {
                 Class<?> cameraClass = XposedHelpers.findClass("android.hardware.Camera", lpparam.classLoader);
                 if (cameraClass != null) {
                     XposedHelpers.findAndHookMethod(cameraClass, "getNumberOfCameras", new XC_MethodHook() {
                         @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
+                        protected void beforeHookedMethod(MethodHookParam param) {
                             param.setResult(2);
                         }
                     });
@@ -516,7 +821,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     if (infoClass != null) {
                         XposedHelpers.findAndHookMethod(cameraClass, "getCameraInfo", int.class, infoClass, new XC_MethodHook() {
                             @Override
-                            protected void afterHookedMethod(MethodHookParam param) {
+                            protected void beforeHookedMethod(MethodHookParam param) {
                                 int id = (Integer) param.args[0];
                                 Object info = param.args[1];
                                 if (info != null) {
@@ -528,6 +833,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                                         XposedHelpers.setIntField(info, "orientation", 90);
                                     }
                                 }
+                                param.setResult(null);
                             }
                         });
                     }
@@ -536,95 +842,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 XposedBridge.log("FakeWifiPixel: Legacy Camera hook error: " + t);
             }
 
-            // Hook CameraManager.getCameraCharacteristics to return mock without exception
-            try {
-                final Class<?> nativeClass = XposedHelpers.findClass("android.hardware.camera2.impl.CameraMetadataNative", lpparam.classLoader);
-                XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraCharacteristics", String.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        String id = (String) param.args[0];
-                        if (id == null) id = "0";
-                        try {
-                            Object nativeProps = XposedHelpers.newInstance(nativeClass);
-                            Object chars = XposedHelpers.newInstance(CameraCharacteristics.class, nativeProps);
-                            XposedHelpers.setAdditionalInstanceField(chars, "fakeCameraId", id);
-                            param.setResult(chars);
-                        } catch (Throwable t) {
-                            XposedBridge.log("FakeWifiPixel: Error creating CameraCharacteristics: " + t);
-                        }
-                    }
-                });
-            } catch (Throwable t) {
-                XposedBridge.log("FakeWifiPixel: CameraCharacteristics creation hook error: " + t);
-            }
-
-            try {
-                XposedHelpers.findAndHookMethod(CameraCharacteristics.class, "get", CameraCharacteristics.Key.class, new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        CameraCharacteristics.Key<?> key = (CameraCharacteristics.Key<?>) param.args[0];
-                        if (key == null) return;
-                        String name = key.getName();
-
-                        String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeCameraId");
-                        if (id == null) id = "0";
-
-                        if ("android.lens.facing".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(CameraCharacteristics.LENS_FACING_FRONT);
-                            } else {
-                                param.setResult(CameraCharacteristics.LENS_FACING_BACK);
-                            }
-                        } else if ("android.sensor.info.pixelArraySize".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(new Size(3264, 2448)); // 8.0 MP
-                            } else if ("2".equals(id)) {
-                                param.setResult(new Size(4608, 3456)); // 16.0 MP
-                            } else {
-                                param.setResult(new Size(4032, 3024)); // 12.2 MP
-                            }
-                        } else if ("android.sensor.info.activeArraySize".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(new Rect(0, 0, 3264, 2448));
-                            } else if ("2".equals(id)) {
-                                param.setResult(new Rect(0, 0, 4608, 3456));
-                            } else {
-                                param.setResult(new Rect(0, 0, 4032, 3024));
-                            }
-                        } else if ("android.sensor.info.physicalSize".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(new SizeF(3.600f, 2.700f));
-                            } else if ("2".equals(id)) {
-                                param.setResult(new SizeF(6.170f, 4.630f));
-                            } else {
-                                param.setResult(new SizeF(5.645f, 4.234f));
-                            }
-                        } else if ("android.lens.info.availableFocalLengths".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(new float[]{2.00f});
-                            } else if ("2".equals(id)) {
-                                param.setResult(new float[]{2.22f});
-                            } else {
-                                param.setResult(new float[]{4.38f});
-                            }
-                        } else if ("android.lens.info.availableApertures".equals(name)) {
-                            if ("1".equals(id)) {
-                                param.setResult(new float[]{2.00f});
-                            } else if ("2".equals(id)) {
-                                param.setResult(new float[]{2.20f});
-                            } else {
-                                param.setResult(new float[]{1.73f});
-                            }
-                        } else if ("android.info.supportedHardwareLevel".equals(name)) {
-                            param.setResult(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
-                        } else if ("android.control.aeAvailableTargetFpsRanges".equals(name)) {
-                            param.setResult(new Range<?>[]{ new Range<>(15, 30), new Range<>(30, 30), new Range<>(15, 60), new Range<>(60, 60) });
-                        }
-                    }
-                });
-            } catch (Throwable t) {
-                XposedBridge.log("FakeWifiPixel: CameraCharacteristics.get hook error: " + t);
-            }
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Camera hook error: " + t);
         }
