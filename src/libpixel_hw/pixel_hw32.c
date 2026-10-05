@@ -317,6 +317,7 @@ static int str_starts_with(const char *str, const char *prefix) {
 
 static int is_root_artifact(const char *path) {
     if (!path) return 0;
+    if (str_starts_with(path, "/data/adb/lspd")) return 0;
     if (str_eq(path, "/sbin/su") ||
         str_eq(path, "/system/bin/su") ||
         str_eq(path, "/system/xbin/su") ||
@@ -477,7 +478,15 @@ int open(const char *path, int flags, ...) {
     path = redirect_path(path);
     static int (*real_fn)(const char *, int, ...) = (void *)0;
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "open");
-    return real_fn ? real_fn(path, flags) : -1;
+    if (!real_fn) return -1;
+    if (flags & 0100) {
+        __builtin_va_list args;
+        __builtin_va_start(args, flags);
+        unsigned int mode = __builtin_va_arg(args, unsigned int);
+        __builtin_va_end(args);
+        return real_fn(path, flags, mode);
+    }
+    return real_fn(path, flags);
 }
 
 int open64(const char *path, int flags, ...) {
@@ -489,7 +498,15 @@ int open64(const char *path, int flags, ...) {
     static int (*real_fn)(const char *, int, ...) = (void *)0;
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "open64");
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "open");
-    return real_fn ? real_fn(path, flags) : -1;
+    if (!real_fn) return -1;
+    if (flags & 0100) {
+        __builtin_va_list args;
+        __builtin_va_start(args, flags);
+        unsigned int mode = __builtin_va_arg(args, unsigned int);
+        __builtin_va_end(args);
+        return real_fn(path, flags, mode);
+    }
+    return real_fn(path, flags);
 }
 
 int openat(int dirfd, const char *path, int flags, ...) {
@@ -500,7 +517,15 @@ int openat(int dirfd, const char *path, int flags, ...) {
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat");
-    return real_fn ? real_fn(dirfd, path, flags) : -1;
+    if (!real_fn) return -1;
+    if (flags & 0100) {
+        __builtin_va_list args;
+        __builtin_va_start(args, flags);
+        unsigned int mode = __builtin_va_arg(args, unsigned int);
+        __builtin_va_end(args);
+        return real_fn(dirfd, path, flags, mode);
+    }
+    return real_fn(dirfd, path, flags);
 }
 
 int openat64(int dirfd, const char *path, int flags, ...) {
@@ -512,7 +537,15 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat64");
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat");
-    return real_fn ? real_fn(dirfd, path, flags) : -1;
+    if (!real_fn) return -1;
+    if (flags & 0100) {
+        __builtin_va_list args;
+        __builtin_va_start(args, flags);
+        unsigned int mode = __builtin_va_arg(args, unsigned int);
+        __builtin_va_end(args);
+        return real_fn(dirfd, path, flags, mode);
+    }
+    return real_fn(dirfd, path, flags);
 }
 
 void *fopen(const char *path, const char *mode) {

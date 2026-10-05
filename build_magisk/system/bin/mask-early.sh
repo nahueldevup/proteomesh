@@ -23,6 +23,8 @@ if [ -x "$RP" ]; then
     $RP -n ro.product.name "redfin"
     $RP -n ro.soc.manufacturer "Qualcomm"
     $RP -n ro.soc.model "SM7250"
+    $RP -n ro.dalvik.vm.native.bridge "libzygisk.solibnb.so"
+    $RP -n ro.enable.native.bridge.exec "1"
     $RP -n ro.hardware "qcom"
     $RP -n ro.boot.hardware "qcom"
     $RP -n ro.hardware.hwcomposer "redroid"

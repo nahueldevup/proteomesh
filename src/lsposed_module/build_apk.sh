@@ -48,6 +48,7 @@ EOF
 cat << 'EOF' > "${WORK_DIR}/stubs/de/robv/android/xposed/XC_MethodHook.java"
 package de.robv.android.xposed;
 public abstract class XC_MethodHook {
+    public static class Unhook {}
     public static class MethodHookParam {
         public Object[] args;
         public Object thisObject;
@@ -72,8 +73,8 @@ cat << 'EOF' > "${WORK_DIR}/stubs/de/robv/android/xposed/XposedHelpers.java"
 package de.robv.android.xposed;
 public class XposedHelpers {
     public static Class<?> findClass(String className, ClassLoader classLoader) { return null; }
-    public static Object findAndHookMethod(Class<?> clazz, String methodName, Object... args) { return null; }
-    public static Object findAndHookMethod(String className, ClassLoader classLoader, String methodName, Object... args) { return null; }
+    public static XC_MethodHook.Unhook findAndHookMethod(Class<?> clazz, String methodName, Object... args) { return null; }
+    public static XC_MethodHook.Unhook findAndHookMethod(String className, ClassLoader classLoader, String methodName, Object... args) { return null; }
     public static Object newInstance(Class<?> clazz, Object... args) { return null; }
     public static void setIntField(Object obj, String fieldName, int value) {}
     public static void setLongField(Object obj, String fieldName, long value) {}
@@ -90,7 +91,7 @@ echo "[*] Compiling Java sources with javac..."
 javac --release 8 -cp "${ANDROID_JAR}" -d "${WORK_DIR}/classes" \
     "${WORK_DIR}/stubs/de/robv/android/xposed/"*.java \
     "${WORK_DIR}/stubs/de/robv/android/xposed/callbacks/"*.java \
-    "${SCRIPT_DIR}/com/fakewifi/pixel/FakeWifiHook.java"
+    "${SCRIPT_DIR}/com/fakewifi/pixel/"*.java
 
 # 4. Convert classes to DEX using R8 D8
 echo "[*] Converting classes to Dalvik Executable (classes.dex) with D8..."

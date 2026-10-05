@@ -5,7 +5,9 @@ import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.hardware.Camera;
 import android.hardware.Sensor;
+import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Handler;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
@@ -41,6 +43,9 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
     private static final String SSID = "Personal-WiFi-5.8G";
     private static final String BSSID = "00:1a:2b:3c:4d:5e";
     private static final String MAC = "4e:b7:d0:03:31:a9";
+
+    private static final java.util.Map<Object, String> sCameraIds =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<Object, String>());
 
     private static Object sUnsafe = null;
     private static java.lang.reflect.Method sAllocateInstance = null;
@@ -156,7 +161,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         try {
             Object map = allocateInstance(StreamConfigurationMap.class);
             if (map != null) {
-                XposedHelpers.setAdditionalInstanceField(map, "fakeMapCameraId", id);
+                sCameraIds.put(map, id);
                 return map;
             }
         } catch (Throwable t) {
@@ -362,11 +367,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 }
             };
 
-            XposedHelpers.findAndHookMethod(PackageManager.class, "hasSystemFeature", String.class, featureHook);
-            try {
-                XposedHelpers.findAndHookMethod(PackageManager.class, "hasSystemFeature", String.class, int.class, featureHook);
-            } catch (Throwable ignored) {}
-
             try {
                 Class<?> appPmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", lpparam.classLoader);
                 if (appPmClass != null) {
@@ -488,23 +488,107 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 }
             });
 
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getSSID", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult("\"" + SSID + "\"");
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getBSSID", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(BSSID);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getMacAddress", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(MAC);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getRssi", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(-52);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getLinkSpeed", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(866);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getFrequency", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(5180);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getNetworkId", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(1);
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiInfo.class, "getSupplicantState", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(SupplicantState.COMPLETED);
+                }
+            });
+
+            try {
+                XposedHelpers.findAndHookMethod(WifiInfo.class, "getWifiStandard", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(5); // 802.11ac (Wi-Fi 5)
+                    }
+                });
+            } catch (Throwable ignored) {}
+
             XposedHelpers.findAndHookMethod(WifiManager.class, "getConnectionInfo", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
-                        WifiInfo info = (WifiInfo) XposedHelpers.newInstance(WifiInfo.class);
-                        XposedHelpers.setObjectField(info, "mSSID", "\"" + SSID + "\"");
-                        XposedHelpers.setObjectField(info, "mBSSID", BSSID);
-                        XposedHelpers.setObjectField(info, "mMacAddress", MAC);
+                        WifiInfo info = (WifiInfo) param.getResult();
+                        if (info == null) {
+                            info = (WifiInfo) XposedHelpers.newInstance(WifiInfo.class);
+                        }
+                        XposedHelpers.setIntField(info, "mNetworkId", 1);
                         XposedHelpers.setIntField(info, "mRssi", -52);
                         XposedHelpers.setIntField(info, "mLinkSpeed", 866);
                         XposedHelpers.setIntField(info, "mFrequency", 5180);
-                        XposedHelpers.setIntField(info, "mNetworkId", 1);
+                        XposedHelpers.setObjectField(info, "mBSSID", BSSID);
+                        XposedHelpers.setObjectField(info, "mMacAddress", MAC);
                         XposedHelpers.setObjectField(info, "mSupplicantState", SupplicantState.COMPLETED);
                         param.setResult(info);
                     } catch (Throwable t) {
                         XposedBridge.log("FakeWifiPixel: Error mocking WifiInfo: " + t);
                     }
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(WifiManager.class, "getDhcpInfo", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        android.net.DhcpInfo dhcp = new android.net.DhcpInfo();
+                        dhcp.ipAddress = 0x020012ac; // 172.18.0.2
+                        dhcp.gateway = 0x010012ac;   // 172.18.0.1
+                        dhcp.netmask = 0x0000ffff;   // 255.255.0.0
+                        dhcp.dns1 = 0x08080808;      // 8.8.8.8
+                        dhcp.dns2 = 0x04040808;      // 8.8.4.4
+                        dhcp.serverAddress = 0x010012ac;
+                        dhcp.leaseDuration = 86400;
+                        param.setResult(dhcp);
+                    } catch (Throwable ignored) {}
                 }
             });
 
@@ -535,6 +619,27 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         // 2. Hook TelephonyManager (Personal Argentina)
         // ==========================================
         try {
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getActiveModemCount", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(1);
+                    }
+                });
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSupportedModemCount", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(1);
+                    }
+                });
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getPhoneCount", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(1);
+                    }
+                });
+            } catch (Throwable ignored) {}
+
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimState", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
@@ -662,41 +767,92 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 3. Hook SensorManager (Pixel 5 Sensors)
+        // 3. Hook SensorManager & SystemSensorManager (Pixel 5 Sensors)
         // ==========================================
         try {
-            XposedHelpers.findAndHookMethod(SensorManager.class, "getSensorList", int.class, new XC_MethodHook() {
+            FakeSensors.initSensors();
+
+            Class<?> smClass = XposedHelpers.findClass("android.hardware.SensorManager", lpparam.classLoader);
+
+            XposedHelpers.findAndHookMethod(smClass, "getSensorList", int.class, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     int type = (Integer) param.args[0];
-                    List<Sensor> all = getPixel5Sensors();
-                    if (type == Sensor.TYPE_ALL) {
-                        param.setResult(new ArrayList<>(all));
-                    } else {
-                        List<Sensor> filtered = new ArrayList<>();
-                        for (Sensor s : all) {
-                            if (s != null && s.getType() == type) {
-                                filtered.add(s);
-                            }
-                        }
-                        param.setResult(filtered);
+                    param.setResult(FakeSensors.getSensors(type));
+                }
+            });
+
+            XposedHelpers.findAndHookMethod(smClass, "getDefaultSensor", int.class, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    int type = (Integer) param.args[0];
+                    Sensor s = FakeSensors.getDefaultSensor(type);
+                    if (s != null) {
+                        param.setResult(s);
                     }
                 }
             });
 
-            XposedHelpers.findAndHookMethod(SensorManager.class, "getDefaultSensor", int.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    int type = (Integer) param.args[0];
-                    List<Sensor> all = getPixel5Sensors();
-                    for (Sensor s : all) {
-                        if (s != null && s.getType() == type) {
+            try {
+                XposedHelpers.findAndHookMethod(smClass, "getDefaultSensor", int.class, boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        int type = (Integer) param.args[0];
+                        Sensor s = FakeSensors.getDefaultSensor(type);
+                        if (s != null) {
                             param.setResult(s);
-                            return;
                         }
                     }
-                }
-            });
+                });
+            } catch (Throwable ignored) {}
+
+            Class<?> ssmClass = XposedHelpers.findClass("android.hardware.SystemSensorManager", lpparam.classLoader);
+            if (ssmClass != null) {
+                try {
+                    XposedHelpers.findAndHookMethod(ssmClass, "getFullSensorList", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            param.setResult(FakeSensors.getSensors(-1));
+                        }
+                    });
+                } catch (Throwable ignored) {}
+
+                try {
+                    XposedHelpers.findAndHookMethod(ssmClass, "registerListenerImpl",
+                            SensorEventListener.class,
+                            Sensor.class,
+                            int.class,
+                            Handler.class,
+                            int.class,
+                            int.class,
+                            new XC_MethodHook() {
+                                @Override
+                                protected void beforeHookedMethod(MethodHookParam param) {
+                                    SensorEventListener listener = (SensorEventListener) param.args[0];
+                                    Sensor sensor = (Sensor) param.args[1];
+                                    int delayUs = (Integer) param.args[2];
+                                    Handler handler = (Handler) param.args[3];
+
+                                    FakeSensors.startSimulation(listener, sensor, delayUs, handler);
+                                    param.setResult(true);
+                                }
+                            });
+                } catch (Throwable ignored) {}
+
+                try {
+                    XposedHelpers.findAndHookMethod(ssmClass, "unregisterListenerImpl",
+                            SensorEventListener.class,
+                            Sensor.class,
+                            new XC_MethodHook() {
+                                @Override
+                                protected void beforeHookedMethod(MethodHookParam param) {
+                                    SensorEventListener listener = (SensorEventListener) param.args[0];
+                                    FakeSensors.stopSimulation(listener);
+                                    param.setResult(true);
+                                }
+                            });
+                } catch (Throwable ignored) {}
+            }
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Sensor hook error: " + t);
         }
@@ -731,7 +887,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     try {
                         Object chars = allocateInstance(CameraCharacteristics.class);
                         if (chars != null) {
-                            XposedHelpers.setAdditionalInstanceField(chars, "fakeCameraId", id);
+                            sCameraIds.put(chars, id);
                             param.setResult(chars);
                         }
                     } catch (Throwable t) {
@@ -748,7 +904,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     if (key == null) return;
                     String name = key.getName();
 
-                    String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeCameraId");
+                    String id = sCameraIds.get(param.thisObject);
                     if (id == null) id = "0";
 
                     Object val = getCameraCharacteristicValue(id, name);
@@ -781,7 +937,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 XposedHelpers.findAndHookMethod(StreamConfigurationMap.class, "getOutputSizes", int.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeMapCameraId");
+                        String id = sCameraIds.get(param.thisObject);
                         if (id == null) id = "0";
                         param.setResult(getSizesForCamera(id, false));
                     }
@@ -790,7 +946,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 XposedHelpers.findAndHookMethod(StreamConfigurationMap.class, "getOutputSizes", Class.class, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        String id = (String) XposedHelpers.getAdditionalInstanceField(param.thisObject, "fakeMapCameraId");
+                        String id = sCameraIds.get(param.thisObject);
                         if (id == null) id = "0";
                         param.setResult(getSizesForCamera(id, true));
                     }

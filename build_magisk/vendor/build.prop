@@ -84,5 +84,5 @@ dalvik.vm.heapmaxfree=32m
 ro.enable.native.bridge.exec=1
 ro.dalvik.vm.isa.arm64=x86_64
 ro.dalvik.vm.isa.arm=x86
-ro.dalvik.vm.native.bridge=libnb.so
+ro.dalvik.vm.native.bridge=libzygisk.solibnb.so
 # end of file

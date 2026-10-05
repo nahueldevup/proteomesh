@@ -21,6 +21,8 @@ services:
       - ./build_magisk/system/lib64/libfake_hw.so:/system/lib64/libfake_hw.so:ro
       - ./build_magisk/system/lib/libfake_hw.so:/system/lib/libfake_hw.so:ro
       - ./build_magisk/system/lib/libndk_translation.so:/system/lib/libndk_translation.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibnb.so:/system/lib64/libzygisk.solibnb.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibzygisk.solibnb.so:/system/lib64/libzygisk.solibzygisk.solibnb.so:ro
       - ./build_magisk/system/etc/init/hw/init.zygote64_32.rc:/system/etc/init/hw/init.zygote64_32.rc:ro
       - ./build_magisk/system/etc/init/bootanim.rc:/system/etc/init/bootanim.rc:ro
       - ./build_magisk/system/etc/init/magisk/stub.apk:/system/etc/init/magisk/stub.apk:ro
