@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stddef.h>
+typedef long ssize_t;
 
 extern void *dlopen(const char *filename, int flag);
 extern void *dlsym(void *handle, const char *symbol);
@@ -569,4 +570,68 @@ void *fopen64(const char *path, const char *mode) {
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "fopen64");
     if (!real_fn) real_fn = dlsym(get_libc_handle(), "fopen");
     return real_fn ? real_fn(path, mode) : (void *)0;
+}
+
+int fstatat(int dirfd, const char *path, void *buf, int flags) {
+    if (my_getuid() >= 10000 && is_root_artifact(path)) {
+        set_enoent();
+        return -1;
+    }
+    path = redirect_path(path);
+    static int (*real_fn)(int, const char *, void *, int) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat");
+    return real_fn ? real_fn(dirfd, path, buf, flags) : -1;
+}
+
+int fstatat64(int dirfd, const char *path, void *buf, int flags) {
+    if (my_getuid() >= 10000 && is_root_artifact(path)) {
+        set_enoent();
+        return -1;
+    }
+    path = redirect_path(path);
+    static int (*real_fn)(int, const char *, void *, int) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat64");
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat");
+    return real_fn ? real_fn(dirfd, path, buf, flags) : -1;
+}
+
+int statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) {
+    if (my_getuid() >= 10000 && is_root_artifact(path)) {
+        set_enoent();
+        return -1;
+    }
+    path = redirect_path(path);
+    static int (*real_fn)(int, const char *, int, unsigned int, void *) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statx");
+    return real_fn ? real_fn(dirfd, path, flags, mask, buf) : -1;
+}
+
+ssize_t readlink(const char *path, char *buf, size_t bufsiz) {
+    if (my_getuid() >= 10000 && is_root_artifact(path)) {
+        set_enoent();
+        return -1;
+    }
+    static ssize_t (*real_fn)(const char *, char *, size_t) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "readlink");
+    return real_fn ? real_fn(path, buf, bufsiz) : -1;
+}
+
+ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
+    if (my_getuid() >= 10000 && is_root_artifact(path)) {
+        set_enoent();
+        return -1;
+    }
+    static ssize_t (*real_fn)(int, const char *, char *, size_t) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "readlinkat");
+    return real_fn ? real_fn(dirfd, path, buf, bufsiz) : -1;
+}
+
+int execve(const char *pathname, char *const argv[], char *const envp[]) {
+    if (my_getuid() >= 10000 && is_root_artifact(pathname)) {
+        set_enoent();
+        return -1;
+    }
+    static int (*real_fn)(const char *, char *const [], char *const []) = (void *)0;
+    if (!real_fn) real_fn = dlsym(get_libc_handle(), "execve");
+    return real_fn ? real_fn(pathname, argv, envp) : -1;
 }

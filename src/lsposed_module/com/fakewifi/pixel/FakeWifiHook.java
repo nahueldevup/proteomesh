@@ -376,6 +376,31 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 if (appPmClass != null) {
                     XposedHelpers.findAndHookMethod(appPmClass, "hasSystemFeature", String.class, featureHook);
                     XposedHelpers.findAndHookMethod(appPmClass, "hasSystemFeature", String.class, int.class, featureHook);
+
+                    XC_MethodHook hidePkgHook = new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            String pkg = (String) param.args[0];
+                            if ("com.topjohnwu.magisk".equals(pkg) || "io.github.lsposed.manager".equals(pkg) || "org.lsposed.manager".equals(pkg)) {
+                                throw new PackageManager.NameNotFoundException(pkg);
+                            }
+                        }
+                    };
+
+                    try {
+                        XposedHelpers.findAndHookMethod(appPmClass, "getPackageInfo", String.class, int.class, hidePkgHook);
+                        XposedHelpers.findAndHookMethod(appPmClass, "getApplicationInfo", String.class, int.class, hidePkgHook);
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            Class<?> flagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$PackageInfoFlags", lpparam.classLoader);
+                            Class<?> appFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$ApplicationInfoFlags", lpparam.classLoader);
+                            if (flagsClass != null) {
+                                XposedHelpers.findAndHookMethod(appPmClass, "getPackageInfo", String.class, flagsClass, hidePkgHook);
+                            }
+                            if (appFlagsClass != null) {
+                                XposedHelpers.findAndHookMethod(appPmClass, "getApplicationInfo", String.class, appFlagsClass, hidePkgHook);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
                 }
             } catch (Throwable ignored) {}
         } catch (Throwable t) {
