@@ -127,10 +127,12 @@ with zipfile.ZipFile(src_apk, 'r') as zin, zipfile.ZipFile(dst_apk, 'w', compres
 EOF
 
 echo "[*] Signing APK..."
-KEYSTORE="${WORK_DIR}/debug.keystore"
-keytool -genkey -v -keystore "${KEYSTORE}" \
-    -storepass android -alias androiddebugkey -keypass android \
-    -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ProteoMesh,O=SecurityLab,C=AR"
+KEYSTORE="${SCRIPT_DIR}/debug.keystore"
+if [ ! -f "${KEYSTORE}" ]; then
+    keytool -genkey -v -keystore "${KEYSTORE}" \
+        -storepass android -alias androiddebugkey -keypass android \
+        -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ProteoMesh,O=SecurityLab,C=AR"
+fi
 
 jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
     -keystore "${KEYSTORE}" \

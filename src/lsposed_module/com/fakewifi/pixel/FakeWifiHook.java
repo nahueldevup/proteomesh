@@ -1077,10 +1077,56 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                             param.setResult(false);
                         }
                     });
+
+                    XposedHelpers.findAndHookMethod(mainAct, "r", int.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult("L1");
+                        }
+                    });
                 }
             } catch (Throwable t) {
                 XposedBridge.log("FakeWifiPixel: Pixelscan compromise hook error: " + t);
             }
+        }
+
+        // ==========================================
+        // 7. Hook MediaDrm (Widevine L1 Spoofing)
+        // ==========================================
+        try {
+            Class<?> mediaDrmClass = XposedHelpers.findClass("android.media.MediaDrm", lpparam.classLoader);
+            if (mediaDrmClass != null) {
+                XC_MethodHook drmHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String prop = (String) param.args[0];
+                        if ("securityLevel".equals(prop)) {
+                            param.setResult("L1");
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(mediaDrmClass, "getPropertyString", String.class, drmHook);
+
+                try {
+                    XposedHelpers.findAndHookMethod(mediaDrmClass, "getMaxSecurityLevel", new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(5 /* SECURITY_LEVEL_HW_SECURE_ALL */);
+                        }
+                    });
+                } catch (Throwable ignored) {}
+
+                try {
+                    XposedHelpers.findAndHookMethod(mediaDrmClass, "getSecurityLevel", byte[].class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(5 /* SECURITY_LEVEL_HW_SECURE_ALL */);
+                        }
+                    });
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: MediaDrm hook error: " + t);
         }
     }
 }
