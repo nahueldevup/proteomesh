@@ -228,3 +228,12 @@ fi
 # 7. Reiniciar Health HAL para recargar Batería
 # ==============================================================================
 pkill -f health-service 2>/dev/null || true
+
+# ==============================================================================
+# 8. Saneamiento de Permisos de Cuentas y Google Play Services
+# ==============================================================================
+if [ -d /data/data/com.google.android.gms/files ]; then
+    GMS_UID=$(stat -c '%u' /data/data/com.google.android.gms 2>/dev/null || echo 10052)
+    chmod -R u+rw /data/data/com.google.android.gms/files/ 2>/dev/null || true
+    chown -R "$GMS_UID:$GMS_UID" /data/data/com.google.android.gms/files/ 2>/dev/null || true
+fi
