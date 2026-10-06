@@ -1,0 +1,215 @@
+#!/system/bin/sh
+# ==============================================================================
+# set-device-profile: Gestor dinámico de identificadores de hardware para ProteoMesh
+# Permite ver, modificar o generar identidades de dispositivo completas al estilo GeeLark.
+# ==============================================================================
+
+# Valores por defecto oficiales de Google Pixel 5
+DEF_IMEI="358240118392141"
+DEF_MEID="A0000083921410"
+DEF_SERIAL="0A1B2C3D4E5F"
+DEF_ANDROID_ID="9774d56d682e549c"
+DEF_WIFI_MAC="ce:5c:0d:36:77:87"
+DEF_BT_MAC="3c:28:6d:a1:b2:c4"
+DEF_IMSI="722340123456789"
+DEF_ICCID="89543401234567890128"
+DEF_PHONE="+5491123456789"
+DEF_CARRIER="Personal Argentina (72234)"
+
+calc_luhn() {
+    VAL="$1"
+    TOTAL=0
+    LEN=${#VAL}
+    i=0
+    while [ $i -lt $LEN ]; do
+        idx=$((i + 1))
+        D=$(echo "$VAL" | cut -c $idx)
+        if [ $((i % 2)) -eq 1 ]; then
+            D=$((D * 2))
+            if [ $D -gt 9 ]; then
+                D=$(( (D / 10) + (D % 10) ))
+            fi
+        fi
+        TOTAL=$((TOTAL + D))
+        i=$((i + 1))
+    done
+    echo $(( (10 - (TOTAL % 10)) % 10 ))
+}
+
+rand_hex() {
+    # $1 = longitud
+    od -An -tx1 -N$1 /dev/urandom | tr -d ' \n'
+}
+
+rand_digits() {
+    # $1 = longitud
+    tr -dc '0-9' < /dev/urandom | head -c $1
+}
+
+show_status() {
+    IMEI=$(getprop persist.sys.fake.imei)
+    [ -z "$IMEI" ] && IMEI="$DEF_IMEI"
+
+    MEID=$(getprop persist.sys.fake.meid)
+    [ -z "$MEID" ] && MEID="$DEF_MEID"
+
+    SERIAL=$(getprop persist.sys.fake.serial)
+    [ -z "$SERIAL" ] && SERIAL="$DEF_SERIAL"
+
+    AID=$(getprop persist.sys.fake.android_id)
+    [ -z "$AID" ] && AID="$DEF_ANDROID_ID"
+
+    WMAC=$(getprop persist.sys.fake.wifi_mac)
+    [ -z "$WMAC" ] && WMAC="$DEF_WIFI_MAC"
+
+    BMAC=$(getprop persist.sys.fake.bt_mac)
+    [ -z "$BMAC" ] && BMAC="$DEF_BT_MAC"
+
+    IMSI=$(getprop persist.sys.fake.imsi)
+    [ -z "$IMSI" ] && IMSI="$DEF_IMSI"
+
+    ICCID=$(getprop persist.sys.fake.iccid)
+    [ -z "$ICCID" ] && ICCID="$DEF_ICCID"
+
+    PHONE=$(getprop persist.sys.fake.phone)
+    [ -z "$PHONE" ] && PHONE="$DEF_PHONE"
+
+    echo "=========================================================="
+    echo "       PROTEOMESH DEVICE IDENTITY PROFILE (Pixel 5)       "
+    echo "=========================================================="
+    echo "  IMEI (Luhn valid)   : $IMEI"
+    echo "  MEID                : $MEID"
+    echo "  Número de Serie     : $SERIAL"
+    echo "  Android ID          : $AID"
+    echo "  MAC Wi-Fi (wlan0)   : $WMAC"
+    echo "  MAC Bluetooth       : $BMAC"
+    echo "  IMSI (SIM)          : $IMSI"
+    echo "  ICCID (Chip)        : $ICCID"
+    echo "  Línea Móvil         : $PHONE"
+    echo "  Operadora           : $DEF_CARRIER"
+    echo "=========================================================="
+}
+
+generate_random() {
+    echo "[*] Generando nueva identidad matemáticamente válida..."
+
+    # TAC de Google Pixel 5 redfin: 35824011
+    TAC="35824011"
+    RAND_SNR=$(rand_digits 6)
+    BASE_IMEI="${TAC}${RAND_SNR}"
+    CD=$(calc_luhn "$BASE_IMEI")
+    NEW_IMEI="${BASE_IMEI}${CD}"
+
+    # MEID: A00000 + 8 hex mayúsculas
+    NEW_MEID="A00000$(rand_hex 4 | tr 'a-f' 'A-F')"
+
+    # Serial: 12 caracteres (Pixel 5 formato: 1A181F + 6 hex)
+    NEW_SERIAL="1A181F$(rand_hex 3 | tr 'a-f' 'A-F')"
+
+    # Android ID: 16 caracteres hex minúsculas
+    NEW_AID=$(rand_hex 8)
+
+    # MAC Wi-Fi: OUI Google (3C:28:6D) + 3 bytes aleatorios
+    R_MAC=$(rand_hex 3)
+    NEW_WMAC="3c:28:6d:$(echo $R_MAC | cut -c1-2):$(echo $R_MAC | cut -c3-4):$(echo $R_MAC | cut -c5-6)"
+
+    # MAC Bluetooth: OUI Google (3C:28:6D) + 3 bytes aleatorios
+    R_BMAC=$(rand_hex 3)
+    NEW_BMAC="3c:28:6d:$(echo $R_BMAC | cut -c1-2):$(echo $R_BMAC | cut -c3-4):$(echo $R_BMAC | cut -c5-6)"
+
+    # IMSI: Personal Argentina 72234 + 10 dígitos
+    NEW_IMSI="72234$(rand_digits 10)"
+
+    # ICCID: Personal 895434 + 13 dígitos + Luhn check digit
+    BASE_ICCID="895434$(rand_digits 13)"
+    ICCID_CD=$(calc_luhn "$BASE_ICCID")
+    NEW_ICCID="${BASE_ICCID}${ICCID_CD}"
+
+    # Línea Móvil: +54911 + 8 dígitos
+    NEW_PHONE="+54911$(rand_digits 8)"
+
+    # Aplicar propiedades persistentes en el sistema
+    setprop persist.sys.fake.imei "$NEW_IMEI"
+    setprop persist.sys.fake.meid "$NEW_MEID"
+    setprop persist.sys.fake.serial "$NEW_SERIAL"
+    setprop persist.sys.fake.android_id "$NEW_AID"
+    setprop persist.sys.fake.wifi_mac "$NEW_WMAC"
+    setprop persist.sys.fake.bt_mac "$NEW_BMAC"
+    setprop persist.sys.fake.imsi "$NEW_IMSI"
+    setprop persist.sys.fake.iccid "$NEW_ICCID"
+    setprop persist.sys.fake.phone "$NEW_PHONE"
+
+    # Actualizar también android_id a nivel base de datos Settings
+    settings put secure android_id "$NEW_AID" 2>/dev/null
+
+    echo "[✓] Nueva identidad aplicada con éxito."
+    echo ""
+    show_status
+}
+
+reset_profile() {
+    echo "[*] Restaurando perfil por defecto de Pixel 5..."
+    setprop persist.sys.fake.imei "$DEF_IMEI"
+    setprop persist.sys.fake.meid "$DEF_MEID"
+    setprop persist.sys.fake.serial "$DEF_SERIAL"
+    setprop persist.sys.fake.android_id "$DEF_ANDROID_ID"
+    setprop persist.sys.fake.wifi_mac "$DEF_WIFI_MAC"
+    setprop persist.sys.fake.bt_mac "$DEF_BT_MAC"
+    setprop persist.sys.fake.imsi "$DEF_IMSI"
+    setprop persist.sys.fake.iccid "$DEF_ICCID"
+    setprop persist.sys.fake.phone "$DEF_PHONE"
+    settings put secure android_id "$DEF_ANDROID_ID" 2>/dev/null
+    echo "[✓] Perfil restaurado."
+    echo ""
+    show_status
+}
+
+set_single() {
+    KEY="$1"
+    VAL="$2"
+    if [ -z "$KEY" ] || [ -z "$VAL" ]; then
+        echo "Uso: set-device-profile set <imei|serial|android_id|wifi_mac|bt_mac|imsi|iccid|phone> <valor>"
+        exit 1
+    fi
+    case "$KEY" in
+        imei) setprop persist.sys.fake.imei "$VAL" ;;
+        meid) setprop persist.sys.fake.meid "$VAL" ;;
+        serial) setprop persist.sys.fake.serial "$VAL" ;;
+        android_id)
+            setprop persist.sys.fake.android_id "$VAL"
+            settings put secure android_id "$VAL" 2>/dev/null
+            ;;
+        wifi_mac) setprop persist.sys.fake.wifi_mac "$VAL" ;;
+        bt_mac) setprop persist.sys.fake.bt_mac "$VAL" ;;
+        imsi) setprop persist.sys.fake.imsi "$VAL" ;;
+        iccid) setprop persist.sys.fake.iccid "$VAL" ;;
+        phone) setprop persist.sys.fake.phone "$VAL" ;;
+        *)
+            echo "Clave no reconocida: $KEY"
+            exit 1
+            ;;
+    esac
+    echo "[✓] $KEY actualizado a: $VAL"
+}
+
+case "$1" in
+    random|new|generate)
+        generate_random
+        ;;
+    reset|default)
+        reset_profile
+        ;;
+    set)
+        set_single "$2" "$3"
+        ;;
+    status|show|"")
+        show_status
+        ;;
+    *)
+        echo "Uso de set-device-profile:"
+        echo "  set-device-profile              -> Muestra la identidad actual"
+        echo "  set-device-profile random       -> Genera una nueva identidad matemáticamente válida"
+        echo "  set-device-profile set <k> <v>  -> Modifica un identificador específico"
+        echo "  set-device-profile reset        -> Restaura la identidad predeterminada"
+        ;;
+esac

@@ -27,6 +27,7 @@ import android.util.Size;
 import android.util.SizeF;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.ArrayList;
@@ -71,6 +72,54 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             } catch (Throwable ignored) {}
         }
         return null;
+    }
+
+    public static class IdentityManager {
+        public static String getProp(String key, String defVal) {
+            try {
+                Class<?> sp = Class.forName("android.os.SystemProperties");
+                Method m = sp.getMethod("get", String.class, String.class);
+                return (String) m.invoke(null, key, defVal);
+            } catch (Throwable t) {
+                return defVal;
+            }
+        }
+
+        public static String getImei() {
+            return getProp("persist.sys.fake.imei", "358240118392141");
+        }
+
+        public static String getMeid() {
+            return getProp("persist.sys.fake.meid", "A0000083921410");
+        }
+
+        public static String getSerial() {
+            return getProp("persist.sys.fake.serial", "0A1B2C3D4E5F");
+        }
+
+        public static String getAndroidId() {
+            return getProp("persist.sys.fake.android_id", "9774d56d682e549c");
+        }
+
+        public static String getWifiMac() {
+            return getProp("persist.sys.fake.wifi_mac", "ce:5c:0d:36:77:87");
+        }
+
+        public static String getBtMac() {
+            return getProp("persist.sys.fake.bt_mac", "3c:28:6d:a1:b2:c4");
+        }
+
+        public static String getImsi() {
+            return getProp("persist.sys.fake.imsi", "722340123456789");
+        }
+
+        public static String getIccid() {
+            return getProp("persist.sys.fake.iccid", "89543401234567890128");
+        }
+
+        public static String getPhone() {
+            return getProp("persist.sys.fake.phone", "+5491123456789");
+        }
     }
 
     private static List<Sensor> sCachedSensors = null;
@@ -450,6 +499,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", "redfin");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TAGS", "release-keys");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TYPE", "user");
+            try {
+                XposedHelpers.setStaticObjectField(android.os.Build.class, "SERIAL", IdentityManager.getSerial());
+                XposedHelpers.findAndHookMethod(android.os.Build.class, "getSerial", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(IdentityManager.getSerial());
+                    }
+                });
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Error spoofing Build ABIs: " + t);
         }
@@ -530,6 +588,8 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         String name = (String) param.args[1];
                         if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
                             param.setResult("0");
+                        } else if ("android_id".equals(name)) {
+                            param.setResult(IdentityManager.getAndroidId());
                         }
                     }
                 };
@@ -666,7 +726,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(WifiInfo.class, "getMacAddress", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult(MAC);
+                    param.setResult(IdentityManager.getWifiMac());
                 }
             });
 
@@ -727,7 +787,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         XposedHelpers.setIntField(info, "mLinkSpeed", 866);
                         XposedHelpers.setIntField(info, "mFrequency", 5180);
                         XposedHelpers.setObjectField(info, "mBSSID", BSSID);
-                        XposedHelpers.setObjectField(info, "mMacAddress", MAC);
+                        XposedHelpers.setObjectField(info, "mMacAddress", IdentityManager.getWifiMac());
                         XposedHelpers.setObjectField(info, "mSupplicantState", SupplicantState.COMPLETED);
                         param.setResult(info);
                     } catch (Throwable t) {
@@ -735,6 +795,27 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     }
                 }
             });
+
+            try {
+                XposedHelpers.findAndHookMethod(WifiManager.class, "getFactoryMacAddresses", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(new String[]{ IdentityManager.getWifiMac() });
+                    }
+                });
+            } catch (Throwable ignored) {}
+
+            try {
+                Class<?> btClass = XposedHelpers.findClass("android.bluetooth.BluetoothAdapter", lpparam.classLoader);
+                if (btClass != null) {
+                    XposedHelpers.findAndHookMethod(btClass, "getAddress", new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(IdentityManager.getBtMac());
+                        }
+                    });
+                }
+            } catch (Throwable ignored) {}
 
             XposedHelpers.findAndHookMethod(WifiManager.class, "getDhcpInfo", new XC_MethodHook() {
                 @Override
@@ -903,26 +984,62 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 }
             });
 
-            XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimSerialNumber", new XC_MethodHook() {
+            XC_MethodHook imeiHook = new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("8954341000123456789");
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(IdentityManager.getImei());
                 }
-            });
+            };
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getImei", imeiHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getImei", int.class, imeiHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getDeviceId", imeiHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getDeviceId", int.class, imeiHook);
+            } catch (Throwable ignored) {}
 
-            XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSubscriberId", new XC_MethodHook() {
+            XC_MethodHook meidHook = new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("722341000123456");
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(IdentityManager.getMeid());
                 }
-            });
+            };
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getMeid", meidHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getMeid", int.class, meidHook);
+            } catch (Throwable ignored) {}
 
-            XposedHelpers.findAndHookMethod(TelephonyManager.class, "getLine1Number", new XC_MethodHook() {
+            XC_MethodHook simSerialHook = new XC_MethodHook() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("+5491138492011");
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(IdentityManager.getIccid());
                 }
-            });
+            };
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimSerialNumber", simSerialHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimSerialNumber", int.class, simSerialHook);
+            } catch (Throwable ignored) {}
+
+            XC_MethodHook subscriberHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(IdentityManager.getImsi());
+                }
+            };
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSubscriberId", subscriberHook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSubscriberId", int.class, subscriberHook);
+            } catch (Throwable ignored) {}
+
+            XC_MethodHook line1Hook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    param.setResult(IdentityManager.getPhone());
+                }
+            };
+            try {
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getLine1Number", line1Hook);
+                XposedHelpers.findAndHookMethod(TelephonyManager.class, "getLine1Number", int.class, line1Hook);
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Telephony hook error: " + t);
         }
@@ -1316,6 +1433,69 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             } catch (Throwable ignored) {}
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: FingerprintResponse hook error: " + t);
+        }
+
+        // ==========================================
+        // 9. Hook Settings (com.android.settings About Phone UI)
+        // ==========================================
+        if ("com.android.settings".equals(lpparam.packageName)) {
+            try {
+                Class<?> imeiCtrl = XposedHelpers.findClass("com.android.settings.deviceinfo.imei.ImeiInfoPreferenceController", lpparam.classLoader);
+                if (imeiCtrl != null) {
+                    XC_MethodHook imeiSummaryHook = new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(IdentityManager.getImei());
+                        }
+                    };
+                    XposedHelpers.findAndHookMethod(imeiCtrl, "getSummary", imeiSummaryHook);
+                    try {
+                        XposedHelpers.findAndHookMethod(imeiCtrl, "getSummary", int.class, imeiSummaryHook);
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: Settings ImeiController error: " + t);
+            }
+
+            try {
+                Class<?> wifiMacCtrl = XposedHelpers.findClass("com.android.settingslib.deviceinfo.AbstractWifiMacAddressPreferenceController", lpparam.classLoader);
+                if (wifiMacCtrl != null) {
+                    XposedHelpers.findAndHookMethod(wifiMacCtrl, "displayPreference", "androidx.preference.PreferenceScreen", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Object screen = param.args[0];
+                                Method findPref = screen.getClass().getMethod("findPreference", CharSequence.class);
+                                Object pref = findPref.invoke(screen, "wifi_mac_address");
+                                if (pref != null) {
+                                    Method setSummary = pref.getClass().getMethod("setSummary", CharSequence.class);
+                                    setSummary.invoke(pref, IdentityManager.getWifiMac());
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    });
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                Class<?> btMacCtrl = XposedHelpers.findClass("com.android.settingslib.deviceinfo.AbstractBluetoothAddressPreferenceController", lpparam.classLoader);
+                if (btMacCtrl != null) {
+                    XposedHelpers.findAndHookMethod(btMacCtrl, "displayPreference", "androidx.preference.PreferenceScreen", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Object screen = param.args[0];
+                                Method findPref = screen.getClass().getMethod("findPreference", CharSequence.class);
+                                Object pref = findPref.invoke(screen, "bt_address");
+                                if (pref != null) {
+                                    Method setSummary = pref.getClass().getMethod("setSummary", CharSequence.class);
+                                    setSummary.invoke(pref, IdentityManager.getBtMac());
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    });
+                }
+            } catch (Throwable ignored) {}
         }
     }
 }

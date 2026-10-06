@@ -38,6 +38,7 @@ services:
       - ./build_magisk/system/bin/manage-spoof:/system/bin/manage-spoof:ro
       - ./build_magisk/system/bin/set-gps:/system/bin/set-gps:ro
       - ./build_magisk/system/bin/fake_getprop.sh:/system/bin/fake_getprop.sh:ro
+      - ./build_magisk/system/bin/set-device-profile:/system/bin/set-device-profile:ro
     command:
       - androidboot.redroid_gpu_mode=guest
       - androidboot.use_redroid_c2=1

@@ -114,3 +114,13 @@ Compilado como APK firmado (`FakeWifiPixel.apk`) con `javac --release 8` y R8/D8
 * **Filtrado de Subprocesos y Dumps de Sistema:** SDKs avanzados de antifraude lanzan procesos secundarios (`getprop`, `cat /proc/self/mountstats`). En `libpixel_hw.so`, la llamada `execve` desvía las consultas de propiedades a `/system/bin/fake_getprop.sh` (eliminando propiedades `redroid_*` o `adbd`) y redirige `mountstats` a una tabla limpia de montajes.
 * **Aislamiento de Opciones de Desarrollador:** Se interceptan `Settings.Global.getInt` y `Settings.Secure.getInt` para enmascarar `development_settings_enabled` y `adb_enabled` devolviendo `0` a las aplicaciones clientes sin deshabilitar el servicio ADB en el host.
 * **Inyección en Modelos de Respuesta de Smart Signals:** Se interceptan los constructores de serialización del SDK (`FingerprintResponse`, `SmartSignal.Emulator` [`o4.d0`], `SmartSignal.Root` [`o4.q1`] y `SmartSignal.DeveloperTools` [`o4.a0`]) forzando señales limpias (`Not detected`) y puntuación sospechosa nula (`Suspect Score: 0`).
+
+### K. Motor de Identidad Dinámica de Hardware (Perfiles tipo GeeLark)
+* **Gestión de Identidad en `IdentityManager`:** Centraliza la consulta de identificadores clave (IMEI, MEID, Número de Serie, Android ID, MAC Wi-Fi, MAC Bluetooth, IMSI, ICCID, Teléfono) respaldados en propiedades de sistema persistentes (`persist.sys.fake.*`).
+* **Intercepción en Framework y Servicios del Sistema:**
+  * `TelephonyManager`: Intercepta `getImei`, `getDeviceId`, `getMeid`, `getSimSerialNumber`, `getSubscriberId`, `getLine1Number`.
+  * `Build`: Sobrescribe `Build.SERIAL` e intercepta `Build.getSerial()`.
+  * `Settings.Secure`: Intercepta consultas a `ANDROID_ID`.
+  * `WifiManager` & `BluetoothAdapter`: Intercepta `getFactoryMacAddresses()` y `getAddress()`.
+  * `com.android.settings`: Intercepta controladores de vista de Ajustes (`ImeiInfoPreferenceController`, `AbstractWifiMacAddressPreferenceController`, `AbstractBluetoothAddressPreferenceController`) para asegurar consistencia visual directa en la pantalla del sistema operativo.
+* **Controlador CLI `set-device-profile`:** Herramienta interactiva montada en `/system/bin/set-device-profile` que permite alternar identidades al instante con `random` (generando IMEIs con algoritmo de Luhn, TAC de Pixel 5 y MACs con OUI de Google), ver el estado actual con `status`, o fijar parámetros específicos con `set`.

@@ -35,7 +35,7 @@ case "$1" in
         ;;
     all-browsers|auto)
         echo "Detectando navegadores y herramientas instaladas..."
-        for pkg in mark.via.gp org.mozilla.firefox com.android.chrome com.amiunique.amiuniqueapp com.liuzh.deviceinfo com.inkwired.droidinfo com.chrystianvieyra.physicstoolboxsuite github.umer0586.sensorserver com.fingerprintjs.android.fpjs_pro_demo com.ytheekshana.deviceinfo flar2.devcheck ru.andr7e.deviceinfohw net.pixelscan.check io.github.vvb2060.keyattestation gr.nikolasspyr.integritycheck com.aurora.store; do
+        for pkg in mark.via.gp org.mozilla.firefox com.android.chrome com.amiunique.amiuniqueapp com.liuzh.deviceinfo com.inkwired.droidinfo com.chrystianvieyra.physicstoolboxsuite github.umer0586.sensorserver com.fingerprintjs.android.fpjs_pro_demo com.ytheekshana.deviceinfo flar2.devcheck ru.andr7e.deviceinfohw net.pixelscan.check io.github.vvb2060.keyattestation gr.nikolasspyr.integritycheck com.aurora.store com.android.settings; do
             if pm list packages | grep -q "package:$pkg"; then
                 sqlite3 "$DB" "INSERT OR REPLACE INTO scope (mid, app_pkg_name, user_id) VALUES ($MID, '$pkg', 0);" 2>/dev/null
                 echo "  -> Activado para: $pkg"
