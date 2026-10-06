@@ -1307,6 +1307,13 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     XposedBridge.hookAllConstructors(rootSignalClass, falseSignalHook);
                 }
             } catch (Throwable ignored) {}
+
+            try {
+                Class<?> devSignalClass = XposedHelpers.findClass("o4.a0", lpparam.classLoader);
+                if (devSignalClass != null) {
+                    XposedBridge.hookAllConstructors(devSignalClass, falseSignalHook);
+                }
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: FingerprintResponse hook error: " + t);
         }
