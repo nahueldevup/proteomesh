@@ -124,3 +124,10 @@ Compilado como APK firmado (`FakeWifiPixel.apk`) con `javac --release 8` y R8/D8
   * `WifiManager` & `BluetoothAdapter`: Intercepta `getFactoryMacAddresses()` y `getAddress()`.
   * `com.android.settings`: Intercepta controladores de vista de Ajustes (`ImeiInfoPreferenceController`, `AbstractWifiMacAddressPreferenceController`, `AbstractBluetoothAddressPreferenceController`) para asegurar consistencia visual directa en la pantalla del sistema operativo.
 * **Controlador CLI `set-device-profile`:** Herramienta interactiva montada en `/system/bin/set-device-profile` que permite alternar identidades al instante con `random` (generando IMEIs con algoritmo de Luhn, TAC de Pixel 5 y MACs con OUI de Google), ver el estado actual con `status`, o fijar parámetros específicos con `set`.
+
+### L. Normalización y Spoofing de Topología de CPU en Diagnósticos
+* **Resolución de Silicio Qualcomm Kryo:** Para aplicaciones que analizan los clústeres de núcleos mediante llamadas directas de vistas o análisis de `/proc/cpuinfo` (como DevCheck), se implementó un gancho especializado en `FakeWifiHook.java` que traduce las cadenas genéricas de clústeres a las especificaciones exactas del chip Qualcomm Snapdragon 765G (`SM7250`):
+  * Clúster Eficiencia: `6× Kryo Silver (A55)` (576–1804 MHz).
+  * Clúster Rendimiento: `1× Kryo Gold (A76)` (844–2208 MHz).
+  * Clúster Prime: `1× Kryo Gold (A76)` (844–2400 MHz).
+* **Preservación de Metadatos del Sistema:** El filtro actúa estrictamente sobre las etiquetas de los clústeres (`× Unknown`, `× ARM`), protegiendo cadenas globales como la arquitectura del procesador (`ARMv8-A`) para evitar regresiones visuales.

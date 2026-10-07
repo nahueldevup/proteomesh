@@ -9,7 +9,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | Subsistema | Estado | Implementación / Mecanismo | Validación Verificada |
 |---|---|---|---|
 | **Identidad Pixel 5 (`redfin`)** | **100% Funcional** | `mask-early.sh` en `post-fs-data` + `apply-props.sh` en `boot_completed`. | Modelo Pixel 5, huella oficial TQ3A, bootloader bloqueado (`green`). |
-| **SoC Snapdragon 765G (`SM7250`)** | **100% Funcional** | `/data/local/tmp/fake_proc/cpuinfo` + props estáticas en `Build.HARDWARE`. | Reportado en `Device Info` y `DevCheck` con cluster octa-core (1+1+6). |
+| **SoC Snapdragon 765G (`SM7250`)** | **100% Funcional** | `/data/local/tmp/fake_proc/cpuinfo` + props estáticas en `Build.HARDWARE` + hook clústeres en DevCheck. | Reportado en `Device Info` y `DevCheck` con cluster octa-core tri-cluster (`6× Kryo Silver (A55)`, `1× Kryo Gold (A76)`, `1× Kryo Gold (A76)`). |
 | **Arquitectura de CPU / ABIs** | **100% Funcional** | Hook Java reflexivo en `Build.SUPPORTED_ABIS` + hooks en `libpixel_hw.so` y preservación de `x86_64` en sistema base. | `arm64-v8a, armeabi-v7a, armeabi` en apps cliente; APEX del sistema operativos y estables. |
 | **Kernel Linux Spoofing** | **100% Funcional** | Hook de Bionic `uname()` en `libpixel_hw.so` (`LD_PRELOAD`). | Reporta kernel Google `4.19.282-g9e27c0faec01` sobre kernel host CachyOS 7.x. |
 | **Memoria RAM y Almacenamiento** | **100% Funcional** | Hooks Bionic `sysinfo()`, `statvfs()` y `statfs()` en `libpixel_hw.so`. | Reporta 8 GB RAM LPDDR4X y 128 GB UFS ocupando < 2 GB físicos en host. |
@@ -87,3 +87,11 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   2. Se interceptaron las llamadas en `TelephonyManager` (`getImei`, `getDeviceId`, `getMeid`, `getSimSerialNumber`, `getSubscriberId`, `getLine1Number`), `Build` (`SERIAL`, `getSerial`), `Settings.Secure` (`android_id`), `WifiManager.getFactoryMacAddresses` y `BluetoothAdapter.getAddress`.
   3. Se incluyó `com.android.settings` en el scope de LSPosed e interceptaron sus controladores visuales (`ImeiInfoPreferenceController`, `AbstractWifiMacAddressPreferenceController`, `AbstractBluetoothAddressPreferenceController`).
   4. Se creó la herramienta CLI `/system/bin/set-device-profile` (con soporte para `status`, `random`, `set`, `reset`) que genera identidades frescas en caliente con IMEIs matemáticamente válidos (algoritmo Luhn con TAC oficial de Pixel 5 `35824011`), seriales de Pixel 5, Android IDs de 64 bits, y MACs con OUI oficial de Google (`3C:28:6D`), permitiendo alternar identidades al instante sin reconstruir el contenedor.
+
+### 12. Normalización de Clústeres CPU Kryo en DevCheck
+* **Problema:** En la pestaña **Hardware $\rightarrow$ Procesador** de **DevCheck** (`flar2.devcheck`), los clústeres de núcleos de CPU figuraban como `1× Unknown — 844-2208 MHz` y `1× Unknown — 844-2400 MHz`, y el clúster base figuraba como `6× ARM`. Al desensamblar el APK, se descubrió que el método interno `aw0.B` espera un registro identificador MIDR completo con el código de fabricante en los 24 bits superiores (`0x51` de Qualcomm). Como en el contenedor no existe `/sys/devices/system/cpu/cpu*/regs/identification/midr_el1`, DevCheck parseaba `/proc/cpuinfo` y pasaba únicamente el `CPU part` (`0xd0b`), cuyo desplazamiento era cero, provocando que no encontrara coincidencia en su base de datos de procesadores y retornara `null` $\rightarrow$ `Unknown`.
+* **Solución:** Se implementó en `FakeWifiHook.java` (sección 10) un interceptor de etiquetas de vista para `flar2.devcheck` que mapea los clústeres tri-cluster a sus denominaciones oficiales de **Qualcomm Snapdragon 765G**:
+  * `6× Kryo Silver (A55)` — `576-1804 MHz`
+  * `1× Kryo Gold (A76)` — `844-2208 MHz`
+  * `1× Kryo Gold (A76)` — `844-2400 MHz`
+  Preservando de forma intacta las especificaciones de arquitectura (`ARMv8-A`), ABI (`arm64-v8a`) y gobernador (`schedutil`).

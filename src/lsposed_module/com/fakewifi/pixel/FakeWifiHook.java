@@ -1497,5 +1497,36 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 }
             } catch (Throwable ignored) {}
         }
+
+        // ==========================================
+        // 10. Hook DevCheck (CPU Kryo Clusters)
+        // ==========================================
+        if ("flar2.devcheck".equals(lpparam.packageName)) {
+            try {
+                XC_MethodHook textHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        CharSequence cs = (CharSequence) param.args[0];
+                        if (cs == null) return;
+                        String s = cs.toString();
+                        if (s.contains("× Unknown") || s.contains("× ARM")) {
+                            if (s.contains("× Unknown")) {
+                                param.args[0] = s.replace("Unknown", "Kryo Gold (A76)");
+                            } else if (s.contains("× ARM")) {
+                                param.args[0] = s.replace("ARM", "Kryo Silver (A55)");
+                            }
+                            String res = param.args[0].toString();
+                            if (res.contains("Kryo Silver") && res.startsWith("1×")) {
+                                param.args[0] = res.replace("1×", "6×");
+                            }
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText", CharSequence.class, textHook);
+                XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText", CharSequence.class, android.widget.TextView.BufferType.class, textHook);
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: DevCheck TextView hook error: " + t);
+            }
+        }
     }
 }
