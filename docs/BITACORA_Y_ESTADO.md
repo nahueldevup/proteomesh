@@ -28,6 +28,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | **Ocultación de Root y Binarios `su`** | **100% Funcional** | Wrappers Bionic nativos `fstatat`, `fstatat64`, `statx`, `readlink`, `execve` en `libpixel_hw.so` + hook `ApplicationPackageManager`. | `root_suspected=false`, `su_binary_found=false`, `No su binaries found`, score 75/100 (`Medium Risk`). |
 | **Fingerprint Pro SDK (Smart Signals)** | **100% Funcional** | Saneamiento de `build.prop`, wrappers de `mountstats`/`getprop`, filtro de paquetes y hooks en `Settings.Global`/`FingerprintResponse`. | **Suspect Score: 0**, Emulator: `Not detected`, Root: `Not detected`, Developer Tools: `Not detected`. |
 | **Identidad Dinámica y Perfiles (GeeLark-style)** | **100% Funcional** | `IdentityManager` en `FakeWifiHook.java` (IMEI, MEID, Serial, Android ID, MACs, IMSI, ICCID) + CLI `/system/bin/set-device-profile`. | IMEI con algoritmo Luhn, Serial Pixel 5 y MACs con OUI de Google visibles en Ajustes (`com.android.settings`), Device Info y rotación al vuelo con `set-device-profile random`. |
+| **Arquitectura Profile-Driven (`profile.json`)** | **100% Funcional** | Esquema universal JSON (`profiles/`) + binario nativo estático C `/system/bin/profile-loader` + `FakeWifiHook` reactivo. | Toda la identidad del teléfono, SoC, cámaras, frecuencias y operadora se definen en un solo archivo JSON, sin tocar código fuente ni scripts. |
 
 ---
 
@@ -95,3 +96,38 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   * `1× Kryo Gold (A76)` — `844-2208 MHz`
   * `1× Kryo Gold (A76)` — `844-2400 MHz`
   Preservando de forma intacta las especificaciones de arquitectura (`ARMv8-A`), ABI (`arm64-v8a`) y gobernador (`schedutil`).
+
+### 13. Arquitectura Profile-Driven y Motor Universal `profile-loader` (Estilo GeeLark/GenFarmer)
+* **Problema:** Para escalar el sistema hacia una granja de dispositivos o interfaz de gestión tipo GeeLark/GenFarmer (donde un usuario pueda elegir modelo, marca, operadora e identidad con un clic), las especificaciones de hardware (cámaras, SoC, particiones de build, clústeres de CPU) se encontraban dispersas y acopladas en código Java (`FakeWifiHook.java`), scripts shell (`mask-early.sh`, `apply-props.sh`) y montajes individuales de Docker.
+* **Solución:**
+  1. Se diseñó un esquema JSON universal (`profiles/presets/pixel5_redfin.json`, `samsung_s21.json`, etc.) que declara toda la plantilla de hardware del dispositivo: modelo, marca, particiones de build, SoC, clústeres de núcleos y frecuencias, GPU, pantalla, operadora, cámaras e identidad base.
+  2. Se desarrolló en C y compiló de forma estática (`src/profile_loader/`) la utilidad nativa `/system/bin/profile-loader` utilizando la biblioteca ultraliviana `cJSON`. Este binario es capaz de:
+     - Leer cualquier archivo de perfil JSON al arranque (`profile-loader apply`).
+     - Inyectar en milisegundos todas las propiedades de sistema mediante `resetprop`.
+     - Generar dinámicamente `/data/local/tmp/fake_proc/cpuinfo` con la topología exacta de clústeres y frecuencias declarada en el JSON.
+     - Generar `/data/local/tmp/fake_proc/cmdline` y `/data/local/tmp/fake_proc/version`.
+     - Generar identidades frescas (`profile-loader random`) calculando IMEIs válidos por algoritmo de Luhn basados en el TAC del modelo, seriales, MACs con el OUI del fabricante y SIMs.
+     - Mostrar un estado consolidado (`profile-loader status`).
+  3. Se conectaron `mask-early.sh` y `apply-props.sh` para que consuman automáticamente `/system/etc/proteomesh_profile.json` al arranque del contenedor.
+  4. En `FakeWifiHook.java`, se creó `ProfileConfig` para que el módulo LSPosed lea de forma reactiva la operadora (`telephony.carrier_name`, `operator_numeric`, `country_iso`) y los nombres de los clústeres de CPU directamente desde el perfil activo, eliminando el hardcodeo de cadenas específicas.
+  5. Se montó `./profiles/active_profile.json` en `docker-compose.yml`, permitiendo alternar la identidad del teléfono cambiando únicamente el archivo de perfil montado.
+
+### 14. Corrección de Propiedades de Versión (SDK / Release) y Soporte Multi-Instancia
+* **Problema:** Tras la introducción de `profile-loader`, `apply-props.sh` ejecutaba incondicionalmente un bucle legada de `setprop` con variables locales vacías, provocando que `ro.build.version.sdk` y `ro.build.version.release` quedaran en blanco. Esto hacía que `scrcpy` identificara al dispositivo como `(Android unknown)` y arrojara un error fatal `displayToken must not be null` al recurrir a la API de streaming obsoleta de Android 5-10.
+* **Solución:**
+  1. Se encapsuló el bloque legada dentro de `else ... fi` en `apply-props.sh`, garantizando que `profile-loader` controle todas las propiedades del sistema sin colisiones.
+  2. Se configuró y levantó en paralelo la segunda instancia `redroid-s21` (puerto `5582`) consumiendo `profiles/presets/samsung_s21.json` con pantalla 1080x2400 @ 120Hz, SoC Exynos 2100 e identidad de hardware Samsung, operando en simultáneo junto con `redroid-clean` (Pixel 5 en puerto `5580`).
+  3. `scrcpy` conecta y transmite de forma limpia y fluida a ambas instancias simultáneamente.
+
+---
+
+## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
+
+1. **Refinamiento del Perfil Samsung Galaxy S21 y Desacoplamiento de Cadenas Residuales:**
+   * Sustituir cadenas residuales de Pixel en `vendor/build.prop`, controladores de cámara y telefonía de Samsung en la instancia `redroid-s21`.
+2. **Empaquetado en Dockerfile Único (Golden Image):**
+   * Fusionar en una sola capa de imagen (`Dockerfile`) los binarios de Magisk, Zygisk, LSPosed, `libpixel_hw.so` y `profile-loader`.
+   * Reducir los montajes de `docker-compose.yml` de 20 bind-mounts a únicamente 2: el volumen `/data` y el archivo `profile.json`.
+3. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
+   * Construir el backend/API que administre el ciclo de vida de los contenedores Docker (`start`, `stop`, `restart`, `clone`).
+   * Interfaz gráfica interactiva con catálogo de dispositivos (Pixel, Samsung, Xiaomi) para generar instancias con operadora, proxy residencial e identidad personalizada en 1 clic.

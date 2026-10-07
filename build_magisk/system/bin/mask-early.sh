@@ -12,8 +12,20 @@ rm -f /data/adb/modules/*/disable /data/adb/modules/*/remove /data/adb/modules/*
 rm -f /dev/.props_applied 2>/dev/null || true
 chmod 666 /dev/fb* /dev/dri/* 2>/dev/null || true
 
-# Identidad temprana Google Pixel 5 para Zygote
+# Infraestructura de contenedor y Zygisk (siempre requeridos)
 RP="/system/bin/resetprop"
+if [ -x "$RP" ]; then
+    $RP -n ro.dalvik.vm.native.bridge "libzygisk.solibnb.so"
+    $RP -n ro.enable.native.bridge.exec "1"
+    $RP -n ro.hardware.hwcomposer "redroid"
+    $RP -n ro.hardware.gralloc "redroid"
+fi
+
+# Aplicar plantilla de hardware activa desde el perfil
+if [ -x "/system/bin/profile-loader" ]; then
+    /system/bin/profile-loader apply /system/etc/proteomesh_profile.json
+else
+# Identidad temprana Google Pixel 5 para Zygote (Fallback)
 if [ -x "$RP" ]; then
     $RP -n ro.product.model "Pixel 5"
     $RP -n ro.product.brand "google"
@@ -23,12 +35,8 @@ if [ -x "$RP" ]; then
     $RP -n ro.product.name "redfin"
     $RP -n ro.soc.manufacturer "Qualcomm"
     $RP -n ro.soc.model "SM7250"
-    $RP -n ro.dalvik.vm.native.bridge "libzygisk.solibnb.so"
-    $RP -n ro.enable.native.bridge.exec "1"
     $RP -n ro.hardware "qcom"
     $RP -n ro.boot.hardware "qcom"
-    $RP -n ro.hardware.hwcomposer "redroid"
-    $RP -n ro.hardware.gralloc "redroid"
     $RP -n ro.boot.hardware.sku "GTT9Q"
     $RP -n ro.boot.hardware.color "just_black"
     $RP -n ro.bootloader "b1c1-0.5-9876543"
@@ -47,9 +55,6 @@ if [ -x "$RP" ]; then
     $RP -n ro.telephony.default_network "22"
     $RP -n ro.carrier "google"
     $RP -n ro.com.android.mobiledata "true"
-    # ABI de bajo nivel debe mantenerse x86_64 para no romper libndk_translation en Zygote/system_server
-    # El spoofing de arm64-v8a se realiza a nivel de apps via LSPosed (FakeWifiPixel)
-    # $RP -n ro.product.cpu.abi "arm64-v8a"
     for part in system vendor product system_ext odm vendor_dlkm; do
         $RP -n "ro.product.${part}.brand" "google"
         $RP -n "ro.product.${part}.manufacturer" "Google"
@@ -62,6 +67,7 @@ if [ -x "$RP" ]; then
         $RP -n "ro.${part}.build.type" "user"
         $RP -n "ro.${part}.build.tags" "release-keys"
     done
+fi
 fi
 
 # Aislar la propagación de montajes para evitar loops de multiplicación

@@ -74,6 +74,40 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         return null;
     }
 
+    public static class ProfileConfig {
+        private static org.json.JSONObject sJson = null;
+        private static boolean sLoaded = false;
+
+        public static synchronized org.json.JSONObject get() {
+            if (sLoaded) return sJson;
+            sLoaded = true;
+            try {
+                java.io.File f = new java.io.File("/system/etc/proteomesh_profile.json");
+                if (f.exists()) {
+                    java.io.FileInputStream fis = new java.io.FileInputStream(f);
+                    byte[] data = new byte[(int) f.length()];
+                    fis.read(data);
+                    fis.close();
+                    sJson = new org.json.JSONObject(new String(data, "UTF-8"));
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: ProfileConfig error: " + t);
+            }
+            return sJson;
+        }
+
+        public static String getString(String section, String key, String defVal) {
+            try {
+                org.json.JSONObject root = get();
+                if (root != null && root.has(section)) {
+                    org.json.JSONObject sec = root.getJSONObject(section);
+                    if (sec.has(key)) return sec.getString(key);
+                }
+            } catch (Throwable ignored) {}
+            return defVal;
+        }
+    }
+
     public static class IdentityManager {
         public static String getProp(String key, String defVal) {
             try {
@@ -119,6 +153,18 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
 
         public static String getPhone() {
             return getProp("persist.sys.fake.phone", "+5491123456789");
+        }
+
+        public static String getCarrier() {
+            return ProfileConfig.getString("telephony", "carrier_name", "Personal");
+        }
+
+        public static String getOperatorNumeric() {
+            return ProfileConfig.getString("telephony", "operator_numeric", "72234");
+        }
+
+        public static String getCountryIso() {
+            return ProfileConfig.getString("telephony", "country_iso", "ar");
         }
     }
 
@@ -917,42 +963,42 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimOperator", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("72234");
+                    param.setResult(IdentityManager.getOperatorNumeric());
                 }
             });
 
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimOperatorName", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("Personal");
+                    param.setResult(IdentityManager.getCarrier());
                 }
             });
 
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getNetworkOperator", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("72234");
+                    param.setResult(IdentityManager.getOperatorNumeric());
                 }
             });
 
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getNetworkOperatorName", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("Personal");
+                    param.setResult(IdentityManager.getCarrier());
                 }
             });
 
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getSimCountryIso", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("ar");
+                    param.setResult(IdentityManager.getCountryIso());
                 }
             });
 
             XposedHelpers.findAndHookMethod(TelephonyManager.class, "getNetworkCountryIso", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("ar");
+                    param.setResult(IdentityManager.getCountryIso());
                 }
             });
 
@@ -1503,6 +1549,19 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         // ==========================================
         if ("flar2.devcheck".equals(lpparam.packageName)) {
             try {
+                org.json.JSONObject root = ProfileConfig.get();
+                String silverName = "Kryo Silver (A55)";
+                String goldName = "Kryo Gold (A76)";
+                if (root != null && root.has("cpu")) {
+                    org.json.JSONObject cpu = root.getJSONObject("cpu");
+                    if (cpu.has("clusters")) {
+                        org.json.JSONArray clusters = cpu.getJSONArray("clusters");
+                        if (clusters.length() > 0) silverName = clusters.getJSONObject(0).optString("name", silverName);
+                        if (clusters.length() > 1) goldName = clusters.getJSONObject(1).optString("name", goldName);
+                    }
+                }
+                final String fSilver = silverName;
+                final String fGold = goldName;
                 XC_MethodHook textHook = new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
@@ -1511,12 +1570,12 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         String s = cs.toString();
                         if (s.contains("× Unknown") || s.contains("× ARM")) {
                             if (s.contains("× Unknown")) {
-                                param.args[0] = s.replace("Unknown", "Kryo Gold (A76)");
+                                param.args[0] = s.replace("Unknown", fGold);
                             } else if (s.contains("× ARM")) {
-                                param.args[0] = s.replace("ARM", "Kryo Silver (A55)");
+                                param.args[0] = s.replace("ARM", fSilver);
                             }
                             String res = param.args[0].toString();
-                            if (res.contains("Kryo Silver") && res.startsWith("1×")) {
+                            if (res.contains(fSilver) && res.startsWith("1×")) {
                                 param.args[0] = res.replace("1×", "6×");
                             }
                         }

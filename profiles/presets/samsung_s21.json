@@ -1,0 +1,126 @@
+{
+  "version": "1.0",
+  "template": {
+    "name": "Samsung Galaxy S21 5G",
+    "market_name": "Galaxy S21 5G"
+  },
+  "device": {
+    "brand": "samsung",
+    "manufacturer": "samsung",
+    "model": "SM-G991B",
+    "device": "o1s",
+    "product": "o1sxeea",
+    "board": "universal2100",
+    "hardware": "exynos2100",
+    "platform": "exynos2100",
+    "build_id": "TP1A.220624.014",
+    "incremental": "G991BXXU9EWI1",
+    "security_patch": "2023-10-01",
+    "release": "13",
+    "sdk": "33",
+    "fingerprint": "samsung/o1sxeea/o1s:13/TP1A.220624.014/G991BXXU9EWI1:user/release-keys",
+    "description": "o1sxeea-user 13 TP1A.220624.014 G991BXXU9EWI1 release-keys",
+    "flavor": "o1sxeea-user",
+    "type": "user",
+    "tags": "release-keys",
+    "bootloader": "G991BXXU9EWI1",
+    "sku": "SM-G991B",
+    "color": "phantom_gray"
+  },
+  "cpu": {
+    "soc_manufacturer": "Samsung",
+    "soc_model": "Exynos 2100",
+    "chipname": "Samsung Exynos 2100",
+    "hardware_line": "Samsung Exynos 2100",
+    "governor": "schedutil",
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "clusters": [
+      {
+        "name": "Cortex-A55",
+        "count": 4,
+        "min_freq": 500000,
+        "max_freq": 2210000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd05",
+        "revision": "0"
+      },
+      {
+        "name": "Cortex-A78",
+        "count": 3,
+        "min_freq": 800000,
+        "max_freq": 2808000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd41",
+        "revision": "0"
+      },
+      {
+        "name": "Cortex-X1",
+        "count": 1,
+        "min_freq": 800000,
+        "max_freq": 2912000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd44",
+        "revision": "0"
+      }
+    ]
+  },
+  "gpu": {
+    "renderer": "Mali-G78 MP14",
+    "vendor": "ARM"
+  },
+  "display": {
+    "width": 1080,
+    "height": 2400,
+    "dpi": 421,
+    "fps": 120
+  },
+  "telephony": {
+    "carrier_name": "Personal",
+    "operator_numeric": "72234",
+    "country_iso": "ar",
+    "phone_type": "GSM",
+    "network_type": "LTE"
+  },
+  "identity_template": {
+    "tac": "35698511",
+    "serial_prefix": "R5CR",
+    "wifi_mac_oui": "28:11:a5",
+    "bt_mac_oui": "28:11:a5",
+    "imsi_prefix": "72234",
+    "iccid_prefix": "895434",
+    "phone_prefix": "+54911"
+  },
+  "cameras": [
+    {
+      "id": "0",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 5.4,
+      "aperture": 1.8,
+      "sensor_size_mm": [7.0, 5.25],
+      "pixel_array": [4032, 3024]
+    },
+    {
+      "id": "1",
+      "facing": "FRONT",
+      "orientation": 270,
+      "focal_length": 3.75,
+      "aperture": 2.2,
+      "sensor_size_mm": [3.6, 2.7],
+      "pixel_array": [3648, 2736]
+    },
+    {
+      "id": "2",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 2.2,
+      "aperture": 2.2,
+      "sensor_size_mm": [4.8, 3.6],
+      "pixel_array": [4032, 3024]
+    }
+  ]
+}

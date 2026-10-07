@@ -4,6 +4,10 @@
 # Permite ver, modificar o generar identidades de dispositivo completas al estilo GeeLark.
 # ==============================================================================
 
+if [ -x "/system/bin/profile-loader" ]; then
+    exec /system/bin/profile-loader "$@"
+fi
+
 # Valores por defecto oficiales de Google Pixel 5
 DEF_IMEI="358240118392141"
 DEF_MEID="A0000083921410"

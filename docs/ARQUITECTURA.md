@@ -131,3 +131,17 @@ Compilado como APK firmado (`FakeWifiPixel.apk`) con `javac --release 8` y R8/D8
   * Clúster Rendimiento: `1× Kryo Gold (A76)` (844–2208 MHz).
   * Clúster Prime: `1× Kryo Gold (A76)` (844–2400 MHz).
 * **Preservación de Metadatos del Sistema:** El filtro actúa estrictamente sobre las etiquetas de los clústeres (`× Unknown`, `× ARM`), protegiendo cadenas globales como la arquitectura del procesador (`ARMv8-A`) para evitar regresiones visuales.
+
+### M. Arquitectura Profile-Driven y Motor Nativo `profile-loader`
+* **Definición Declarativa (`profiles/`):** El comportamiento, hardware y huellas del contenedor se abstraen en archivos JSON universales (`profiles/presets/*.json`). Cada perfil encapsula la plantilla completa: `device` (marcas, modelos, IDs), `cpu` (clústeres, frecuencias, implementer, part), `gpu`, `display`, `telephony` (operadoras, MNC/MCC, ISO), `identity_template` (TAC, prefijos de serial y OUIs de MAC) y `cameras`.
+* **Motor Nativo `profile-loader` (C estático):** Herramienta de alto rendimiento compilada estáticamente en `/system/bin/profile-loader`. Se encarga de:
+  - Parsear el perfil JSON activo (`/system/etc/proteomesh_profile.json`).
+  - Aplicar propiedades de todas las particiones del sistema vía `resetprop`.
+  - Sintetizar al vuelo la tabla `/data/local/tmp/fake_proc/cpuinfo` acorde a la topología declarada en el perfil.
+  - Suministrar comandos interactivos de gestión: `apply`, `random`, `status` y `set`.
+* **Capa Reactiva en LSPosed (`ProfileConfig`):** `FakeWifiHook.java` consume el perfil activo mediante `ProfileConfig`, ajustando en tiempo de ejecución las respuestas de `TelephonyManager` y las etiquetas de procesador en herramientas de diagnóstico, permitiendo que la imagen madre opere con cualquier perfil de hardware sin requerir recompilaciones.
+
+### N. Soporte Multi-Instancia y Modelo de Granja Cloud Phone
+* **Aislamiento por Contenedor:** Cada instancia de ReDroid opera como un dispositivo independiente con su propio mapeo de puertos ADB (p.ej. `5580` para Pixel 5, `5582` para Galaxy S21), almacenamiento privado en host (`data-clean/`, `data-s21/`) y perfil de hardware desacoplado montado en `/system/etc/proteomesh_profile.json`.
+* **Identidad de Hardware Aislada:** Cada contenedor genera y persiste de forma independiente sus propios identificadores únicos (IMEI con algoritmo Luhn, Número de Serie de fabricante, MAC Wi-Fi, MAC Bluetooth y Android ID).
+* **Compatibilidad de Streaming Concurrente:** Ambos entornos exponen servicios `SurfaceControl` y `SurfaceFlinger` alineados a su resolución nativa (`1080x2340 @ 90Hz` y `1080x2400 @ 120Hz`), permitiendo mirroring fluido y simultáneo a través de `scrcpy`.

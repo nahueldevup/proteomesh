@@ -4,6 +4,8 @@
 
 # Android persistent and runtime data
 data-clean/
+data-s21/
+data-*/
 data/
 
 # Heavy GApps and APK bundles (> 100 MB, violates GitHub limits)

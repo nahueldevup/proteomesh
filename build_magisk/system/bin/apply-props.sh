@@ -23,8 +23,12 @@ delprop() {
     $RP --delete "$1" 2>/dev/null || true
 }
 
+# Aplicar plantilla de hardware activa desde el perfil
+if [ -x "/system/bin/profile-loader" ]; then
+    /system/bin/profile-loader apply /system/etc/proteomesh_profile.json
+else
 # ==============================================================================
-# 1. Identidad de Dispositivo (Google Pixel 5 - Android 13)
+# 1. Identidad de Dispositivo (Fallback Google Pixel 5 - Android 13)
 # ==============================================================================
 BRAND="google"
 MANUF="Google"
@@ -80,6 +84,7 @@ done
 
 setprop "ro.build.flavor" "$FLAVOR"
 setprop "ro.build.description" "$DESCRIPTION"
+fi
 
 # ==============================================================================
 # 2. Flags de Producción / Release (Ocultar test-keys y debug)
@@ -99,12 +104,14 @@ setprop "ro.bootloader" "b1c1-0.5-9876543"
 setprop "ro.boot.bootloader" "b1c1-0.5-9876543"
 setprop "ro.bootmode" "normal"
 setprop "ro.boot.mode" "normal"
-setprop "ro.boot.serialno" "0A1B2C3D4E5F"
-setprop "ro.serialno" "0A1B2C3D4E5F"
-
-# Hardware SKU (Pixel 5 Oficial)
-setprop "ro.boot.hardware.sku" "GTT9Q"
-setprop "ro.boot.hardware.color" "just_black"
+CUR_SERIAL=$(getprop persist.sys.fake.serial)
+if [ -n "$CUR_SERIAL" ]; then
+    setprop "ro.boot.serialno" "$CUR_SERIAL"
+    setprop "ro.serialno" "$CUR_SERIAL"
+else
+    setprop "ro.boot.serialno" "0A1B2C3D4E5F"
+    setprop "ro.serialno" "0A1B2C3D4E5F"
+fi
 
 # Arquitectura CPU ABI oficial Pixel 5
 for part in "" "system." "vendor." "odm." "product." "system_ext."; do
