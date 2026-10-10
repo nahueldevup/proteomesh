@@ -1,0 +1,208 @@
+{
+  "version": "1.0",
+  "template": {
+    "name": "Xiaomi Redmi 12 4G",
+    "market_name": "Redmi 12"
+  },
+  "device": {
+    "brand": "Xiaomi",
+    "manufacturer": "Xiaomi",
+    "model": "23053RN02L",
+    "device": "fire",
+    "product": "fire_global",
+    "board": "mt6768",
+    "hardware": "mt6768",
+    "platform": "mt6768",
+    "build_id": "TP1A.220624.014",
+    "incremental": "V14.0.6.0.TMXMIXM",
+    "security_patch": "2023-09-01",
+    "release": "13",
+    "sdk": "33",
+    "fingerprint": "Xiaomi/fire_global/fire:13/TP1A.220624.014/V14.0.6.0.TMXMIXM:user/release-keys",
+    "description": "fire_global-user 13 TP1A.220624.014 V14.0.6.0.TMXMIXM release-keys",
+    "flavor": "fire_global-user",
+    "type": "user",
+    "tags": "release-keys",
+    "bootloader": "unknown",
+    "baseband": "unknown",
+    "baseband_version": "unknown",
+    "build_host": "build",
+    "sku": "23053RN02L",
+    "color": "black"
+  },
+  "kernel": {
+    "version": "5.10.0",
+    "full_version": "Linux version 5.10.0"
+  },
+  "cpu": {
+    "soc_manufacturer": "MediaTek",
+    "soc_model": "MT6769",
+    "chipname": "MediaTek Helio G88",
+    "hardware_line": "MediaTek MT6769",
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "clusters": [
+      {
+        "name": "Cortex-A55",
+        "count": 6,
+        "min_freq": 500000,
+        "max_freq": 1800000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd05",
+        "revision": "0"
+      },
+      {
+        "name": "Cortex-A75",
+        "count": 2,
+        "min_freq": 800000,
+        "max_freq": 2000000,
+        "implementer": "0x41",
+        "variant": "0x2",
+        "part": "0xd0a",
+        "revision": "0"
+      }
+    ]
+  },
+  "gpu": {
+    "renderer": "Mali-G52 MC2",
+    "vendor": "ARM",
+    "version": "OpenGL ES 3.2"
+  },
+  "display": {
+    "width": 1080,
+    "height": 2460,
+    "dpi": 396,
+    "fps": 90
+  },
+  "telephony": {
+    "carrier_name": "Claro AR",
+    "operator_numeric": "72231",
+    "country_iso": "ar",
+    "phone_type": "1",
+    "network_type": "13"
+  },
+  "identity_template": {
+    "tac": "86274906",
+    "serial_prefix": "0x",
+    "wifi_mac_oui": "34:80:0D",
+    "bt_mac_oui": "34:80:0D",
+    "imsi_prefix": "72231",
+    "iccid_prefix": "895434",
+    "phone_prefix": "+54911"
+  },
+  "cameras": [
+    {
+      "id": "0",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 4.22,
+      "aperture": 1.8,
+      "sensor_size_mm": [
+        5.76,
+        4.32
+      ],
+      "pixel_array": [
+        8160,
+        6120
+      ]
+    },
+    {
+      "id": "1",
+      "facing": "FRONT",
+      "orientation": 270,
+      "focal_length": 2.75,
+      "aperture": 2.1,
+      "sensor_size_mm": [
+        3.2,
+        2.4
+      ],
+      "pixel_array": [
+        3264,
+        2448
+      ]
+    },
+    {
+      "id": "2",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.66,
+      "aperture": 2.2,
+      "sensor_size_mm": [
+        4.0,
+        3.0
+      ],
+      "pixel_array": [
+        3264,
+        2448
+      ]
+    },
+    {
+      "id": "3",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.75,
+      "aperture": 2.4,
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ],
+      "pixel_array": [
+        1600,
+        1200
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "STK8BA58 Accelerometer",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 1,
+      "string_type": "android.sensor.accelerometer",
+      "max_range": 39.2266,
+      "resolution": 0.0095768,
+      "power": 0.15,
+      "min_delay": 10000,
+      "max_delay": 200000
+    },
+    {
+      "name": "MMC5603 Magnetometer",
+      "vendor": "MEMSIC",
+      "version": 1,
+      "type": 2,
+      "string_type": "android.sensor.magnetic_field",
+      "max_range": 3000.0,
+      "resolution": 0.0625,
+      "power": 0.4,
+      "min_delay": 10000,
+      "max_delay": 100000
+    },
+    {
+      "name": "STK3331 Light Sensor",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 5,
+      "string_type": "android.sensor.light",
+      "max_range": 65535.0,
+      "resolution": 1.0,
+      "power": 0.05,
+      "min_delay": 0,
+      "max_delay": 0
+    },
+    {
+      "name": "Virtual Proximity Sensor",
+      "vendor": "Xiaomi",
+      "version": 1,
+      "type": 8,
+      "string_type": "android.sensor.proximity",
+      "max_range": 5.0,
+      "resolution": 5.0,
+      "power": 0.1,
+      "min_delay": 0,
+      "max_delay": 0
+    }
+  ]
+}

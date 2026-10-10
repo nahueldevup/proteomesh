@@ -8,7 +8,10 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 | Subsistema | Estado | Implementación / Mecanismo | Validación Verificada |
 |---|---|---|---|
+| **Arquitectura Golden Image** | **100% Funcional** | Imagen Docker unificada `proteomesh:latest` empaquetando Magisk, LSPosed, `libpixel_hw.so` y `profile-loader`. | `docker-compose.yml` simplificado de 20 bind-mounts a solo 2 (`/data` y `proteomesh_profile.json`). |
+| **Catálogo Multi-Dispositivo (15 Modelos AR/LATAM)** | **100% Funcional** | 15 perfiles oficiales en `profiles/<codename>.json` (Samsung, Motorola, Xiaomi) con cámaras CMOS nativas, sensores MEMS dedicados y plantillas de identidad GSMA/IEEE. | Perfiles JSON completos con hardware real, listos para consumo dinámico por `profile-loader` y `FakeWifiHook`. |
 | **Identidad Pixel 5 (`redfin`)** | **100% Funcional** | `mask-early.sh` en `post-fs-data` + `apply-props.sh` en `boot_completed`. | Modelo Pixel 5, huella oficial TQ3A, bootloader bloqueado (`green`). |
+| **Identidad Samsung Galaxy S21 5G (`SM-G991B`)** | **100% Funcional** | Desacoplamiento total vía preset JSON (`exynos2100`, baseband `s5100`, cámaras cuádruples, sensores STMicro). | Modelo SM-G991B, huella oficial TP1A, cámaras (0-3), sensores nativos y `vendor/build.prop` dinámico. |
 | **SoC Snapdragon 765G (`SM7250`)** | **100% Funcional** | `/data/local/tmp/fake_proc/cpuinfo` + props estáticas en `Build.HARDWARE` + hook clústeres en DevCheck. | Reportado en `Device Info` y `DevCheck` con cluster octa-core tri-cluster (`6× Kryo Silver (A55)`, `1× Kryo Gold (A76)`, `1× Kryo Gold (A76)`). |
 | **Arquitectura de CPU / ABIs** | **100% Funcional** | Hook Java reflexivo en `Build.SUPPORTED_ABIS` + hooks en `libpixel_hw.so` y preservación de `x86_64` en sistema base. | `arm64-v8a, armeabi-v7a, armeabi` en apps cliente; APEX del sistema operativos y estables. |
 | **Kernel Linux Spoofing** | **100% Funcional** | Hook de Bionic `uname()` en `libpixel_hw.so` (`LD_PRELOAD`). | Reporta kernel Google `4.19.282-g9e27c0faec01` sobre kernel host CachyOS 7.x. |
@@ -119,15 +122,51 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   2. Se configuró y levantó en paralelo la segunda instancia `redroid-s21` (puerto `5582`) consumiendo `profiles/presets/samsung_s21.json` con pantalla 1080x2400 @ 120Hz, SoC Exynos 2100 e identidad de hardware Samsung, operando en simultáneo junto con `redroid-clean` (Pixel 5 en puerto `5580`).
   3. `scrcpy` conecta y transmite de forma limpia y fluida a ambas instancias simultáneamente.
 
+### 15. Desacoplamiento Integral Samsung Galaxy S21 y Golden Image `proteomesh:latest`
+* **Problema:** Aunque la instancia S21 (`redroid-s21`) cargaba propiedades vía `profile-loader`, existían múltiples fugas y residuos duros de Pixel 5:
+  1. `/vendor/build.prop` y `/system/build.prop` montados de forma estática exponían huella, marca y hardware de Pixel (`ro.product.vendor.brand=google`, `ro.hardware=qcom`).
+  2. Subsistema de cámaras hardcodeado en `FakeWifiHook.java` (resoluciones y características ópticas exclusivas de Pixel 5).
+  3. `dumpsys sensorservice` reportaba 11 sensores Bosch/Google en lugar del hardware STMicroelectronics/AMS de Samsung.
+  4. La topología sysfs de CPU forzaba `qcom-cpufreq` y frecuencias de Snapdragon 765G.
+  5. `docker-compose.yml` requería casi 30 bind-mounts individuales por contenedor.
+* **Solución:**
+  1. **Generación Dinámica de `build.prop`:** `profile-loader` ahora sintetiza en tiempo de arranque `/data/local/tmp/fake_proc/system_build.prop` y `vendor_build.prop` basados 100% en el preset JSON activo, y `mask-early.sh` los monta sobre `/system/build.prop` y `/vendor/build.prop`.
+  2. **Cámaras y Sensores Profile-Driven:** `FakeWifiHook` y `FakeSensors` consumen dinámicamente el arreglo de cámaras (cuádruple para S21: Principal 12MP, Frontal 10MP, Ultra Gran Angular 12MP, Teleobjetivo 64MP) y sensores (STMicroelectronics LSM6DSO/LPS22HH, AMS TMD4910, fusiones Samsung).
+  3. **Topología de CPU en Sysfs:** `profile-loader` crea `/data/local/tmp/fake_sys_cpu` con la estructura multiclúster y frecuencias oficiales (ej. 4x A55 @ 2.21GHz, 3x A78 @ 2.81GHz, 1x X1 @ 2.91GHz con driver `exynos-cpufreq`).
+  4. **Empaquetado Golden Image (`Dockerfile`):** Se creó la imagen unificada `proteomesh:latest` integrando binarios (`resetprop`, `profile-loader`), bibliotecas Bionic (`libpixel_hw.so` en 64 y 32 bits con syscalls directas), scripts init y presets.
+  5. **Reducción de Montajes:** `docker-compose.yml` fue simplificado a únicamente 2 volúmenes por contenedor (`/data` y `/system/etc/proteomesh_profile.json`).
+
+### 16. Catálogo Masivo de 15 Dispositivos Oficiales Argentina / LATAM (Android 13 API 33)
+* **Objetivo:** Expandir la plataforma más allá de los prototipos iniciales (Pixel 5 y Galaxy S21) mediante la incorporación de perfiles de hardware 100% fidedignos y trazables para los 15 dispositivos de mayor penetración en el mercado de Argentina y LATAM, mitigando cualquier detección por valores genéricos en SDKs antifraude (Device Info, DevCheck, Fingerprint Pro, ThreatMetrix).
+* **Modelos Incorporados (`profiles/<codename>.json`):**
+  1. **Samsung Galaxy A14 4G (`a14.json`):** `SM-A145M`, MediaTek Helio G80 (`MT6769`), Mali-G52 MC2, pantalla 1080x2408 @ 450 dpi (60Hz).
+  2. **Samsung Galaxy A24 4G (`a24.json`):** `SM-A245M`, MediaTek Helio G99 (`MT6789`), Mali-G57 MC2, pantalla 1080x2340 @ 396 dpi (90Hz).
+  3. **Samsung Galaxy A34 5G (`a34x.json`):** `SM-A346M`, MediaTek Dimensity 1080 (`MT6877`), Mali-G68 MC4, pantalla 1080x2340 @ 450 dpi (120Hz).
+  4. **Samsung Galaxy A54 5G (`a54x.json`):** `SM-A546M`, Exynos 1380 (`s5e8835`), Mali-G68 MP5, pantalla 1080x2340 @ 450 dpi (120Hz).
+  5. **Samsung Galaxy A04s (`a04s.json`):** `SM-A047M`, Exynos 850 (`universal850`), Mali-G52 MP1, pantalla 720x1600 @ 270 dpi (90Hz).
+  6. **Motorola Moto G54 5G (`cancunf.json`):** `XT2343-1`, MediaTek Dimensity 7020 (`MT6855`), IMG BXM-8-256, pantalla 1080x2400 @ 405 dpi (120Hz).
+  7. **Motorola Moto G84 5G (`bangkk.json`):** `XT2347-1`, Qualcomm Snapdragon 695 5G (`SM6375`), Adreno (TM) 619, pantalla 1080x2400 @ 402 dpi (120Hz).
+  8. **Motorola Moto G23 (`penang.json`):** `XT2333-1`, MediaTek Helio G85 (`MT6769Z`), Mali-G52 MC2, pantalla 720x1600 @ 270 dpi (90Hz).
+  9. **Motorola Moto G13 (`penangf.json`):** `XT2331-1`, MediaTek Helio G85 (`MT6769Z`), Mali-G52 MC2, pantalla 720x1600 @ 270 dpi (90Hz).
+  10. **Motorola Moto G32 (`devon.json`):** `XT2235-2`, Qualcomm Snapdragon 680 4G (`SM6225`), Adreno (TM) 610, pantalla 1080x2400 @ 405 dpi (90Hz).
+  11. **Xiaomi Redmi Note 12 4G (`tapas.json`):** `23028RA60L`, Qualcomm Snapdragon 685 (`SM6225-AD`), Adreno (TM) 610, pantalla 1080x2400 @ 395 dpi (120Hz).
+  12. **Xiaomi Redmi Note 12S (`sea.json`):** `23030RAC7L`, MediaTek Helio G96 (`MT6781`), Mali-G57 MC2, pantalla 1080x2400 @ 409 dpi (90Hz).
+  13. **Xiaomi Redmi Note 13 4G (`sapphire.json`):** `23129RA5FL`, Qualcomm Snapdragon 685 (`SM6225-AD`), Adreno (TM) 610, pantalla 1080x2400 @ 395 dpi (120Hz).
+  14. **Xiaomi Redmi 12 4G (`fire.json`):** `23053RN02L`, MediaTek Helio G88 (`MT6768`), Mali-G52 MC2, pantalla 1080x2460 @ 396 dpi (90Hz).
+  15. **Xiaomi Redmi 13C (`gale.json`):** `23100RN82L`, MediaTek Helio G85 (`MT6769Z`), Mali-G52 MC2, pantalla 720x1600 @ 260 dpi (90Hz).
+* **Parámetros Fidedignos por Hardware:**
+  - **Cámaras (`CameraCharacteristics` / `media.camera`):** Especificaciones de lentes por modelo (lente principal de 108MP, 50MP JN1/GN5, 48MP IMX, ultra gran angular, macro y frontales) con aperturas exactas, longitud focal en mm y tamaño de sensor físico en mm.
+  - **Sensores MEMS (`SensorManager`):** Chips exactos montados por cada fabricante (`STMicroelectronics LSM6DSO`, `Bosch BMI260`, `Sensortek STK8BA58/STK3331/STK3337`, `MEMSIC MMC5603`, `AKM AK09918C`, `AMS TCS3701`), excluyendo sensores físicos inexistentes (como giroscopio en A04s, Moto G13 o Redmi 13C) para evitar anomalías de emulación.
+  - **Topología de CPU:** Distribución multiclúster fidedigna, frecuencias mínimas y máximas en kHz y registros de implementer/part de ARM (`0x41`, `0xd05`, `0xd0b`, `0xd41`).
+  - **Identidad GSMA e IEEE:** TAC oficial de 8 dígitos GSMA por modelo, prefijos OUI IEEE para direcciones MAC de Wi-Fi y Bluetooth por fabricante (Samsung `B0:79:94`, Motorola `E4:90:7E`, Xiaomi `34:80:0D`) y prefijos de operadoras argentinas (Claro/Personal/Movistar).
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
-1. **Refinamiento del Perfil Samsung Galaxy S21 y Desacoplamiento de Cadenas Residuales:**
-   * Sustituir cadenas residuales de Pixel en `vendor/build.prop`, controladores de cámara y telefonía de Samsung en la instancia `redroid-s21`.
-2. **Empaquetado en Dockerfile Único (Golden Image):**
-   * Fusionar en una sola capa de imagen (`Dockerfile`) los binarios de Magisk, Zygisk, LSPosed, `libpixel_hw.so` y `profile-loader`.
-   * Reducir los montajes de `docker-compose.yml` de 20 bind-mounts a únicamente 2: el volumen `/data` y el archivo `profile.json`.
-3. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
+1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
    * Construir el backend/API que administre el ciclo de vida de los contenedores Docker (`start`, `stop`, `restart`, `clone`).
-   * Interfaz gráfica interactiva con catálogo de dispositivos (Pixel, Samsung, Xiaomi) para generar instancias con operadora, proxy residencial e identidad personalizada en 1 clic.
+   * Interfaz gráfica interactiva con catálogo de dispositivos (Pixel, Samsung, Motorola, Xiaomi) para generar instancias con operadora, proxy residencial e identidad personalizada en 1 clic.
+2. **Catálogo de Presets de Hardware Adicionales:**
+   * ✅ Completado: 15 perfiles masivos de Argentina / LATAM incorporados (Samsung Galaxy A, Motorola Moto G, Xiaomi Redmi).
+   * Agregar perfiles de gama alta (POCO F5, Samsung Galaxy S23/S24, Motorola Edge 30) y OnePlus.

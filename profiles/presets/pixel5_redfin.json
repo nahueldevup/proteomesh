@@ -24,14 +24,22 @@
     "type": "user",
     "tags": "release-keys",
     "bootloader": "b1c1-0.5-9876543",
+    "baseband": "msm",
+    "baseband_version": "g7250-00247-230911-B-10825225",
+    "build_host": "google.com",
     "sku": "GTT9Q",
     "color": "just_black"
+  },
+  "kernel": {
+    "version": "4.19.282-g9e27c0faec01",
+    "full_version": "Linux version 4.19.282-g9e27c0faec01-ab10532298 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023"
   },
   "cpu": {
     "soc_manufacturer": "Qualcomm",
     "soc_model": "SM7250",
     "chipname": "Qualcomm® Snapdragon™ 765G",
     "hardware_line": "Qualcomm Technologies, Inc SM7250",
+    "driver": "qcom-cpufreq",
     "governor": "schedutil",
     "abi": "arm64-v8a",
     "abilist": "arm64-v8a,armeabi-v7a,armeabi",
@@ -57,7 +65,7 @@
         "revision": "0"
       },
       {
-        "name": "Kryo Gold (A76)",
+        "name": "Kryo Prime (A76)",
         "count": 1,
         "min_freq": 844800,
         "max_freq": 2400000,
@@ -70,7 +78,8 @@
   },
   "gpu": {
     "renderer": "Adreno (TM) 620",
-    "vendor": "Qualcomm"
+    "vendor": "Qualcomm",
+    "version": "OpenGL ES 3.2 V@0502.0 (GIT@b843336, I155baec6fc, 1618349272) (Date:04/13/21)"
   },
   "display": {
     "width": 1080,
@@ -121,6 +130,162 @@
       "aperture": 2.2,
       "sensor_size_mm": [4.6, 3.45],
       "pixel_array": [4656, 3496]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "BMI260 Accelerometer",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 1,
+      "string_type": "android.sensor.accelerometer",
+      "max_range": 78.4532,
+      "resolution": 0.0023928,
+      "power": 0.18,
+      "min_delay": 2500,
+      "max_delay": 200000,
+      "fifo_reserved": 3000,
+      "fifo_max": 3000
+    },
+    {
+      "name": "AK09918 Magnetometer",
+      "vendor": "Asahi Kasei Microdevices",
+      "version": 1,
+      "type": 2,
+      "string_type": "android.sensor.magnetic_field",
+      "max_range": 4912.0,
+      "resolution": 0.15,
+      "power": 1.1,
+      "min_delay": 10000,
+      "max_delay": 200000,
+      "fifo_reserved": 600,
+      "fifo_max": 600
+    },
+    {
+      "name": "BMI260 Gyroscope",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 4,
+      "string_type": "android.sensor.gyroscope",
+      "max_range": 34.906586,
+      "resolution": 0.0010681,
+      "power": 0.7,
+      "min_delay": 2500,
+      "max_delay": 200000,
+      "fifo_reserved": 3000,
+      "fifo_max": 3000
+    },
+    {
+      "name": "TMD3702 Ambient Light Sensor",
+      "vendor": "AMS AG",
+      "version": 1,
+      "type": 5,
+      "string_type": "android.sensor.light",
+      "max_range": 65535.0,
+      "resolution": 1.0,
+      "power": 0.15,
+      "min_delay": 100000,
+      "max_delay": 1000000,
+      "fifo_reserved": 0,
+      "fifo_max": 0
+    },
+    {
+      "name": "BMP380 Pressure Sensor",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 6,
+      "string_type": "android.sensor.pressure",
+      "max_range": 1250.0,
+      "resolution": 0.01,
+      "power": 0.0032,
+      "min_delay": 20000,
+      "max_delay": 1000000,
+      "fifo_reserved": 300,
+      "fifo_max": 300
+    },
+    {
+      "name": "TMD3702 Proximity Sensor",
+      "vendor": "AMS AG",
+      "version": 1,
+      "type": 8,
+      "string_type": "android.sensor.proximity",
+      "max_range": 5.0,
+      "resolution": 1.0,
+      "power": 0.15,
+      "min_delay": 0,
+      "max_delay": 0,
+      "fifo_reserved": 0,
+      "fifo_max": 0
+    },
+    {
+      "name": "Gravity",
+      "vendor": "Google",
+      "version": 1,
+      "type": 9,
+      "string_type": "android.sensor.gravity",
+      "max_range": 78.4532,
+      "resolution": 0.0023928,
+      "power": 0.18,
+      "min_delay": 2500,
+      "max_delay": 200000,
+      "fifo_reserved": 0,
+      "fifo_max": 0
+    },
+    {
+      "name": "Linear Acceleration",
+      "vendor": "Google",
+      "version": 1,
+      "type": 10,
+      "string_type": "android.sensor.linear_acceleration",
+      "max_range": 78.4532,
+      "resolution": 0.0023928,
+      "power": 0.18,
+      "min_delay": 2500,
+      "max_delay": 200000,
+      "fifo_reserved": 0,
+      "fifo_max": 0
+    },
+    {
+      "name": "Rotation Vector",
+      "vendor": "Google",
+      "version": 1,
+      "type": 11,
+      "string_type": "android.sensor.rotation_vector",
+      "max_range": 1.0,
+      "resolution": 0.00001,
+      "power": 0.88,
+      "min_delay": 2500,
+      "max_delay": 200000,
+      "fifo_reserved": 0,
+      "fifo_max": 0
+    },
+    {
+      "name": "BMI260 Step Counter",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 19,
+      "string_type": "android.sensor.step_counter",
+      "max_range": 4294967295.0,
+      "resolution": 1.0,
+      "power": 0.02,
+      "min_delay": 0,
+      "max_delay": 0,
+      "fifo_reserved": 100,
+      "fifo_max": 100
+    },
+    {
+      "name": "BMI260 Step Detector",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 18,
+      "string_type": "android.sensor.step_detector",
+      "max_range": 1.0,
+      "resolution": 1.0,
+      "power": 0.02,
+      "min_delay": 0,
+      "max_delay": 0,
+      "fifo_reserved": 100,
+      "fifo_max": 100
     }
   ]
 }

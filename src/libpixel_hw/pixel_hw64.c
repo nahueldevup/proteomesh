@@ -2,6 +2,46 @@
 #include <stddef.h>
 typedef long ssize_t;
 
+static long raw_open(const char *path, int flags) {
+    register long rax asm("rax") = 2; // SYS_open
+    register long rdi asm("rdi") = (long)path;
+    register long rsi asm("rsi") = (long)flags;
+    register long rdx asm("rdx") = 0;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi), "r" (rsi), "r" (rdx)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
+static long raw_read(int fd, void *buf, unsigned long count) {
+    register long rax asm("rax") = 0; // SYS_read
+    register long rdi asm("rdi") = (long)fd;
+    register long rsi asm("rsi") = (long)buf;
+    register long rdx asm("rdx") = (long)count;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi), "r" (rsi), "r" (rdx)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
+static long raw_close(int fd) {
+    register long rax asm("rax") = 3; // SYS_close
+    register long rdi asm("rdi") = (long)fd;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
 extern void *dlopen(const char *filename, int flag);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dladdr(const void *addr, void *info);
@@ -27,7 +67,7 @@ static unsigned int my_getuid(void) {
     return real_fn ? real_fn() : 0;
 }
 
-// 1. Uname Spoofing (Snapdragon 765G / Linux 4.19)
+// 1. Uname Spoofing (Snapdragon 765G / Linux 4.19 / Dynamic Profile)
 struct utsname {
     char sysname[65];
     char nodename[65];
@@ -36,6 +76,33 @@ struct utsname {
     char machine[65];
     char domainname[65];
 };
+
+static char s_uname_rel[65] = "4.19.282-g9e27c0faec01";
+static char s_uname_ver[65] = "#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023";
+static int s_uname_loaded = 0;
+
+static void load_fake_uname(void) {
+    if (s_uname_loaded) return;
+    s_uname_loaded = 1;
+    long fd = raw_open("/data/local/tmp/fake_proc/uname_release", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_uname_rel, sizeof(s_uname_rel) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_uname_rel[n-1] == '\n' || s_uname_rel[n-1] == '\r')) n--;
+            s_uname_rel[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+    fd = raw_open("/data/local/tmp/fake_proc/uname_version", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_uname_ver, sizeof(s_uname_ver) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_uname_ver[n-1] == '\n' || s_uname_ver[n-1] == '\r')) n--;
+            s_uname_ver[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+}
 
 int uname(struct utsname *buf) {
     long ret;
@@ -49,10 +116,11 @@ int uname(struct utsname *buf) {
         : "rax", "rdi", "rcx", "r11", "memory"
     );
     if (ret == 0 && buf) {
-        const char rel[] = "4.19.282-g9e27c0faec01";
-        const char ver[] = "#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023";
-        for (unsigned long i = 0; i < sizeof(rel); i++) buf->release[i] = rel[i];
-        for (unsigned long i = 0; i < sizeof(ver); i++) buf->version[i] = ver[i];
+        load_fake_uname();
+        for (unsigned long i = 0; i < sizeof(s_uname_rel) && s_uname_rel[i]; i++) buf->release[i] = s_uname_rel[i];
+        buf->release[sizeof(buf->release)-1] = '\0';
+        for (unsigned long i = 0; i < sizeof(s_uname_ver) && s_uname_ver[i]; i++) buf->version[i] = s_uname_ver[i];
+        buf->version[sizeof(buf->version)-1] = '\0';
     }
     return (int)ret;
 }
@@ -138,16 +206,57 @@ static const unsigned char *get_real_gl(unsigned int name) {
     return (const unsigned char *)"";
 }
 
+static char s_gpu_renderer[128] = "Adreno (TM) 620";
+static char s_gpu_vendor[128] = "Qualcomm";
+static char s_gpu_version[256] = "OpenGL ES 3.2 V@0502.0 (GIT@b843336, I155baec6fc, 1618349272) (Date:04/13/21)";
+static int s_gpu_loaded = 0;
+
+static void load_fake_gpu(void) {
+    if (s_gpu_loaded) return;
+    s_gpu_loaded = 1;
+
+    long fd = raw_open("/data/local/tmp/fake_proc/gpu_renderer", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_gpu_renderer, sizeof(s_gpu_renderer) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_gpu_renderer[n-1] == '\n' || s_gpu_renderer[n-1] == '\r')) n--;
+            s_gpu_renderer[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+
+    fd = raw_open("/data/local/tmp/fake_proc/gpu_vendor", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_gpu_vendor, sizeof(s_gpu_vendor) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_gpu_vendor[n-1] == '\n' || s_gpu_vendor[n-1] == '\r')) n--;
+            s_gpu_vendor[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+
+    fd = raw_open("/data/local/tmp/fake_proc/gpu_version", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_gpu_version, sizeof(s_gpu_version) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_gpu_version[n-1] == '\n' || s_gpu_version[n-1] == '\r')) n--;
+            s_gpu_version[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+}
+
 const unsigned char *glGetString(unsigned int name) {
     if (is_java_call()) {
+        load_fake_gpu();
         if (name == 0x1F01) { // GL_RENDERER
-            return (const unsigned char *)"Adreno (TM) 620";
+            return (const unsigned char *)s_gpu_renderer;
         }
         if (name == 0x1F00) { // GL_VENDOR
-            return (const unsigned char *)"Qualcomm";
+            return (const unsigned char *)s_gpu_vendor;
         }
         if (name == 0x1F02) { // GL_VERSION
-            return (const unsigned char *)"OpenGL ES 3.2 V@0502.0 (GIT@b843336, I155baec6fc, 1618349272) (Date:04/13/21)";
+            return (const unsigned char *)s_gpu_version;
         }
     }
     return get_real_gl(name);

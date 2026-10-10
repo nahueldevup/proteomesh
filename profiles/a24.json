@@ -1,0 +1,220 @@
+{
+  "version": "1.0",
+  "template": {
+    "name": "Samsung Galaxy A24 4G",
+    "market_name": "Galaxy A24"
+  },
+  "device": {
+    "brand": "samsung",
+    "manufacturer": "samsung",
+    "model": "SM-A245M",
+    "device": "a24",
+    "product": "a24nsxx",
+    "board": "mt6789",
+    "hardware": "mt6789",
+    "platform": "mt6789",
+    "build_id": "TP1A.220624.014",
+    "incremental": "A245MUBS3BWL1",
+    "security_patch": "2023-12-01",
+    "release": "13",
+    "sdk": "33",
+    "fingerprint": "samsung/a24nsxx/a24:13/TP1A.220624.014/A245MUBS3BWL1:user/release-keys",
+    "description": "a24nsxx-user 13 TP1A.220624.014 A245MUBS3BWL1 release-keys",
+    "flavor": "a24nsxx-user",
+    "type": "user",
+    "tags": "release-keys",
+    "bootloader": "A245MUBS3BWL1",
+    "baseband": "gpf",
+    "baseband_version": "A245MUBS3BWL1",
+    "build_host": "build",
+    "sku": "SM-A245M",
+    "color": "black"
+  },
+  "kernel": {
+    "version": "5.10.0",
+    "full_version": "Linux version 5.10.0"
+  },
+  "cpu": {
+    "soc_manufacturer": "MediaTek",
+    "soc_model": "MT6789",
+    "chipname": "MediaTek Helio G99",
+    "hardware_line": "MediaTek MT6789",
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "clusters": [
+      {
+        "name": "Cortex-A55",
+        "count": 6,
+        "min_freq": 500000,
+        "max_freq": 2000000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd05",
+        "revision": "0"
+      },
+      {
+        "name": "Cortex-A76",
+        "count": 2,
+        "min_freq": 850000,
+        "max_freq": 2200000,
+        "implementer": "0x41",
+        "variant": "0x4",
+        "part": "0xd0b",
+        "revision": "0"
+      }
+    ]
+  },
+  "gpu": {
+    "renderer": "Mali-G57 MC2",
+    "vendor": "ARM",
+    "version": "OpenGL ES 3.2"
+  },
+  "display": {
+    "width": 1080,
+    "height": 2340,
+    "dpi": 396,
+    "fps": 90
+  },
+  "telephony": {
+    "carrier_name": "Claro AR",
+    "operator_numeric": "72231",
+    "country_iso": "ar",
+    "phone_type": "1",
+    "network_type": "13"
+  },
+  "identity_template": {
+    "tac": "35492147",
+    "serial_prefix": "R58R",
+    "wifi_mac_oui": "B0:79:94",
+    "bt_mac_oui": "B0:79:94",
+    "imsi_prefix": "72231",
+    "iccid_prefix": "895434",
+    "phone_prefix": "+54911"
+  },
+  "cameras": [
+    {
+      "id": "0",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 4.0,
+      "aperture": 1.8,
+      "sensor_size_mm": [
+        5.12,
+        3.84
+      ],
+      "pixel_array": [
+        8160,
+        6120
+      ]
+    },
+    {
+      "id": "1",
+      "facing": "FRONT",
+      "orientation": 270,
+      "focal_length": 2.75,
+      "aperture": 2.2,
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ],
+      "pixel_array": [
+        4160,
+        3120
+      ]
+    },
+    {
+      "id": "2",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.65,
+      "aperture": 2.2,
+      "sensor_size_mm": [
+        3.2,
+        2.4
+      ],
+      "pixel_array": [
+        2592,
+        1944
+      ]
+    },
+    {
+      "id": "3",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.75,
+      "aperture": 2.4,
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ],
+      "pixel_array": [
+        1600,
+        1200
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "LSM6DSO Accelerometer",
+      "vendor": "STMicroelectronics",
+      "version": 1,
+      "type": 1,
+      "string_type": "android.sensor.accelerometer",
+      "max_range": 78.4532,
+      "resolution": 0.0023928,
+      "power": 0.17,
+      "min_delay": 2500,
+      "max_delay": 200000
+    },
+    {
+      "name": "LSM6DSO Gyroscope",
+      "vendor": "STMicroelectronics",
+      "version": 1,
+      "type": 4,
+      "string_type": "android.sensor.gyroscope",
+      "max_range": 34.906586,
+      "resolution": 0.0010681,
+      "power": 0.55,
+      "min_delay": 2500,
+      "max_delay": 200000
+    },
+    {
+      "name": "AK09918C Magnetometer",
+      "vendor": "Asahi Kasei Microdevices",
+      "version": 1,
+      "type": 2,
+      "string_type": "android.sensor.magnetic_field",
+      "max_range": 4912.0,
+      "resolution": 0.15,
+      "power": 1.1,
+      "min_delay": 10000,
+      "max_delay": 100000
+    },
+    {
+      "name": "TCS3701 Light Sensor",
+      "vendor": "AMS AG",
+      "version": 1,
+      "type": 5,
+      "string_type": "android.sensor.light",
+      "max_range": 65535.0,
+      "resolution": 1.0,
+      "power": 0.05,
+      "min_delay": 0,
+      "max_delay": 0
+    },
+    {
+      "name": "TCS3701 Proximity Sensor",
+      "vendor": "AMS AG",
+      "version": 1,
+      "type": 8,
+      "string_type": "android.sensor.proximity",
+      "max_range": 5.0,
+      "resolution": 5.0,
+      "power": 0.75,
+      "min_delay": 0,
+      "max_delay": 0
+    }
+  ]
+}

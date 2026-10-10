@@ -42,6 +42,30 @@ public class FakeSensors {
     public static synchronized void initSensors() {
         if (!sSensors.isEmpty()) return;
 
+        try {
+            org.json.JSONArray sensorsArr = FakeWifiHook.ProfileConfig.getArray("sensors");
+            if (sensorsArr != null && sensorsArr.length() > 0) {
+                for (int i = 0; i < sensorsArr.length(); i++) {
+                    org.json.JSONObject s = sensorsArr.getJSONObject(i);
+                    String name = s.optString("name", "Sensor");
+                    String vendor = s.optString("vendor", "Vendor");
+                    int ver = s.optInt("version", 1);
+                    int type = s.optInt("type", 1);
+                    String strType = s.optString("string_type", "android.sensor.accelerometer");
+                    float maxRange = (float) s.optDouble("max_range", 100.0);
+                    float resolution = (float) s.optDouble("resolution", 0.01);
+                    float power = (float) s.optDouble("power", 0.1);
+                    int minDelay = s.optInt("min_delay", 2500);
+                    int maxDelay = s.optInt("max_delay", 200000);
+                    addSensor(name, vendor, ver, i + 1, type, strType, maxRange, resolution, power, minDelay, maxDelay);
+                }
+                return;
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("FakeSensors: Error loading sensors from ProfileConfig: " + t);
+        }
+
+        // Fallback default Pixel 5 sensors
         // 1. Accelerometer (BMI260)
         addSensor("BMI260 Accelerometer", "Bosch Sensortec", 1, 1, Sensor.TYPE_ACCELEROMETER,
                 "android.sensor.accelerometer", 78.4532f, 0.002392822f, 0.18f, 2500, 200000);
@@ -108,6 +132,10 @@ public class FakeSensors {
         } catch (Throwable t) {
             XposedBridge.log("FakeSensors: Error creating sensor " + name + ": " + t);
         }
+    }
+
+    public static List<Sensor> getSensors() {
+        return getSensors(Sensor.TYPE_ALL);
     }
 
     public static List<Sensor> getSensors(int type) {

@@ -106,6 +106,22 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             } catch (Throwable ignored) {}
             return defVal;
         }
+
+        public static org.json.JSONArray getArray(String key) {
+            try {
+                org.json.JSONObject root = get();
+                if (root != null && root.has(key)) return root.getJSONArray(key);
+            } catch (Throwable ignored) {}
+            return null;
+        }
+
+        public static org.json.JSONObject getObject(String key) {
+            try {
+                org.json.JSONObject root = get();
+                if (root != null && root.has(key)) return root.getJSONObject(key);
+            } catch (Throwable ignored) {}
+            return null;
+        }
     }
 
     public static class IdentityManager {
@@ -269,31 +285,80 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         return null;
     }
 
+    private static org.json.JSONObject getCameraConfig(String id) {
+        try {
+            org.json.JSONArray cams = ProfileConfig.getArray("cameras");
+            if (cams != null) {
+                for (int i = 0; i < cams.length(); i++) {
+                    org.json.JSONObject c = cams.getJSONObject(i);
+                    if (id != null && id.equals(c.optString("id", String.valueOf(i)))) {
+                        return c;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     private static Size[] getSizesForCamera(String id, boolean isVideo) {
-        if ("1".equals(id)) {
-            // Front (8.0 MP)
-            if (isVideo) {
+        org.json.JSONObject cam = getCameraConfig(id);
+        int w = 4032, h = 3024;
+        if (cam != null && cam.has("pixel_array")) {
+            try {
+                org.json.JSONArray arr = cam.getJSONArray("pixel_array");
+                if (arr.length() >= 2) {
+                    w = arr.getInt(0);
+                    h = arr.getInt(1);
+                }
+            } catch (Throwable ignored) {}
+        } else if ("1".equals(id)) {
+            w = 3264; h = 2448;
+        } else if ("2".equals(id)) {
+            w = 4608; h = 3456;
+        }
+
+        if (isVideo) {
+            if (w >= 3840 && h >= 2160) {
+                return new Size[]{ new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720), new Size(640, 480) };
+            } else {
                 return new Size[]{ new Size(1920, 1080), new Size(1280, 720), new Size(640, 480) };
             }
-            return new Size[]{ new Size(3264, 2448), new Size(1920, 1080), new Size(1280, 720) };
-        } else if ("2".equals(id)) {
-            // Ultrawide (16.0 MP)
-            if (isVideo) {
-                return new Size[]{ new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
-            }
-            return new Size[]{ new Size(4608, 3456), new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+        }
+
+        if (w >= 3840 && h >= 2160) {
+            return new Size[]{ new Size(w, h), new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
         } else {
-            // Back main (12.2 MP)
-            if (isVideo) {
-                return new Size[]{ new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
-            }
-            return new Size[]{ new Size(4032, 3024), new Size(3840, 2160), new Size(1920, 1080), new Size(1280, 720) };
+            return new Size[]{ new Size(w, h), new Size(1920, 1080), new Size(1280, 720) };
         }
     }
 
     private static Object getCameraCharacteristicValue(String id, String name) {
+        org.json.JSONObject cam = getCameraConfig(id);
         boolean isFront = "1".equals(id);
-        boolean isWide = "2".equals(id);
+        float aperture = isFront ? 2.0f : 1.73f;
+        float focalLength = isFront ? 2.0f : 4.38f;
+        int orientation = isFront ? 270 : 90;
+        int w = isFront ? 3264 : 4032;
+        int h = isFront ? 2448 : 3024;
+        float sensorW = isFront ? 3.600f : 5.645f;
+        float sensorH = isFront ? 2.700f : 4.234f;
+
+        if (cam != null) {
+            isFront = "FRONT".equalsIgnoreCase(cam.optString("facing", isFront ? "FRONT" : "BACK"));
+            aperture = (float) cam.optDouble("aperture", aperture);
+            focalLength = (float) cam.optDouble("focal_length", focalLength);
+            orientation = cam.optInt("orientation", orientation);
+            try {
+                if (cam.has("pixel_array")) {
+                    org.json.JSONArray pa = cam.getJSONArray("pixel_array");
+                    if (pa.length() >= 2) { w = pa.getInt(0); h = pa.getInt(1); }
+                }
+                if (cam.has("sensor_size_mm")) {
+                    org.json.JSONArray ss = cam.getJSONArray("sensor_size_mm");
+                    if (ss.length() >= 2) { sensorW = (float) ss.getDouble(0); sensorH = (float) ss.getDouble(1); }
+                }
+            } catch (Throwable ignored) {}
+        }
 
         if ("android.colorCorrection.availableAberrationModes".equals(name)) {
             return new int[]{ 0, 1, 2 }; // OFF, FAST, HIGH_QUALITY
@@ -362,13 +427,13 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return isFront ? CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK;
         }
         if ("android.lens.info.availableApertures".equals(name)) {
-            return isFront ? new float[]{ 2.00f } : (isWide ? new float[]{ 2.20f } : new float[]{ 1.73f });
+            return new float[]{ aperture };
         }
         if ("android.lens.info.availableFilterDensities".equals(name)) {
             return new float[]{ 0.0f };
         }
         if ("android.lens.info.availableFocalLengths".equals(name)) {
-            return isFront ? new float[]{ 2.00f } : (isWide ? new float[]{ 2.22f } : new float[]{ 4.38f });
+            return new float[]{ focalLength };
         }
         if ("android.lens.info.availableOpticalStabilization".equals(name)) {
             return isFront ? new int[]{ 0 } : new int[]{ 0, 1 };
@@ -413,7 +478,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return new int[]{ 0 };
         }
         if ("android.sensor.info.activeArraySize".equals(name)) {
-            return isFront ? new Rect(0, 0, 3264, 2448) : (isWide ? new Rect(0, 0, 4608, 3456) : new Rect(0, 0, 4032, 3024));
+            return new Rect(0, 0, w, h);
         }
         if ("android.sensor.info.colorFilterArrangement".equals(name)) {
             return 0; // RGGB
@@ -422,10 +487,10 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return new Range<>(10000L, 30000000000L);
         }
         if ("android.sensor.info.physicalSize".equals(name)) {
-            return isFront ? new SizeF(3.600f, 2.700f) : (isWide ? new SizeF(6.170f, 4.630f) : new SizeF(5.645f, 4.234f));
+            return new SizeF(sensorW, sensorH);
         }
         if ("android.sensor.info.pixelArraySize".equals(name)) {
-            return isFront ? new Size(3264, 2448) : (isWide ? new Size(4608, 3456) : new Size(4032, 3024));
+            return new Size(w, h);
         }
         if ("android.sensor.info.sensitivityRange".equals(name)) {
             return new Range<>(55, 6400);
@@ -437,7 +502,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return 1600;
         }
         if ("android.sensor.orientation".equals(name)) {
-            return isFront ? 270 : 90;
+            return orientation;
         }
         if ("android.statistics.info.availableFaceDetectModes".equals(name)) {
             return new int[]{ 0, 1, 2 };
@@ -541,10 +606,43 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "SUPPORTED_32_BIT_ABIS", new String[]{"armeabi-v7a", "armeabi"});
             XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI", "arm64-v8a");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI2", "");
-            XposedHelpers.setStaticObjectField(android.os.Build.class, "HARDWARE", "qcom");
-            XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", "redfin");
+            String devHw = ProfileConfig.getString("device", "hardware", "qcom");
+            String devBoard = ProfileConfig.getString("device", "board", "redfin");
+            String devFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
+            String devBrand = ProfileConfig.getString("device", "brand", "google");
+            String devManuf = ProfileConfig.getString("device", "manufacturer", "Google");
+            String devModel = ProfileConfig.getString("device", "model", "Pixel 5");
+            String devDevice = ProfileConfig.getString("device", "device", "redfin");
+            String devProduct = ProfileConfig.getString("device", "product", "redfin");
+            String devBuildId = ProfileConfig.getString("device", "build_id", "TQ3A.230901.001.C2");
+            String devIncremental = ProfileConfig.getString("device", "incremental", "10750268");
+            String devRelease = ProfileConfig.getString("device", "release", "13");
+            String devSecPatch = ProfileConfig.getString("device", "security_patch", "2023-11-01");
+            String devBootloader = ProfileConfig.getString("device", "bootloader", "b1c1-0.5-9876543");
+            String devBuildHost = ProfileConfig.getString("device", "build_host", "google.com");
+
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "HARDWARE", devHw);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", devBoard);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "FINGERPRINT", devFp);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "BRAND", devBrand);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "MANUFACTURER", devManuf);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "MODEL", devModel);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "DEVICE", devDevice);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "PRODUCT", devProduct);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "ID", devBuildId);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "DISPLAY", devBuildId);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "HOST", devBuildHost);
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "USER", "android-build");
+            XposedHelpers.setStaticObjectField(android.os.Build.class, "BOOTLOADER", devBootloader);
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TAGS", "release-keys");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TYPE", "user");
+            try {
+                XposedHelpers.setStaticObjectField(android.os.Build.VERSION.class, "INCREMENTAL", devIncremental);
+                XposedHelpers.setStaticObjectField(android.os.Build.VERSION.class, "RELEASE", devRelease);
+                XposedHelpers.setStaticObjectField(android.os.Build.VERSION.class, "RELEASE_OR_CODENAME", devRelease);
+                XposedHelpers.setStaticObjectField(android.os.Build.VERSION.class, "SECURITY_PATCH", devSecPatch);
+            } catch (Throwable ignored) {}
+
             try {
                 XposedHelpers.setStaticObjectField(android.os.Build.class, "SERIAL", IdentityManager.getSerial());
                 XposedHelpers.findAndHookMethod(android.os.Build.class, "getSerial", new XC_MethodHook() {
@@ -559,7 +657,34 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         try {
+            XC_MethodHook sysPropHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    String prop = (String) param.args[0];
+                    if ("os.arch".equals(prop)) {
+                        param.setResult("aarch64");
+                    }
+                }
+            };
+            XposedHelpers.findAndHookMethod(System.class, "getProperty", String.class, sysPropHook);
+            XposedHelpers.findAndHookMethod(System.class, "getProperty", String.class, String.class, sysPropHook);
+        } catch (Throwable ignored) {}
+
+        try {
             Class<?> spClass = XposedHelpers.findClass("android.os.SystemProperties", lpparam.classLoader);
+            final String fPlatform = ProfileConfig.getString("device", "platform", "sm7250");
+            final String fHw = ProfileConfig.getString("device", "hardware", "qcom");
+            final String fDesc = ProfileConfig.getString("device", "description", "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
+            final String fBrand = ProfileConfig.getString("device", "brand", "google");
+            final String fManuf = ProfileConfig.getString("device", "manufacturer", "Google");
+            final String fModel = ProfileConfig.getString("device", "model", "Pixel 5");
+            final String fDevice = ProfileConfig.getString("device", "device", "redfin");
+            final String fProduct = ProfileConfig.getString("device", "product", "redfin");
+            final String fFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
+            final String fBuildId = ProfileConfig.getString("device", "build_id", "TQ3A.230901.001.C2");
+            final String fIncremental = ProfileConfig.getString("device", "incremental", "10750268");
+            final String fCarrier = "samsung".equalsIgnoreCase(fBrand) ? "unknown" : ProfileConfig.getString("telephony", "carrier_name", "Personal");
+
             XC_MethodHook propHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
@@ -568,11 +693,21 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     else if ("ro.product.cpu.abilist".equals(key)) param.setResult("arm64-v8a,armeabi-v7a,armeabi");
                     else if ("ro.product.cpu.abilist64".equals(key)) param.setResult("arm64-v8a");
                     else if ("ro.product.cpu.abilist32".equals(key)) param.setResult("armeabi-v7a,armeabi");
-                    else if ("ro.board.platform".equals(key)) param.setResult("sm7250");
-                    else if ("ro.hardware".equals(key)) param.setResult("qcom");
+                    else if ("ro.board.platform".equals(key)) param.setResult(fPlatform);
+                    else if ("ro.hardware".equals(key)) param.setResult(fHw);
                     else if ("ro.build.tags".equals(key)) param.setResult("release-keys");
                     else if ("ro.build.type".equals(key)) param.setResult("user");
-                    else if ("ro.build.description".equals(key)) param.setResult("redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
+                    else if ("ro.build.description".equals(key)) param.setResult(fDesc);
+                    else if ("ro.carrier".equals(key)) param.setResult(fCarrier);
+                    else if ("ro.build.fingerprint".equals(key) || "ro.bootimage.build.fingerprint".equals(key) || "ro.vendor.build.fingerprint".equals(key) || "ro.system.build.fingerprint".equals(key) || "ro.product.build.fingerprint".equals(key) || "ro.system_ext.build.fingerprint".equals(key) || "ro.odm.build.fingerprint".equals(key)) param.setResult(fFp);
+                    else if ("ro.product.brand".equals(key) || "ro.product.system.brand".equals(key) || "ro.product.vendor.brand".equals(key) || "ro.product.product.brand".equals(key) || "ro.product.system_ext.brand".equals(key) || "ro.product.odm.brand".equals(key)) param.setResult(fBrand);
+                    else if ("ro.product.model".equals(key) || "ro.product.system.model".equals(key) || "ro.product.vendor.model".equals(key) || "ro.product.product.model".equals(key) || "ro.product.system_ext.model".equals(key) || "ro.product.odm.model".equals(key)) param.setResult(fModel);
+                    else if ("ro.product.manufacturer".equals(key) || "ro.product.system.manufacturer".equals(key) || "ro.product.vendor.manufacturer".equals(key) || "ro.product.product.manufacturer".equals(key) || "ro.product.system_ext.manufacturer".equals(key) || "ro.product.odm.manufacturer".equals(key)) param.setResult(fManuf);
+                    else if ("ro.product.device".equals(key) || "ro.product.system.device".equals(key) || "ro.product.vendor.device".equals(key) || "ro.product.product.device".equals(key) || "ro.product.system_ext.device".equals(key) || "ro.product.odm.device".equals(key)) param.setResult(fDevice);
+                    else if ("ro.product.name".equals(key) || "ro.product.system.name".equals(key) || "ro.product.vendor.name".equals(key) || "ro.product.product.name".equals(key) || "ro.product.system_ext.name".equals(key) || "ro.product.odm.name".equals(key)) param.setResult(fProduct);
+                    else if ("ro.build.version.incremental".equals(key) || "ro.system.build.version.incremental".equals(key) || "ro.vendor.build.version.incremental".equals(key) || "ro.product.build.version.incremental".equals(key) || "ro.system_ext.build.version.incremental".equals(key)) param.setResult(fIncremental);
+                    else if ("ro.build.id".equals(key) || "ro.system.build.id".equals(key) || "ro.vendor.build.id".equals(key) || "ro.product.build.id".equals(key) || "ro.system_ext.build.id".equals(key)) param.setResult(fBuildId);
+                    else if ("ro.build.display.id".equals(key)) param.setResult(fBuildId);
                     else if ("init.svc.adbd".equals(key)) param.setResult("stopped");
                     else if ("sys.usb.config".equals(key)) param.setResult("none");
                     else if ("sys.usb.state".equals(key)) param.setResult("none");
@@ -1189,6 +1324,17 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraIdList", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        org.json.JSONArray cams = ProfileConfig.getArray("cameras");
+                        if (cams != null && cams.length() > 0) {
+                            String[] ids = new String[cams.length()];
+                            for (int i = 0; i < cams.length(); i++) {
+                                ids[i] = cams.getJSONObject(i).optString("id", String.valueOf(i));
+                            }
+                            param.setResult(ids);
+                            return;
+                        }
+                    } catch (Throwable ignored) {}
                     param.setResult(new String[]{"0", "1", "2"});
                 }
             });
@@ -1197,6 +1343,17 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 XposedHelpers.findAndHookMethod(CameraManager.class, "getCameraIdListNoCache", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
+                        try {
+                            org.json.JSONArray cams = ProfileConfig.getArray("cameras");
+                            if (cams != null && cams.length() > 0) {
+                                String[] ids = new String[cams.length()];
+                                for (int i = 0; i < cams.length(); i++) {
+                                    ids[i] = cams.getJSONObject(i).optString("id", String.valueOf(i));
+                                }
+                                param.setResult(ids);
+                                return;
+                            }
+                        } catch (Throwable ignored) {}
                         param.setResult(new String[]{"0", "1", "2"});
                     }
                 });
@@ -1552,16 +1709,35 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 org.json.JSONObject root = ProfileConfig.get();
                 String silverName = "Kryo Silver (A55)";
                 String goldName = "Kryo Gold (A76)";
+                String primeName = "Kryo Prime (A76)";
+                int silverCount = 6;
+                int goldCount = 1;
+                int primeCount = 1;
                 if (root != null && root.has("cpu")) {
                     org.json.JSONObject cpu = root.getJSONObject("cpu");
                     if (cpu.has("clusters")) {
                         org.json.JSONArray clusters = cpu.getJSONArray("clusters");
-                        if (clusters.length() > 0) silverName = clusters.getJSONObject(0).optString("name", silverName);
-                        if (clusters.length() > 1) goldName = clusters.getJSONObject(1).optString("name", goldName);
+                        if (clusters.length() > 0) {
+                            silverName = clusters.getJSONObject(0).optString("name", silverName);
+                            silverCount = clusters.getJSONObject(0).optInt("count", silverCount);
+                        }
+                        if (clusters.length() > 1) {
+                            goldName = clusters.getJSONObject(1).optString("name", goldName);
+                            goldCount = clusters.getJSONObject(1).optInt("count", goldCount);
+                        }
+                        if (clusters.length() > 2) {
+                            primeName = clusters.getJSONObject(2).optString("name", primeName);
+                            primeCount = clusters.getJSONObject(2).optInt("count", primeCount);
+                        }
                     }
                 }
                 final String fSilver = silverName;
                 final String fGold = goldName;
+                final String fPrime = primeName;
+                final int fSilverCount = silverCount;
+                final int fGoldCount = goldCount;
+                final int fPrimeCount = primeCount;
+                final String fFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
                 XC_MethodHook textHook = new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
@@ -1576,8 +1752,12 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                             }
                             String res = param.args[0].toString();
                             if (res.contains(fSilver) && res.startsWith("1×")) {
-                                param.args[0] = res.replace("1×", "6×");
+                                param.args[0] = res.replace("1×", fSilverCount + "×");
                             }
+                        } else if (s.contains("x86_64")) {
+                            param.args[0] = s.replace("x86_64", "arm64-v8a");
+                        } else if (s.contains("redroid")) {
+                            param.args[0] = fFp;
                         }
                     }
                 };

@@ -94,36 +94,26 @@ setprop "ro.secure" "1"
 setprop "ro.adb.secure" "1"
 
 # ==============================================================================
-# 3. Estado de Bootloader Bloqueado y Baseband / Modem Oficial
+# 3. Estado de Bootloader Bloqueado y Modem
 # ==============================================================================
 setprop "ro.boot.flash.locked" "1"
 setprop "ro.boot.verifiedbootstate" "green"
 setprop "ro.boot.veritymode" "enforcing"
 setprop "ro.boot.vbmeta.device_state" "locked"
-setprop "ro.bootloader" "b1c1-0.5-9876543"
-setprop "ro.boot.bootloader" "b1c1-0.5-9876543"
 setprop "ro.bootmode" "normal"
 setprop "ro.boot.mode" "normal"
 CUR_SERIAL=$(getprop persist.sys.fake.serial)
 if [ -n "$CUR_SERIAL" ]; then
     setprop "ro.boot.serialno" "$CUR_SERIAL"
     setprop "ro.serialno" "$CUR_SERIAL"
-else
-    setprop "ro.boot.serialno" "0A1B2C3D4E5F"
-    setprop "ro.serialno" "0A1B2C3D4E5F"
 fi
 
-# Arquitectura CPU ABI oficial Pixel 5
+# Arquitectura CPU ABI oficial
 for part in "" "system." "vendor." "odm." "product." "system_ext."; do
     setprop "ro.${part}product.cpu.abi" "arm64-v8a"
 done
 
-
-# Modem / Baseband / Telephony SIM (Personal Argentina - Telecom Personal S.A.)
-setprop "gsm.version.baseband" "g7250-00247-230911-B-10825225"
-setprop "ro.baseband" "msm"
-setprop "ro.boot.baseband" "msm"
-setprop "ro.carrier" "google"
+# Modem / Baseband / Telephony SIM
 setprop "ro.telephony.sim.count" "1"
 setprop "ro.telephony.default_network" "22"
 setprop "ro.com.android.mobiledata" "true"
@@ -138,6 +128,13 @@ setprop "gsm.sim.operator.numeric" "72234"
 setprop "gsm.sim.operator.iso-country" "ar"
 setprop "vendor.rild.libpath" "/vendor/lib64/libreference-ril.so"
 
+CUR_ICCID=$(getprop persist.sys.fake.iccid)
+[ -z "$CUR_ICCID" ] && CUR_ICCID="8954341000123456789"
+CUR_IMSI=$(getprop persist.sys.fake.imsi)
+[ -z "$CUR_IMSI" ] && CUR_IMSI="722341012345678"
+CUR_PHONE=$(getprop persist.sys.fake.phone)
+[ -z "$CUR_PHONE" ] && CUR_PHONE="+549****2011"
+
 # Asegurar registro de SIM en base de datos interna de telefonía
 TEL_DB="/data/user_de/0/com.android.providers.telephony/databases/telephony.db"
 if [ -f "$TEL_DB" ] && [ -x /system/bin/sqlite3 ]; then
@@ -149,10 +146,10 @@ if [ -f "$TEL_DB" ] && [ -x /system/bin/sqlite3 ]; then
         iso_country_code, carrier_id, profile_class, subscription_type, imsi,
         uicc_applications_enabled, port_index
     ) VALUES (
-        1, '8954341000123456789', 0, 'Personal', 'Personal', 2, -16746133, '+5491138492011',
+        1, '$CUR_ICCID', 0, 'Personal', 'Personal', 2, -16746133, '$CUR_PHONE',
         1, 0, 722, 34, '722', '34',
-        '72234,722340,722341', '72234', 2, 0, '8954341000123456789', 1,
-        'ar', 1341, 2, 0, '722341012345678',
+        '72234,722340,722341', '72234', 2, 0, '$CUR_ICCID', 1,
+        'ar', 1341, 2, 0, '$CUR_IMSI',
         1, 0
     );
     INSERT OR REPLACE INTO carriers (

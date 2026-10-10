@@ -1,0 +1,100 @@
+services:
+  redroid:
+    image: redroid/redroid:13.0.0_mindthegapps_magisk_widevine
+    container_name: redroid-clean
+    privileged: true
+    restart: unless-stopped
+    cpuset: "0-7"
+    mem_limit: 2560m
+    mem_reservation: 1536m
+    ports:
+      - "5580:5555"
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    volumes:
+      - ./data-clean:/data
+      - ./bin/resetprop:/system/bin/resetprop:ro
+      - ./build_magisk/system/lib64/libpixel_hw.so:/system/lib64/libpixel_hw.so:ro
+      - ./build_magisk/system/lib64/libcutils.so:/system/lib64/libcutils.so:ro
+      - ./build_magisk/system/lib/libpixel_hw.so:/system/lib/libpixel_hw.so:ro
+      - ./build_magisk/system/lib64/libfake_hw.so:/system/lib64/libfake_hw.so:ro
+      - ./build_magisk/system/lib/libfake_hw.so:/system/lib/libfake_hw.so:ro
+      - ./build_magisk/system/lib/libndk_translation.so:/system/lib/libndk_translation.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibnb.so:/system/lib64/libzygisk.solibnb.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibzygisk.solibnb.so:/system/lib64/libzygisk.solibzygisk.solibnb.so:ro
+      - ./build_magisk/system/etc/init/hw/init.zygote64_32.rc:/system/etc/init/hw/init.zygote64_32.rc:ro
+      - ./build_magisk/system/etc/init/bootanim.rc:/system/etc/init/bootanim.rc:ro
+      - ./build_magisk/system/etc/init/magisk/stub.apk:/system/etc/init/magisk/stub.apk:ro
+      - ./build_magisk/system/etc/init/magisk/magisk:/system/etc/init/magisk/magisk:ro
+      - ./build_magisk/system/build.prop:/system/build.prop:ro
+      - ./build_magisk/vendor/build.prop:/vendor/build.prop:ro
+      - ./build_magisk/vendor/lib64/libreference-ril.so:/vendor/lib64/libreference-ril.so:ro
+      - ./build_magisk/vendor/etc/permissions/handheld_core_hardware.xml:/vendor/etc/permissions/handheld_core_hardware.xml:ro
+      - ./build_magisk/system/etc/init/integrity_props.rc:/system/etc/init/integrity_props.rc:ro
+      - ./build_magisk/system/etc/init/mask_proc.rc:/system/etc/init/mask_proc.rc:ro
+      - ./build_magisk/system/bin/apply-props.sh:/system/bin/apply-props.sh:ro
+      - ./build_magisk/system/bin/mask-early.sh:/system/bin/mask-early.sh:ro
+      - ./build_magisk/system/bin/manage-spoof:/system/bin/manage-spoof:ro
+      - ./build_magisk/system/bin/set-gps:/system/bin/set-gps:ro
+      - ./build_magisk/system/bin/fake_getprop.sh:/system/bin/fake_getprop.sh:ro
+      - ./build_magisk/system/bin/set-device-profile:/system/bin/set-device-profile:ro
+      - ./build_magisk/system/bin/profile-loader:/system/bin/profile-loader:ro
+      - ./profiles/active_profile.json:/system/etc/proteomesh_profile.json:ro
+    command:
+      - androidboot.redroid_gpu_mode=guest
+      - androidboot.use_redroid_c2=1
+      - androidboot.redroid_width=1080
+      - androidboot.redroid_height=2340
+      - androidboot.redroid_dpi=440
+      - androidboot.redroid_fps=90
+
+  redroid-s21:
+    image: redroid/redroid:13.0.0_mindthegapps_magisk_widevine
+    container_name: redroid-s21
+    privileged: true
+    restart: unless-stopped
+    cpuset: "0-7"
+    mem_limit: 2560m
+    mem_reservation: 1536m
+    ports:
+      - "5582:5555"
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    volumes:
+      - ./data-s21:/data
+      - ./bin/resetprop:/system/bin/resetprop:ro
+      - ./build_magisk/system/lib64/libpixel_hw.so:/system/lib64/libpixel_hw.so:ro
+      - ./build_magisk/system/lib64/libcutils.so:/system/lib64/libcutils.so:ro
+      - ./build_magisk/system/lib/libpixel_hw.so:/system/lib/libpixel_hw.so:ro
+      - ./build_magisk/system/lib64/libfake_hw.so:/system/lib64/libfake_hw.so:ro
+      - ./build_magisk/system/lib/libfake_hw.so:/system/lib/libfake_hw.so:ro
+      - ./build_magisk/system/lib/libndk_translation.so:/system/lib/libndk_translation.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibnb.so:/system/lib64/libzygisk.solibnb.so:ro
+      - ./build_magisk/system/lib64/libzygisk.solibzygisk.solibnb.so:/system/lib64/libzygisk.solibzygisk.solibnb.so:ro
+      - ./build_magisk/system/etc/init/hw/init.zygote64_32.rc:/system/etc/init/hw/init.zygote64_32.rc:ro
+      - ./build_magisk/system/etc/init/bootanim.rc:/system/etc/init/bootanim.rc:ro
+      - ./build_magisk/system/etc/init/magisk/stub.apk:/system/etc/init/magisk/stub.apk:ro
+      - ./build_magisk/system/etc/init/magisk/magisk:/system/etc/init/magisk/magisk:ro
+      - ./build_magisk/system/build.prop:/system/build.prop:ro
+      - ./build_magisk/vendor/build.prop:/vendor/build.prop:ro
+      - ./build_magisk/vendor/lib64/libreference-ril.so:/vendor/lib64/libreference-ril.so:ro
+      - ./build_magisk/vendor/etc/permissions/handheld_core_hardware.xml:/vendor/etc/permissions/handheld_core_hardware.xml:ro
+      - ./build_magisk/system/etc/init/integrity_props.rc:/system/etc/init/integrity_props.rc:ro
+      - ./build_magisk/system/etc/init/mask_proc.rc:/system/etc/init/mask_proc.rc:ro
+      - ./build_magisk/system/bin/apply-props.sh:/system/bin/apply-props.sh:ro
+      - ./build_magisk/system/bin/mask-early.sh:/system/bin/mask-early.sh:ro
+      - ./build_magisk/system/bin/manage-spoof:/system/bin/manage-spoof:ro
+      - ./build_magisk/system/bin/set-gps:/system/bin/set-gps:ro
+      - ./build_magisk/system/bin/fake_getprop.sh:/system/bin/fake_getprop.sh:ro
+      - ./build_magisk/system/bin/set-device-profile:/system/bin/set-device-profile:ro
+      - ./build_magisk/system/bin/profile-loader:/system/bin/profile-loader:ro
+      - ./profiles/presets/samsung_s21.json:/system/etc/proteomesh_profile.json:ro
+    command:
+      - androidboot.redroid_gpu_mode=guest
+      - androidboot.use_redroid_c2=1
+      - androidboot.redroid_width=1080
+      - androidboot.redroid_height=2400
+      - androidboot.redroid_dpi=421
+      - androidboot.redroid_fps=120

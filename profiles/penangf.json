@@ -1,0 +1,196 @@
+{
+  "version": "1.0",
+  "template": {
+    "name": "Motorola Moto G13",
+    "market_name": "Moto G13"
+  },
+  "device": {
+    "brand": "motorola",
+    "manufacturer": "motorola",
+    "model": "XT2331-1",
+    "device": "penangf",
+    "product": "penangf_g",
+    "board": "mt6768",
+    "hardware": "mt6768",
+    "platform": "mt6768",
+    "build_id": "THA33.31-26-11",
+    "incremental": "12",
+    "security_patch": "2023-09-01",
+    "release": "13",
+    "sdk": "33",
+    "fingerprint": "motorola/penangf_g/penangf:13/THA33.31-26-11/12:user/release-keys",
+    "description": "penangf_g-user 13 THA33.31-26-11 12 release-keys",
+    "flavor": "penangf_g-user",
+    "type": "user",
+    "tags": "release-keys",
+    "bootloader": "unknown",
+    "baseband": "unknown",
+    "baseband_version": "unknown",
+    "build_host": "build",
+    "sku": "XT2331-1",
+    "color": "blue"
+  },
+  "kernel": {
+    "version": "5.10.0",
+    "full_version": "Linux version 5.10.0"
+  },
+  "cpu": {
+    "soc_manufacturer": "MediaTek",
+    "soc_model": "MT6769Z",
+    "chipname": "MediaTek Helio G85",
+    "hardware_line": "MediaTek MT6769Z",
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "clusters": [
+      {
+        "name": "Cortex-A55",
+        "count": 6,
+        "min_freq": 500000,
+        "max_freq": 1800000,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd05",
+        "revision": "0"
+      },
+      {
+        "name": "Cortex-A75",
+        "count": 2,
+        "min_freq": 800000,
+        "max_freq": 2000000,
+        "implementer": "0x41",
+        "variant": "0x2",
+        "part": "0xd0a",
+        "revision": "0"
+      }
+    ]
+  },
+  "gpu": {
+    "renderer": "Mali-G52 MC2",
+    "vendor": "ARM",
+    "version": "OpenGL ES 3.2"
+  },
+  "display": {
+    "width": 720,
+    "height": 1600,
+    "dpi": 270,
+    "fps": 90
+  },
+  "telephony": {
+    "carrier_name": "Claro AR",
+    "operator_numeric": "72231",
+    "country_iso": "ar",
+    "phone_type": "1",
+    "network_type": "13"
+  },
+  "identity_template": {
+    "tac": "35492147",
+    "serial_prefix": "ZY22",
+    "wifi_mac_oui": "E4:90:7E",
+    "bt_mac_oui": "E4:90:7E",
+    "imsi_prefix": "72231",
+    "iccid_prefix": "895434",
+    "phone_prefix": "+54911"
+  },
+  "cameras": [
+    {
+      "id": "0",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 4.22,
+      "aperture": 1.8,
+      "sensor_size_mm": [
+        5.76,
+        4.32
+      ],
+      "pixel_array": [
+        8160,
+        6120
+      ]
+    },
+    {
+      "id": "1",
+      "facing": "FRONT",
+      "orientation": 270,
+      "focal_length": 2.75,
+      "aperture": 2.0,
+      "sensor_size_mm": [
+        3.2,
+        2.4
+      ],
+      "pixel_array": [
+        3264,
+        2448
+      ]
+    },
+    {
+      "id": "2",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.75,
+      "aperture": 2.4,
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ],
+      "pixel_array": [
+        1600,
+        1200
+      ]
+    },
+    {
+      "id": "3",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.75,
+      "aperture": 2.4,
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ],
+      "pixel_array": [
+        1600,
+        1200
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "STK8BA58 Accelerometer",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 1,
+      "string_type": "android.sensor.accelerometer",
+      "max_range": 39.2266,
+      "resolution": 0.0095768,
+      "power": 0.15,
+      "min_delay": 10000,
+      "max_delay": 200000
+    },
+    {
+      "name": "STK3331 Light Sensor",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 5,
+      "string_type": "android.sensor.light",
+      "max_range": 65535.0,
+      "resolution": 1.0,
+      "power": 0.05,
+      "min_delay": 0,
+      "max_delay": 0
+    },
+    {
+      "name": "STK3331 Proximity Sensor",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 8,
+      "string_type": "android.sensor.proximity",
+      "max_range": 5.0,
+      "resolution": 5.0,
+      "power": 0.75,
+      "min_delay": 0,
+      "max_delay": 0
+    }
+  ]
+}

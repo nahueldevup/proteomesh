@@ -1,0 +1,205 @@
+{
+  "version": "1.0",
+  "template": {
+    "name": "Motorola Moto G84 5G",
+    "market_name": "Moto G84 5G"
+  },
+  "device": {
+    "brand": "motorola",
+    "manufacturer": "motorola",
+    "model": "XT2347-1",
+    "device": "bangkk",
+    "product": "bangkk_g",
+    "board": "lahaina",
+    "hardware": "qcom",
+    "platform": "lito",
+    "build_id": "T3TC33.18-12-3",
+    "incremental": "6138c",
+    "security_patch": "2023-10-01",
+    "release": "13",
+    "sdk": "33",
+    "fingerprint": "motorola/bangkk_g/bangkk:13/T3TC33.18-12-3/6138c:user/release-keys",
+    "description": "bangkk_g-user 13 T3TC33.18-12-3 6138c release-keys",
+    "flavor": "bangkk_g-user",
+    "type": "user",
+    "tags": "release-keys",
+    "bootloader": "unknown",
+    "baseband": "unknown",
+    "baseband_version": "unknown",
+    "build_host": "build",
+    "sku": "XT2347-1",
+    "color": "blue"
+  },
+  "kernel": {
+    "version": "5.10.0",
+    "full_version": "Linux version 5.10.0"
+  },
+  "cpu": {
+    "soc_manufacturer": "Qualcomm",
+    "soc_model": "SM6375",
+    "chipname": "Qualcomm Snapdragon 695 5G",
+    "hardware_line": "Qualcomm Technologies, Inc SM6375",
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "clusters": [
+      {
+        "name": "Kryo 660 Silver",
+        "count": 6,
+        "min_freq": 300000,
+        "max_freq": 1708800,
+        "implementer": "0x41",
+        "variant": "0x1",
+        "part": "0xd05",
+        "revision": "0"
+      },
+      {
+        "name": "Kryo 660 Gold",
+        "count": 2,
+        "min_freq": 800000,
+        "max_freq": 2208000,
+        "implementer": "0x41",
+        "variant": "0x2",
+        "part": "0xd0b",
+        "revision": "0"
+      }
+    ]
+  },
+  "gpu": {
+    "renderer": "Adreno (TM) 619",
+    "vendor": "Qualcomm",
+    "version": "OpenGL ES 3.2"
+  },
+  "display": {
+    "width": 1080,
+    "height": 2400,
+    "dpi": 402,
+    "fps": 120
+  },
+  "telephony": {
+    "carrier_name": "Claro AR",
+    "operator_numeric": "72231",
+    "country_iso": "ar",
+    "phone_type": "1",
+    "network_type": "13"
+  },
+  "identity_template": {
+    "tac": "35165231",
+    "serial_prefix": "ZY22",
+    "wifi_mac_oui": "E4:90:7E",
+    "bt_mac_oui": "E4:90:7E",
+    "imsi_prefix": "72231",
+    "iccid_prefix": "895434",
+    "phone_prefix": "+54911"
+  },
+  "cameras": [
+    {
+      "id": "0",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 4.73,
+      "aperture": 1.88,
+      "sensor_size_mm": [
+        6.4,
+        4.8
+      ],
+      "pixel_array": [
+        8160,
+        6120
+      ]
+    },
+    {
+      "id": "1",
+      "facing": "FRONT",
+      "orientation": 270,
+      "focal_length": 3.4,
+      "aperture": 2.45,
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ],
+      "pixel_array": [
+        4608,
+        3456
+      ]
+    },
+    {
+      "id": "2",
+      "facing": "BACK",
+      "orientation": 90,
+      "focal_length": 1.66,
+      "aperture": 2.2,
+      "sensor_size_mm": [
+        4.0,
+        3.0
+      ],
+      "pixel_array": [
+        3264,
+        2448
+      ]
+    }
+  ],
+  "sensors": [
+    {
+      "name": "BMI260 Accelerometer",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 1,
+      "string_type": "android.sensor.accelerometer",
+      "max_range": 78.4532,
+      "resolution": 0.0023928,
+      "power": 0.18,
+      "min_delay": 2500,
+      "max_delay": 200000
+    },
+    {
+      "name": "BMI260 Gyroscope",
+      "vendor": "Bosch Sensortec",
+      "version": 1,
+      "type": 4,
+      "string_type": "android.sensor.gyroscope",
+      "max_range": 34.906586,
+      "resolution": 0.0010681,
+      "power": 0.55,
+      "min_delay": 2500,
+      "max_delay": 200000
+    },
+    {
+      "name": "MMC5603 Magnetometer",
+      "vendor": "MEMSIC",
+      "version": 1,
+      "type": 2,
+      "string_type": "android.sensor.magnetic_field",
+      "max_range": 3000.0,
+      "resolution": 0.0625,
+      "power": 0.4,
+      "min_delay": 10000,
+      "max_delay": 100000
+    },
+    {
+      "name": "STK3331 Light Sensor",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 5,
+      "string_type": "android.sensor.light",
+      "max_range": 65535.0,
+      "resolution": 1.0,
+      "power": 0.05,
+      "min_delay": 0,
+      "max_delay": 0
+    },
+    {
+      "name": "STK3331 Proximity Sensor",
+      "vendor": "Sensortek",
+      "version": 1,
+      "type": 8,
+      "string_type": "android.sensor.proximity",
+      "max_range": 5.0,
+      "resolution": 5.0,
+      "power": 0.75,
+      "min_delay": 0,
+      "max_delay": 0
+    }
+  ]
+}

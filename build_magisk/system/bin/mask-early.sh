@@ -96,7 +96,8 @@ mount_tmpfs() {
     fi
 }
 
-# 1. /proc/cpuinfo (Qualcomm Snapdragon 765G: 6x Cortex-A55 + 2x Cortex-A76)
+# 1. /proc/cpuinfo (Fallback si profile-loader no generó cpuinfo)
+if [ ! -f "$FAKEDIR/cpuinfo" ]; then
 cat << 'EOF' > "$FAKEDIR/cpuinfo"
 processor	: 0
 BogoMIPS	: 38.40
@@ -180,6 +181,7 @@ echo "console=null androidboot.hardware=qcom androidboot.verifiedbootstate=green
 
 # 3. /proc/version oficial Pixel 5 Android 13
 echo "Linux version 4.19.282-g9e27c0faec01-ab10532298 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023" > "$FAKEDIR/version"
+fi
 
 # 3b. SELinux enforce mock file
 echo "1" > "$FAKEDIR/selinux_enforce"
@@ -243,7 +245,22 @@ fi
 # Aplicar bind mounts de procfs
 bind_mount "$FAKEDIR/cpuinfo" /proc/cpuinfo
 bind_mount "$FAKEDIR/version" /proc/version
+bind_mount "$FAKEDIR/cmdline" /proc/cmdline
 bind_mount "$FAKEDIR/meminfo" /proc/meminfo
+
+# Dynamic build.prop injection
+if [ -f "$FAKEDIR/system_build.prop" ]; then
+    mount --bind "$FAKEDIR/system_build.prop" /system/build.prop 2>/dev/null || true
+fi
+if [ -f "$FAKEDIR/vendor_build.prop" ]; then
+    mount --bind "$FAKEDIR/vendor_build.prop" /vendor/build.prop 2>/dev/null || true
+fi
+if [ -f "$FAKEDIR/product_build.prop" ]; then
+    mount --bind "$FAKEDIR/product_build.prop" /system/product/etc/build.prop 2>/dev/null || true
+fi
+if [ -f "$FAKEDIR/system_ext_build.prop" ]; then
+    mount --bind "$FAKEDIR/system_ext_build.prop" /system/system_ext/etc/build.prop 2>/dev/null || true
+fi
 
 # Directorio para sockets VR/PDX de SurfaceFlinger
 mkdir -p /dev/socket/pdx/system/vr/display 2>/dev/null || true
@@ -404,6 +421,10 @@ if [ -f /system/bin/dumpsys ]; then
 #!/system/bin/sh
 for arg in "$@"; do
     if [ "$arg" = "sensorservice" ]; then
+        if [ -f "/data/local/tmp/fake_proc/sensorservice.txt" ]; then
+            cat "/data/local/tmp/fake_proc/sensorservice.txt"
+            exit 0
+        fi
         cat << 'SOF'
 Sensor Device:
 Total 11 h/w sensors, 0 running 0 disabled clients:
@@ -463,16 +484,22 @@ SOF_TEL
         exit 0
     fi
     if [ "$arg" = "wifi" ]; then
-        cat << 'SOF_WIFI'
+        WMAC=$(getprop persist.sys.fake.wifi_mac)
+        [ -z "$WMAC" ] && WMAC="82:5e:45:1a:27:54"
+        cat << SOF_WIFI
 Wi-Fi is enabled
 WifiState 3
 Current wifi mode: EnabledState
 NumActiveModeManagers: 1
-WifiInfo SSID: "Personal-WiFi-5.8G", BSSID: 82:5e:45:1a:27:54, MAC: 82:5e:45:1a:27:54, Supplicant state: COMPLETED, RSSI: -52, Link speed: 866Mbps, Tx Link speed: 866Mbps, Rx Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 1, Metered hint: false, score: 60, isUsable: true, CarrierId: 1341
+WifiInfo SSID: "Personal-WiFi-5.8G", BSSID: $WMAC, MAC: $WMAC, Supplicant state: COMPLETED, RSSI: -52, Link speed: 866Mbps, Tx Link speed: 866Mbps, Rx Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 1, Metered hint: false, score: 60, isUsable: true, CarrierId: 1341
 SOF_WIFI
         exit 0
     fi
     if [ "$arg" = "media.camera" ]; then
+        if [ -f "/data/local/tmp/fake_proc/camera_dump.txt" ]; then
+            cat "/data/local/tmp/fake_proc/camera_dump.txt"
+            exit 0
+        fi
         cat << 'SOF_CAM'
 Camera module HAL API version: 0x204
 Camera module API version: 0x204
@@ -521,14 +548,16 @@ EOF
 fi
 mount -o remount,ro / 2>/dev/null || true
 
-# 9. Wrapper de /system/bin/uname (Pixel 5 Oficial)
+# 9. Wrapper de /system/bin/uname (Dinámico por Perfil)
 mount -o remount,rw / 2>/dev/null || true
-if [ -L /system/bin/uname ]; then
+if [ -L /system/bin/uname ] || [ -f /system/bin/uname ]; then
     rm -f /system/bin/uname
     cat << 'EOF' > /system/bin/uname
 #!/system/bin/sh
-KREL="4.19.282-g9e27c0faec01"
-KVER="#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023"
+KREL=$(cat /data/local/tmp/fake_proc/uname_release 2>/dev/null)
+[ -z "$KREL" ] && KREL="4.19.282-g9e27c0faec01"
+KVER=$(cat /data/local/tmp/fake_proc/uname_version 2>/dev/null)
+[ -z "$KVER" ] && KVER="#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023"
 ARCH="aarch64"
 
 if [ $# -eq 0 ]; then
