@@ -9,7 +9,8 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | Subsistema | Estado | Implementación / Mecanismo | Validación Verificada |
 |---|---|---|---|
 | **Arquitectura Golden Image** | **100% Funcional** | Imagen Docker unificada `proteomesh:latest` empaquetando Magisk, LSPosed, `libpixel_hw.so` y `profile-loader`. | `docker-compose.yml` simplificado de 20 bind-mounts a solo 2 (`/data` y `proteomesh_profile.json`). |
-| **Catálogo Multi-Dispositivo (15 Modelos AR/LATAM)** | **100% Funcional** | 15 perfiles oficiales en `profiles/<codename>.json` (Samsung, Motorola, Xiaomi) con cámaras CMOS nativas, sensores MEMS dedicados y plantillas de identidad GSMA/IEEE. | Perfiles JSON completos con hardware real, listos para consumo dinámico por `profile-loader` y `FakeWifiHook`. |
+| **Catálogo Multi-Dispositivo (17 Modelos)** | **100% Funcional** | 17 plantillas oficiales en `templates/<marca>/<modelo>.json` (Samsung, Motorola, Xiaomi, Google) con cámaras CMOS nativas, sensores MEMS dedicados y plantillas de identidad GSMA/IEEE. | Plantillas JSON completas organizadas por marca, consumibles dinámicamente por `instance_manager.py` y `profile-loader`. |
+| **Gestor de Instancias (`instance_manager.py`)** | **100% Funcional** | CLI estilo GeeLark (`tools/instance_manager.py`) para listar plantillas, operadoras, randomizar identificadores válidos y crear instancias en `instances/<id>/`. | Generación de IMEI (Luhn check), MACs IEEE, seriales, SIMs Claro/Personal/Movistar y congelamiento de `profile.json`. |
 | **Identidad Pixel 5 (`redfin`)** | **100% Funcional** | `mask-early.sh` en `post-fs-data` + `apply-props.sh` en `boot_completed`. | Modelo Pixel 5, huella oficial TQ3A, bootloader bloqueado (`green`). |
 | **Identidad Samsung Galaxy S21 5G (`SM-G991B`)** | **100% Funcional** | Desacoplamiento total vía preset JSON (`exynos2100`, baseband `s5100`, cámaras cuádruples, sensores STMicro). | Modelo SM-G991B, huella oficial TP1A, cámaras (0-3), sensores nativos y `vendor/build.prop` dinámico. |
 | **SoC Snapdragon 765G (`SM7250`)** | **100% Funcional** | `/data/local/tmp/fake_proc/cpuinfo` + props estáticas en `Build.HARDWARE` + hook clústeres en DevCheck. | Reportado en `Device Info` y `DevCheck` con cluster octa-core tri-cluster (`6× Kryo Silver (A55)`, `1× Kryo Gold (A76)`, `1× Kryo Gold (A76)`). |
@@ -159,6 +160,16 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - **Sensores MEMS (`SensorManager`):** Chips exactos montados por cada fabricante (`STMicroelectronics LSM6DSO`, `Bosch BMI260`, `Sensortek STK8BA58/STK3331/STK3337`, `MEMSIC MMC5603`, `AKM AK09918C`, `AMS TCS3701`), excluyendo sensores físicos inexistentes (como giroscopio en A04s, Moto G13 o Redmi 13C) para evitar anomalías de emulación.
   - **Topología de CPU:** Distribución multiclúster fidedigna, frecuencias mínimas y máximas en kHz y registros de implementer/part de ARM (`0x41`, `0xd05`, `0xd0b`, `0xd41`).
   - **Identidad GSMA e IEEE:** TAC oficial de 8 dígitos GSMA por modelo, prefijos OUI IEEE para direcciones MAC de Wi-Fi y Bluetooth por fabricante (Samsung `B0:79:94`, Motorola `E4:90:7E`, Xiaomi `34:80:0D`) y prefijos de operadoras argentinas (Claro/Personal/Movistar).
+
+### 17. Arquitectura de Granja de Dispositivos (Estilo GeeLark / GenFarmer) y Estructura de Directorios
+* **Objetivo:** Establecer las bases estructurales y de orquestación para el panel de administración de CloudPhones, separando limpiamente las plantillas inmutables de hardware, los catálogos de operadoras y las instancias activas de usuario.
+* **Nueva Estructura de Directorios:**
+  - `templates/<marca>/<modelo>.json`: Plantillas oficiales inmutables de hardware (SoC, GPU, cámaras CMOS, sensores MEMS, TAC base, OUI MAC). Organizadas por fabricante (`samsung/`, `motorola/`, `xiaomi/`, `google/`).
+  - `carriers/<operadora>.json`: Perfiles de red y telefonía (`ar_claro.json`, `ar_personal.json`, `ar_movistar.json`) con sus respectivos códigos MCC/MNC, formatos de IMSI, ICCID y números telefónicos.
+  - `instances/<nombre_instancia>/`: Directorio aislado por contenedor activo que contiene su `profile.json` (perfil congelado con identidad única) y su volumen persistente `data/` (`/data` de Android).
+  - `tools/instance_manager.py`: Herramienta CLI de gestión que permite listar plantillas (`list-templates`), listar operadoras (`list-carriers`), generar/previsualizar identidades aleatorias en rango (`randomize`) y crear instancias con perfil congelado (`create`).
+* **Soporte en `profile-loader`:**
+  - `profile-loader` lee de forma nativa bloques `"generated_identity"` pre-configurados por el gestor de instancias, aplicando directamente los identificadores asignados sin re-generarlos, manteniendo el fallback a `"identity_template"` si no estuvieran presentes.
 
 ---
 

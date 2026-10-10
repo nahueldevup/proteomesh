@@ -1,0 +1,11 @@
+{
+  "id": "ar_personal",
+  "carrier_name": "Personal",
+  "operator_numeric": "72234",
+  "country_iso": "ar",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "72234",
+  "iccid_prefix": "895434",
+  "phone_prefix": "+54911"
+}

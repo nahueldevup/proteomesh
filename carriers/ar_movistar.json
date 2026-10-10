@@ -1,0 +1,11 @@
+{
+  "id": "ar_movistar",
+  "carrier_name": "Movistar",
+  "operator_numeric": "72207",
+  "country_iso": "ar",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "72207",
+  "iccid_prefix": "895407",
+  "phone_prefix": "+54911"
+}

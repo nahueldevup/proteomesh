@@ -1,0 +1,11 @@
+{
+  "id": "ar_claro",
+  "carrier_name": "Claro AR",
+  "operator_numeric": "722310",
+  "country_iso": "ar",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "722310",
+  "iccid_prefix": "895431",
+  "phone_prefix": "+54911"
+}

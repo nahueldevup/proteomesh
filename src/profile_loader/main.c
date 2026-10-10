@@ -133,6 +133,52 @@ static double json_get_double(cJSON *obj, const char *key, double defval) {
 }
 
 static void generate_identity(cJSON *json) {
+    cJSON *gen_id = cJSON_GetObjectItem(json, "generated_identity");
+    if (!gen_id) {
+        gen_id = cJSON_GetObjectItem(json, "identity");
+    }
+
+    if (gen_id) {
+        const char *imei = json_get_str(gen_id, "imei", NULL);
+        if (imei && strlen(imei) > 0) set_prop("persist.sys.fake.imei", imei);
+
+        const char *meid = json_get_str(gen_id, "meid", NULL);
+        if (meid && strlen(meid) > 0) set_prop("persist.sys.fake.meid", meid);
+
+        const char *serial = json_get_str(gen_id, "serial", NULL);
+        if (serial && strlen(serial) > 0) {
+            set_prop("persist.sys.fake.serial", serial);
+            set_prop("ro.serialno", serial);
+            set_prop("ro.boot.serialno", serial);
+        }
+
+        const char *aid = json_get_str(gen_id, "android_id", NULL);
+        if (aid && strlen(aid) > 0) {
+            set_prop("persist.sys.fake.android_id", aid);
+            char aid_cmd[256];
+            snprintf(aid_cmd, sizeof(aid_cmd), "settings put secure android_id %s 2>/dev/null", aid);
+            system(aid_cmd);
+        }
+
+        const char *wmac = json_get_str(gen_id, "wifi_mac", NULL);
+        if (wmac && strlen(wmac) > 0) set_prop("persist.sys.fake.wifi_mac", wmac);
+
+        const char *bmac = json_get_str(gen_id, "bt_mac", NULL);
+        if (bmac && strlen(bmac) > 0) set_prop("persist.sys.fake.bt_mac", bmac);
+
+        const char *imsi = json_get_str(gen_id, "imsi", NULL);
+        if (imsi && strlen(imsi) > 0) set_prop("persist.sys.fake.imsi", imsi);
+
+        const char *iccid = json_get_str(gen_id, "iccid", NULL);
+        if (iccid && strlen(iccid) > 0) set_prop("persist.sys.fake.iccid", iccid);
+
+        const char *phone = json_get_str(gen_id, "phone_number", NULL);
+        if (!phone) phone = json_get_str(gen_id, "phone", NULL);
+        if (phone && strlen(phone) > 0) set_prop("persist.sys.fake.phone", phone);
+
+        return;
+    }
+
     cJSON *id_tmpl = cJSON_GetObjectItem(json, "identity_template");
     const char *tac = json_get_str(id_tmpl, "tac", "35824011");
     const char *serial_pfx = json_get_str(id_tmpl, "serial_prefix", "1A181F");

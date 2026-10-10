@@ -14,7 +14,7 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     volumes:
       - ./data-clean:/data
-      - ./profiles/presets/pixel5_redfin.json:/system/etc/proteomesh_profile.json:ro
+      - ./templates/google/pixel5_redfin.json:/system/etc/proteomesh_profile.json:ro
     command:
       - androidboot.redroid_gpu_mode=guest
       - androidboot.use_redroid_c2=1
@@ -38,7 +38,7 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     volumes:
       - ./data-s21:/data
-      - ./profiles/presets/samsung_s21.json:/system/etc/proteomesh_profile.json:ro
+      - ./templates/samsung/samsung_s21.json:/system/etc/proteomesh_profile.json:ro
     command:
       - androidboot.redroid_gpu_mode=guest
       - androidboot.use_redroid_c2=1

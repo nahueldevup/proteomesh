@@ -1,0 +1,3 @@
+# Ignore all Android /data runtime contents inside instance directories
+*/data/
+*/data/**

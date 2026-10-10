@@ -9,9 +9,9 @@ COPY build_magisk/system /system
 # 3. Copiar componentes de /vendor (RIL nativo, permisos hardware)
 COPY build_magisk/vendor /vendor
 
-# 4. Presets de perfiles de hardware y perfil por defecto (Pixel 5)
-COPY profiles/presets /system/etc/proteomesh/presets
-COPY profiles/presets/pixel5_redfin.json /system/etc/proteomesh_profile.json
+# 4. Plantillas de hardware y perfil por defecto (Pixel 5)
+COPY templates /system/etc/proteomesh/templates
+COPY templates/google/pixel5_redfin.json /system/etc/proteomesh_profile.json
 
 # 5. Módulo LSPosed pre-posicionado
 COPY modules/FakeWifiPixel.apk /system/etc/proteomesh/FakeWifiPixel.apk
