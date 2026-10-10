@@ -1,198 +1,130 @@
 # Guía de Reproducción y Despliegue de ProteoMesh
 
-Esta guía detalla los pasos exactos para compilar, levantar y verificar el entorno ProteoMesh desde cero sobre un sistema anfitrión Linux.
+Esta guía detalla los pasos exactos para compilar, aprovisionar y operar la plataforma de dispositivos virtuales ProteoMesh en un sistema anfitrión Linux.
 
 ---
 
 ## 1. Requisitos Previos del Host
 
-* **Sistema Operativo:** Linux x86_64 (testeado en CachyOS / Arch Linux con kernel 6.x y 7.x).
-* **Docker y Docker Compose:** Docker 24+ con soporte de contenedores privilegiados.
+* **Sistema Operativo:** Linux x86_64 (CachyOS, Arch Linux, Ubuntu 22.04+, Debian 12 con kernel 5.18+, 6.x o 7.x).
+* **Docker Engine:** Docker 24+ con soporte de contenedores privilegiados.
 * **Módulos de Kernel Android:**
-  * `binder_linux` (o soporte de `/dev/binder`, `/dev/vndbinder`, `/dev/hwbinder`).
-  * `ashmem_linux` (si el kernel 5.18+ carece de ashmem, ProteoMesh utiliza el parche memfd en `libcutils.so`).
-* **Herramientas de Compilación en Host:**
-  * `gcc`, `clang`, `make`, `xxd`.
-  * `openjdk-17` o superior (`javac`, `keytool`, `jarsigner`).
-  * `python3` (para scripts de inspección y telemetría).
-  * `adb` (`android-tools`).
+  * Módulos de Binder activos (`/dev/binder`, `/dev/vndbinder`, `/dev/hwbinder`).
+  * En kernels sin `ashmem` (Linux 5.18+), ProteoMesh utiliza el fallback memfd (`sys.use_memfd=1` / parche en `libcutils.so`).
+* **Herramientas en Host:**
+  * `gcc`, `make` (para compilar `libpixel_hw.so` y `profile-loader`).
+  * `openjdk-17` o superior (para compilar el módulo Java de LSPosed).
+  * `python3` (para `tools/instance_manager.py`).
+  * `android-tools` (`adb`) y `scrcpy` (para conexión y visualización).
 
 ---
 
-## 2. Estructura del Proyecto
+## 2. Compilación de Componentes Nativos y Módulos
 
-Asegúrate de clonar el repositorio y mantener la siguiente estructura:
+Si realizas modificaciones en el código fuente de los interceptores, compila los componentes antes de construir la imagen Docker:
 
+### A. Interceptor Nativo Bionic (`libpixel_hw.so` 64 y 32 bits)
+```bash
+bash src/libpixel_hw/build.sh
 ```
-redroid-integrity-lab/
-├── docker-compose.yml
-├── build_magisk/
-│   ├── system/
-│   │   ├── bin/
-│   │   │   ├── apply-props.sh
-│   │   │   ├── mask-early.sh
-│   │   │   └── manage-spoof
-│   │   ├── build.prop
-│   │   ├── etc/init/
-│   │   │   ├── bootanim.rc
-│   │   │   ├── hw/init.zygote64_32.rc
-│   │   │   └── magisk/
-│   │   └── lib64/
-│   │       ├── libcutils.so
-│   │       ├── libpixel_hw.so
-│   │       └── libzygisk.solibnb.so
-│   │   └── lib/
-│   │       └── libpixel_hw.so
-│   └── vendor/
-│       ├── build.prop
-│       └── etc/permissions/handheld_core_hardware.xml
-├── src/
-│   ├── libpixel_hw/
-│   │   ├── build.sh
-│   │   ├── pixel_hw32.c
-│   │   └── pixel_hw64.c
-│   └── lsposed_module/
-│       ├── build_apk.sh
-│       └── com/fakewifi/pixel/
-│           ├── FakeWifiHook.java
-│           └── FakeSensors.java
-├── modules/
-│   └── FakeWifiPixel.apk
-└── docs/
+*Genera `build_magisk/system/lib64/libpixel_hw.so` y `build_magisk/system/lib/libpixel_hw.so`.*
+
+### B. Cargador Universal de Perfiles (`profile-loader`)
+```bash
+bash src/profile_loader/build.sh
+```
+*Genera el ejecutable estático x86_64 en `build_magisk/system/bin/profile-loader`.*
+
+### C. Módulo de Evasión LSPosed (`FakeWifiPixel.apk`)
+```bash
+bash src/lsposed_module/build_apk.sh
+```
+*Compila con D8/R8 y firma `modules/FakeWifiPixel.apk`.*
+
+---
+
+## 3. Construcción de la Imagen Docker Base
+
+Construye la imagen Docker unificada que integra el sistema Android 13, GMS, Magisk y las capas de ProteoMesh:
+
+```bash
+docker build -t proteomesh:latest .
 ```
 
 ---
 
-## 3. Compilación de Artefactos
+## 4. Gestión y Despliegue de Instancias (`instance_manager.py`)
 
-### A. Compilar bibliotecas nativas de interceptación
-Desde el directorio raíz:
-```bash
-chmod +x src/libpixel_hw/build.sh
-./src/libpixel_hw/build.sh
-```
-Esto generará automáticamente:
-* `build_magisk/system/lib64/libpixel_hw.so` (64-bit)
-* `build_magisk/system/lib/libpixel_hw.so` (32-bit)
+La gestión de instancias se realiza a través de la herramienta CLI en host:
 
-### B. Compilar y firmar el módulo LSPosed
+### A. Listar Plantillas de Hardware y Operadoras Disponibles
 ```bash
-chmod +x src/lsposed_module/build_apk.sh
-./src/lsposed_module/build_apk.sh
+# Ver las 17 plantillas de hardware (Samsung, Xiaomi, Motorola, Pixel)
+python3 tools/instance_manager.py list-templates
+
+# Ver las operadoras disponibles (Claro, Personal, Movistar)
+python3 tools/instance_manager.py list-carriers
 ```
-El script descargará automáticamente el SDK android-30 y el compilador R8 de Google, compilará las clases Java (`FakeWifiHook.java` y `FakeSensors.java`), las convertirá a Dalvik Executable (`classes.dex`), generará el paquete y lo firmará en:
-* `modules/FakeWifiPixel.apk`
+
+### B. Previsualizar Identidad Aleatoria en Rango (Estilo GeeLark)
+Permite previsualizar los identificadores generados (IMEI con Luhn, MACs con OUI del fabricante, serial y SIM) antes de crear la instancia:
+```bash
+python3 tools/instance_manager.py randomize samsung/a54x ar_personal
+```
+
+### C. Crear una Nueva Instancia Aislada
+Crea la instancia clonando la base limpia (`data-clean/`), congelando el perfil en `instances/<nombre>/profile.json` y asignando un puerto ADB único:
+```bash
+# Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584
+python3 tools/instance_manager.py create mi-a54-01 samsung/a54x ar_personal --port 5584
+
+# Ejemplo: Crear un Xiaomi Redmi 12 en puerto 5586
+python3 tools/instance_manager.py create redmi-12-01 xiaomi/fire ar_personal --port 5586
+```
+
+### D. Iniciar la Instancia
+Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), conecta ADB, sincroniza la zona horaria de la operadora y asegura el stub de la tienda oficial de la marca:
+```bash
+python3 tools/instance_manager.py start mi-a54-01
+```
+
+### E. Visualizar la Pantalla del Dispositivo
+```bash
+scrcpy -s 127.0.0.1:5584
+```
+
+### F. Detener la Instancia
+```bash
+python3 tools/instance_manager.py stop mi-a54-01
+```
+
+### G. Listar Instancias Configuradas
+```bash
+python3 tools/instance_manager.py list-instances
+```
 
 ---
 
-## 4. Despliegue del Contenedor Docker
+## 5. Verificación de Integridad y Diagnóstico
 
-1. Inicia el contenedor en segundo plano:
-   ```bash
-   docker compose down
-   docker compose up -d
-   ```
-2. Espera aproximadamente 15 segundos a que Android complete el arranque (`boot_completed=1`).
-3. Conéctate vía ADB:
-   ```bash
-   adb connect localhost:5580
-   adb -s localhost:5580 wait-for-device
-   ```
-4. Comprueba que el arranque haya finalizado:
-   ```bash
-   adb -s localhost:5580 shell "getprop sys.boot_completed"
-   # Debe responder: 1
-   ```
-
----
-
-## 5. Instalación y Activación de Módulos
-
-El contenedor arranca con Magisk y Zygisk preinstalados en `/data`. Para asegurar que el módulo de spoofing esté registrado y activo en las aplicaciones cliente:
-
-1. Instala el APK del módulo:
-   ```bash
-   adb -s localhost:5580 push modules/FakeWifiPixel.apk /data/local/tmp/FakeWifiPixel.apk
-   adb -s localhost:5580 shell "pm install -r /data/local/tmp/FakeWifiPixel.apk"
-   ```
-
-2. Registra el módulo y activa su alcance en la base de datos de LSPosed:
-   ```bash
-   adb -s localhost:5580 shell "
-   APK_PATH=\$(pm path eu.chylek.adam.fakewifi | head -n1 | cut -d: -f2)
-   su 0 sh -c \"
-   sqlite3 /data/adb/lspd/config/modules_config.db \\\"INSERT OR REPLACE INTO modules (mid, module_pkg_name, apk_path, enabled) VALUES (69, 'eu.chylek.adam.fakewifi', '\$APK_PATH', 1);\\\"
-   \"
-   "
-   ```
-
-3. Asigna automáticamente el alcance (*scope*) a las aplicaciones instaladas:
-   ```bash
-   adb -s localhost:5580 shell "manage-spoof auto"
-   ```
-   O agrega una app específica manualmente:
-   ```bash
-   adb -s localhost:5580 shell "manage-spoof add com.ejemplo.miapp"
-   ```
-
-4. Reinicia el contenedor una vez para consolidar la sincronización en frío:
-   ```bash
-   docker compose restart
-   sleep 15
-   adb connect localhost:5580
-   ```
-
-### 4. Control Dinámico de Ubicación GPS (`set-gps`)
-Puedes cambiar la ubicación simulada en cualquier momento desde la terminal de ADB:
+### A. Verificación de Identidad y Sistema vía ADB
 ```bash
-# Ver ubicación actual y ciudades disponibles:
-adb -s localhost:5580 shell "set-gps"
+PORT=5584
 
-# Cambiar a una ciudad preset:
-adb -s localhost:5580 shell "set-gps cordoba"
-adb -s localhost:5580 shell "set-gps miami"
-adb -s localhost:5580 shell "set-gps madrid"
-adb -s localhost:5580 shell "set-gps buenos-aires"
+# Marca, Modelo y Huella
+adb -s 127.0.0.1:$PORT shell getprop ro.product.model
+adb -s 127.0.0.1:$PORT shell getprop ro.build.fingerprint
 
-# O configurar coordenadas exactas personalizadas:
-adb -s localhost:5580 shell "set-gps -34.603722 -58.381592 25.0"
+# Baseband y Bootloader oficiales (sin valores 'unknown')
+adb -s 127.0.0.1:$PORT shell getprop gsm.version.baseband
+adb -s 127.0.0.1:$PORT shell getprop ro.bootloader
+
+# Kernel (sin fugas del host)
+adb -s 127.0.0.1:$PORT shell cat /proc/version
 ```
-Cualquier aplicación cliente (Google Maps, Facebook, Chrome, Tinder) reflejará el cambio inmediatamente sin reiniciar el contenedor.
 
----
-
-## 7. Verificación de Funcionamiento
-
-Ejecuta las siguientes comprobaciones para validar que todas las capas están operativas:
-
-### 1. Daemons Zygisk
-```bash
-adb -s localhost:5580 shell "ps -ef | grep -iE 'zygisk|lspd' | grep -v grep"
-```
-**Resultado esperado:**
-Debes ver activos concurrentemente:
-* `lspd` (proceso de LSPosed)
-* `zygiskd64` (daemon Zygisk 64-bit)
-* `zygiskd32` (daemon Zygisk 32-bit)
-
-### 2. Estado de LSPosed Manager
-Abre LSPosed Manager para comprobar que el framework está activo:
-```bash
-adb -s localhost:5580 shell "am start -n org.lsposed.manager/.ui.activity.MainActivity"
-```
-Debe indicar: **Activado (1.9.2 - Zygisk)**.
-
-### 3. Validación en Apps de Diagnóstico
-* **Device Info (`com.ytheekshana.deviceinfo`):**
-  * Pestaña **CPU:** Debe mostrar SoC `Qualcomm Snapdragon 765G 5G` (`SM7250`), GPU `Adreno (TM) 620`, y ABIs soportados: `arm64-v8a, armeabi-v7a, armeabi` (sin rastros de `x86_64` o `x86`).
-  * Pestaña **La red:** Debe mostrar interfaz `wlan0`, tipo de conexión Wi-Fi 5 GHz, velocidad `866 Mbps` y frecuencia `5180 MHz`.
-  * Pestaña **Sensores:** Debe listar los 11 sensores físicos de hardware (`BMI260`, `AK09918`, etc.) con eventos en tiempo real.
-* **DevCheck (`flar2.devcheck`):**
-  * Pestaña **Cámara:** Debe mostrar Cámara Principal (12.2 MP, f/1.7), Lente Ultra Gran Angular (16 MP, f/2.2) y Captura de Vídeo.
-* **Pixelscan Android Checker (`net.pixelscan.check`):**
-  * Ejecutar *Start Quick Scan*:
-  * **Emulator detection:** `Not detected`
-  * **CPU architecture:** `arm64-v8a, armeabi-v7a, armeabi`
-  * **Matched emulator markers:** `None`
-  * **SIM card presence:** `Present` (Personal Argentina, MCC/MNC `72234`)
-  * **Motion sensor test:** `Test completed / Motion detected (normal)`
+### B. Verificación de Tiendas Oficiales y Servicios
+* **Google Play Store:** Abre directamente a la pantalla oficial de inicio de sesión (`UnauthenticatedMainActivity`) sin el bloqueo de "Dispositivo no certificado".
+* **Buscador de Google:** Ejecuta búsquedas web sin pantallas de error ("Ocurrió un error"), conectando mediante el stack Cronet expuesto en `public.libraries.txt`.
+* **Pixelscan:** Al ejecutar el test en el dispositivo, verifica un puntaje de **75/100** con cero advertencias de `Brand Store Missing`.
+* **Device Info / DevCheck:** Verifica en la pestaña *Sistema* que el Kernel muestre `5.10.149-android12-9-...`, el Bootloader esté reportado como bloqueado con su versión de compilación, y la Banda Base muestre el firmware de módem oficial.

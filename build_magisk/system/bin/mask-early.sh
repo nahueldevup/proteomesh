@@ -319,12 +319,14 @@ if [ ! -d "$TMP_CPU" ]; then
     echo "schedutil" > "$TMP_CPU/cpu7/cpufreq/scaling_governor"
     echo "schedutil performance powersave" > "$TMP_CPU/cpu7/cpufreq/scaling_available_governors"
     echo "qcom-cpufreq" > "$TMP_CPU/cpu7/cpufreq/scaling_driver"
-
-    chmod -R 755 "$TMP_CPU"
-    find "$TMP_CPU" -type f -exec chmod 644 {} + 2>/dev/null || true
 fi
 
+chmod -R 755 "$TMP_CPU" 2>/dev/null || true
+find "$TMP_CPU" -type f -exec chmod 644 {} + 2>/dev/null || true
+
 bind_mount "$TMP_CPU" /sys/devices/system/cpu
+chmod -R 755 /sys/devices/system/cpu 2>/dev/null || true
+find /sys/devices/system/cpu -type f -exec chmod 644 {} + 2>/dev/null || true
 
 # 5. Simulación de batería y cargador en sysfs (para health HAL)
 if ! grep -q " /sys/class/power_supply " /proc/mounts 2>/dev/null; then

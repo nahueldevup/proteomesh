@@ -7,6 +7,8 @@ data-clean/
 data-s21/
 data-*/
 data/
+instances/*/data/
+instances/*/data/**
 
 # Heavy GApps and APK bundles (> 100 MB, violates GitHub limits)
 apk/

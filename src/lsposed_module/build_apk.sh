@@ -50,6 +50,7 @@ package de.robv.android.xposed;
 public abstract class XC_MethodHook {
     public static class Unhook {}
     public static class MethodHookParam {
+        public java.lang.reflect.Member method;
         public Object[] args;
         public Object thisObject;
         private Object result;
@@ -66,6 +67,7 @@ package de.robv.android.xposed;
 public class XposedBridge {
     public static void log(String text) {}
     public static void log(Throwable t) {}
+    public static XC_MethodHook.Unhook hookMethod(java.lang.reflect.Member hookMethod, XC_MethodHook callback) { return null; }
     public static java.util.Set<XC_MethodHook.Unhook> hookAllConstructors(Class<?> hookClass, XC_MethodHook callback) { return null; }
 }
 EOF

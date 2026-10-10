@@ -14,6 +14,8 @@ Funcionalidades:
 import os
 import sys
 import json
+import time
+import subprocess
 import random
 import string
 import argparse
@@ -24,6 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 CARRIERS_DIR = BASE_DIR / "carriers"
 INSTANCES_DIR = BASE_DIR / "instances"
+CLEAN_DATA_DIR = BASE_DIR / "data-clean"
 
 
 def calc_luhn(digits: str) -> int:
@@ -226,7 +229,31 @@ def cmd_create_instance(args):
     inst_name = args.name
     inst_dir = INSTANCES_DIR / inst_name
     inst_dir.mkdir(parents=True, exist_ok=True)
-    (inst_dir / "data").mkdir(exist_ok=True)
+    inst_data_dir = inst_dir / "data"
+    inst_data_dir.mkdir(exist_ok=True)
+
+    # Clonar base de datos /data desde data-clean si existe y data está vacía
+    if CLEAN_DATA_DIR.exists() and not (inst_data_dir / "adb").exists():
+        print(f"[*] Inicializando sistema de archivos /data desde plantilla base (data-clean)...")
+        sanitize_sh = (
+            f"cp -a /lab/data-clean/* /lab/instances/{inst_name}/data/ 2>/dev/null || true && "
+            f"rm -f /lab/instances/{inst_name}/data/property/persistent_properties && "
+            f"rm -rf /lab/instances/{inst_name}/data/system/dropbox/* && "
+            f"rm -f /lab/instances/{inst_name}/data/system/users/0/settings_ssaid.xml* && "
+            f"rm -f /lab/instances/{inst_name}/data/misc/wifi/*.conf* /lab/instances/{inst_name}/data/misc/wifi/*.xml* && "
+            f"rm -rf /lab/instances/{inst_name}/data/misc/bluedroid/*"
+        )
+        clone_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{BASE_DIR}:/lab",
+            "alpine", "sh", "-c",
+            sanitize_sh
+        ]
+        res = subprocess.run(clone_cmd, capture_output=True)
+        if res.returncode == 0:
+            print("[✓] Entorno /data base (Magisk, LSPosed, llaves ADB) clonado y sanitizado sin rastros previos.")
+        else:
+            print(f"[!] Aviso al clonar data: {res.stderr.decode().strip()}")
 
     # Crear perfil congelado combinando plantilla + operadora + identidad generada
     profile = json.loads(json.dumps(t_data))  # Copia profunda
@@ -242,7 +269,8 @@ def cmd_create_instance(args):
             "operator_numeric": c_data.get("operator_numeric", profile.get("telephony", {}).get("operator_numeric")),
             "country_iso": c_data.get("country_iso", profile.get("telephony", {}).get("country_iso")),
             "phone_type": c_data.get("phone_type", "1"),
-            "network_type": c_data.get("network_type", "13")
+            "network_type": c_data.get("network_type", "13"),
+            "timezone": c_data.get("timezone", "America/Argentina/Buenos_Aires")
         }
 
     # Inyectar identidad generada
@@ -253,43 +281,192 @@ def cmd_create_instance(args):
     with open(profile_out, "w") as f:
         json.dump(profile, f, indent=2)
 
-    # Generar metadata de instancia
+    # Guardar metadata de instancia
+    disp = profile.get("display", {})
+    w = disp.get("width", 1080)
+    h = disp.get("height", 2340)
+    dpi = disp.get("dpi", 440)
+    fps = disp.get("fps", 90)
+
     meta = {
         "instance_name": inst_name,
         "template": str(t_path.relative_to(BASE_DIR)),
         "carrier": (c_data or {}).get("id", "default"),
         "adb_port": args.port,
+        "display": {
+            "width": w,
+            "height": h,
+            "dpi": dpi,
+            "fps": fps
+        },
         "identity": identity
     }
     with open(inst_dir / "meta.json", "w") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"\n[✓] Instancia '{inst_name}' creada exitosamente en: {inst_dir}")
+    print(f"\n[✓] Instancia '{inst_name}' creada exitosamente en: {inst_dir.relative_to(BASE_DIR)}")
     print(f"  • Modelo      : {profile.get('template', {}).get('name')}")
+    print(f"  • Pantalla    : {w}x{h} @ {dpi}dpi ({fps}Hz)")
     print(f"  • Puerto ADB  : {args.port}")
     print(f"  • IMEI        : {identity['imei']}")
     print(f"  • Serial      : {identity['serial']}")
     print(f"  • Wi-Fi MAC   : {identity['wifi_mac']}")
     print(f"  • Perfil JSON : {profile_out.relative_to(BASE_DIR)}")
     print(f"  • Directorio  : {inst_dir.relative_to(BASE_DIR)}/data/")
-    print(f"\nPara levantar el contenedor en Docker:")
+    print(f"\nPara levantar el contenedor con el gestor:")
+    print(f"  python3 tools/instance_manager.py start {inst_name}")
+    print(f"\nO con Docker directamente:")
     print(f"  docker run -d --name {inst_name} --privileged \\")
+    print(f"    --sysctl net.ipv6.conf.all.disable_ipv6=1 \\")
+    print(f"    --sysctl net.ipv6.conf.default.disable_ipv6=1 \\")
     print(f"    -v {inst_dir.resolve()}/data:/data \\")
     print(f"    -v {profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro \\")
-    print(f"    -p {args.port}:5555 proteomesh:latest\n")
+    print(f"    -p {args.port}:5555 \\")
+    print(f"    proteomesh:latest \\")
+    print(f"    androidboot.redroid_gpu_mode=guest \\")
+    print(f"    androidboot.use_redroid_c2=1 \\")
+    print(f"    androidboot.redroid_width={w} \\")
+    print(f"    androidboot.redroid_height={h} \\")
+    print(f"    androidboot.redroid_dpi={dpi} \\")
+    print(f"    androidboot.redroid_fps={fps}\n")
+
+    if getattr(args, "start", False):
+        cmd_start_instance(args)
+
+
+def cmd_start_instance(args):
+    """Inicia el contenedor Docker para la instancia especificada con todos los parámetros de hardware."""
+    inst_name = args.name
+    inst_dir = INSTANCES_DIR / inst_name
+    if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
+        print(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
+        return
+
+    with open(inst_dir / "meta.json", "r") as f:
+        meta = json.load(f)
+
+    disp = meta.get("display", {})
+    w = disp.get("width", 1080)
+    h = disp.get("height", 2340)
+    dpi = disp.get("dpi", 440)
+    fps = disp.get("fps", 90)
+    port = meta.get("adb_port", 5580)
+    profile_out = inst_dir / "profile.json"
+
+    # Detener contenedor previo si ya existía
+    subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    print(f"[*] Iniciando contenedor '{inst_name}' en puerto {port}...")
+    run_cmd = [
+        "docker", "run", "-d",
+        "--name", inst_name,
+        "--privileged",
+        "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
+        "--sysctl", "net.ipv6.conf.default.disable_ipv6=1",
+        "-v", f"{inst_dir.resolve()}/data:/data",
+        "-v", f"{profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro",
+        "-p", f"{port}:5555",
+        "proteomesh:latest",
+        "androidboot.redroid_gpu_mode=guest",
+        "androidboot.use_redroid_c2=1",
+        f"androidboot.redroid_width={w}",
+        f"androidboot.redroid_height={h}",
+        f"androidboot.redroid_dpi={dpi}",
+        f"androidboot.redroid_fps={fps}"
+    ]
+
+    res = subprocess.run(run_cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"[!] Error al iniciar Docker: {res.stderr.strip()}")
+        return
+
+    cid = res.stdout.strip()[:12]
+    print(f"[✓] Contenedor {cid} iniciado correctamente.")
+    print("[*] Conectando ADB...")
+    time.sleep(5)
+    adb_res = subprocess.run(["adb", "connect", f"127.0.0.1:{port}"], capture_output=True, text=True)
+    print(f"[✓] ADB: {adb_res.stdout.strip()}")
+
+    # Configurar zona horaria del operador
+    tz = "America/Argentina/Buenos_Aires"
+    brand = ""
+    if profile_out.exists():
+        try:
+            with open(profile_out, "r") as pf:
+                pdata = json.load(pf)
+            tz = pdata.get("telephony", {}).get("timezone", tz)
+            brand = pdata.get("device", {}).get("brand", "").lower()
+        except Exception:
+            pass
+    subprocess.run(["docker", "exec", inst_name, "setprop", "persist.sys.timezone", tz], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["docker", "exec", inst_name, "service", "call", "alarm", "3", "s16", tz], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"[✓] Zona horaria sincronizada: {tz}")
+
+    # Normalizar permisos de sysfs de CPU para que apps sin privilegios lean topología completa
+    subprocess.run([
+        "docker", "exec", inst_name, "sh", "-c",
+        "chmod -R 755 /data/local/tmp/fake_sys_cpu 2>/dev/null || true; "
+        "find /data/local/tmp/fake_sys_cpu -type f -exec chmod 644 {} + 2>/dev/null || true; "
+        "chmod -R 755 /sys/devices/system/cpu 2>/dev/null || true; "
+        "find /sys/devices/system/cpu -type f -exec chmod 644 {} + 2>/dev/null || true"
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Instalar Brand Store oficial (stub nativo) si aplica al fabricante
+    store_map = {
+        "samsung": ("com.sec.android.app.samsungapps", BASE_DIR / "stubs" / "samsung_galaxy_store.apk"),
+        "xiaomi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
+        "redmi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
+        "poco": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
+        "huawei": ("com.huawei.appmarket", BASE_DIR / "stubs" / "huawei_appgallery.apk")
+    }
+
+    target_store = None
+    for k, v in store_map.items():
+        if k in brand:
+            target_store = v
+            break
+
+    if target_store and target_store[1].exists():
+        pkg_name, apk_path = target_store
+        check_cmd = ["adb", "-s", f"127.0.0.1:{port}", "shell", "pm", "path", pkg_name]
+        check_res = subprocess.run(check_cmd, capture_output=True, text=True)
+        if "package:" not in check_res.stdout:
+            print(f"[*] Instalando tienda oficial del fabricante ({apk_path.name})...")
+            subprocess.run(["adb", "-s", f"127.0.0.1:{port}", "install", "-r", str(apk_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[✓] Tienda del fabricante ({pkg_name}) instalada.")
+        else:
+            print(f"[✓] Tienda del fabricante verificada ({pkg_name}).")
+
+    print(f"\nPara ver la pantalla ejecuta:")
+    print(f"  scrcpy -s 127.0.0.1:{port}\n")
+
+
+def cmd_stop_instance(args):
+    """Detiene y elimina el contenedor Docker de la instancia."""
+    inst_name = args.name
+    print(f"[*] Deteniendo contenedor '{inst_name}'...")
+    subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"[✓] Instancia '{inst_name}' detenida (los datos de /data se conservan en disco).")
 
 
 def cmd_list_instances(args):
-    """Lista las instancias existentes en instances/."""
+    """Lista las instancias existentes en instances/ y su estado en Docker."""
     instances = [d for d in INSTANCES_DIR.iterdir() if d.is_dir() and (d / "meta.json").exists()]
     if not instances:
         print("\nNo hay instancias creadas en instances/.")
         print("Usa: python3 tools/instance_manager.py create --name <nombre> --template <modelo>\n")
         return
 
-    print("================================================================================")
-    print("                    INSTANCIAS CONFIGURADAS (INSTANCES)")
-    print("================================================================================")
+    ps_res = subprocess.run(["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"], capture_output=True, text=True)
+    running_map = {}
+    for line in ps_res.stdout.splitlines():
+        if "\t" in line:
+            name, stat = line.split("\t", 1)
+            running_map[name] = stat
+
+    print("====================================================================================================")
+    print("                              INSTANCIAS CONFIGURADAS (INSTANCES)")
+    print("====================================================================================================")
     for inst in sorted(instances):
         try:
             with open(inst / "meta.json", "r") as f:
@@ -297,12 +474,12 @@ def cmd_list_instances(args):
             t_src = meta.get("template", "Desconocida")
             port = meta.get("adb_port", "5555")
             imei = meta.get("identity", {}).get("imei", "N/A")
-            serial = meta.get("identity", {}).get("serial", "N/A")
             carrier = meta.get("carrier", "default")
-            print(f"  • {inst.name:<18} | Puerto: {port:<5} | Template: {t_src:<22} | IMEI: {imei} | SIM: {carrier}")
+            docker_stat = running_map.get(inst.name, "Detenido (Offline)")
+            print(f"  • {inst.name:<18} | Puerto: {port:<5} | Estado: {docker_stat:<18} | IMEI: {imei} | SIM: {carrier}")
         except Exception as e:
             print(f"  • {inst.name} (Error al leer meta: {e})")
-    print("================================================================================")
+    print("====================================================================================================")
 
 
 def main():
@@ -331,7 +508,18 @@ def main():
     sub.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
     sub.add_argument("--carrier", "-c", required=False, default="ar_personal", help="Operadora (default: ar_personal)")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
+    sub.add_argument("--start", "-s", action="store_true", help="Inicia el contenedor inmediatamente")
     sub.set_defaults(func=cmd_create_instance)
+
+    # start
+    sub = subparsers.add_parser("start", help="Inicia una instancia existente con sus parámetros de hardware")
+    sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
+    sub.set_defaults(func=cmd_start_instance)
+
+    # stop
+    sub = subparsers.add_parser("stop", help="Detiene una instancia existente")
+    sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
+    sub.set_defaults(func=cmd_stop_instance)
 
     # list-instances
     sub = subparsers.add_parser("list-instances", help="Lista las instancias existentes")

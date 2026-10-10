@@ -262,6 +262,14 @@ static void generate_identity(cJSON *json) {
 }
 
 static void ensure_identity(cJSON *json) {
+    cJSON *gen_id = cJSON_GetObjectItem(json, "generated_identity");
+    if (!gen_id) gen_id = cJSON_GetObjectItem(json, "identity");
+
+    if (gen_id) {
+        generate_identity(json);
+        return;
+    }
+
     char cur_imei[64];
     get_prop("persist.sys.fake.imei", cur_imei, sizeof(cur_imei));
     if (strlen(cur_imei) == 0) {
@@ -394,6 +402,10 @@ static void apply_cpu_sysfs(cJSON *cpu) {
             }
         }
     }
+
+    chmod(sys_dir, 0755);
+    snprintf(cmd, sizeof(cmd), "chmod 755 %s && find %s -type d -exec chmod 755 {} + 2>/dev/null; find %s -type f -exec chmod 644 {} + 2>/dev/null", sys_dir, sys_dir, sys_dir);
+    system(cmd);
 }
 
 static void apply_cmdline_and_version(cJSON *dev, cJSON *kernel) {
@@ -421,7 +433,10 @@ static void apply_cmdline_and_version(cJSON *dev, cJSON *kernel) {
         chmod(path, 0644);
     }
 
-    const char *uname_rel = json_get_str(kernel, "version", "4.19.282-g9e27c0faec01");
+    const char *uname_rel = json_get_str(kernel, "version", "5.10.149-android12-9-00001-ge5f3ba2132a1");
+    if (!uname_rel || strcmp(uname_rel, "unknown") == 0 || strcmp(uname_rel, "5.10.0") == 0) {
+        uname_rel = "5.10.149-android12-9-00001-ge5f3ba2132a1";
+    }
     snprintf(path, sizeof(path), "%s/uname_release", FAKEDIR);
     fp = fopen(path, "w");
     if (fp) {
@@ -573,6 +588,8 @@ static void apply_build_props(cJSON *json) {
     const char *carrier = json_get_str(tel, "carrier_name", "Personal");
     const char *carrier_prop = strcmp(brand, "samsung") == 0 ? "unknown" : carrier;
     const char *abilist = json_get_str(cpu, "abilist", "arm64-v8a,armeabi-v7a,armeabi");
+    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
+    const char *soc_model = json_get_str(cpu, "soc_model", "SM7250");
 
     // 1. system_build.prop
     char path[256];
@@ -629,6 +646,8 @@ static void apply_build_props(cJSON *json) {
         fprintf(fp, "ro.product.manufacturer=%s\n", manuf);
         fprintf(fp, "ro.product.model=%s\n", model);
         fprintf(fp, "ro.product.name=%s\n", product);
+        fprintf(fp, "ro.soc.manufacturer=%s\n", soc_manuf);
+        fprintf(fp, "ro.soc.model=%s\n", soc_model);
         fclose(fp);
         chmod(path, 0644);
     }
@@ -645,6 +664,8 @@ static void apply_build_props(cJSON *json) {
         fprintf(fp, "ro.product.vendor.manufacturer=%s\n", manuf);
         fprintf(fp, "ro.product.vendor.model=%s\n", model);
         fprintf(fp, "ro.product.vendor.name=%s\n", product);
+        fprintf(fp, "ro.soc.manufacturer=%s\n", soc_manuf);
+        fprintf(fp, "ro.soc.model=%s\n", soc_model);
         fprintf(fp, "ro.vendor.product.cpu.abilist=%s\n", abilist);
         fprintf(fp, "ro.vendor.product.cpu.abilist32=x86,armeabi-v7a,armeabi\n");
         fprintf(fp, "ro.vendor.product.cpu.abilist64=x86_64,arm64-v8a\n");
@@ -763,12 +784,24 @@ static void apply_props(cJSON *json) {
     const char *type = json_get_str(dev, "type", "user");
     const char *tags = json_get_str(dev, "tags", "release-keys");
     const char *bootloader = json_get_str(dev, "bootloader", "b1c1-0.5-9876543");
+    if (!bootloader || strlen(bootloader) == 0 || strcmp(bootloader, "unknown") == 0) {
+        if (strcmp(brand, "xiaomi") == 0 || strcmp(brand, "Xiaomi") == 0 || strcmp(brand, "redmi") == 0 || strcmp(brand, "Redmi") == 0) {
+            bootloader = incremental;
+        } else if (strcmp(brand, "motorola") == 0 || strcmp(brand, "Motorola") == 0) {
+            bootloader = build_id;
+        } else {
+            bootloader = incremental;
+        }
+    }
     const char *sku = json_get_str(dev, "sku", "GTT9Q");
     const char *color = json_get_str(dev, "color", "just_black");
 
-    const char *def_bb = (strstr(platform, "exynos") != NULL) ? "s5100" : "msm";
+    const char *def_bb = (strstr(platform, "exynos") != NULL) ? "s5100" : ((strstr(platform, "mt") != NULL) ? platform : "msm");
     const char *baseband = json_get_str(dev, "baseband", def_bb);
+    if (!baseband || strlen(baseband) == 0 || strcmp(baseband, "unknown") == 0) baseband = def_bb;
+
     const char *baseband_ver = json_get_str(dev, "baseband_version", bootloader);
+    if (!baseband_ver || strlen(baseband_ver) == 0 || strcmp(baseband_ver, "unknown") == 0) baseband_ver = bootloader;
     const char *build_host = json_get_str(dev, "build_host", strcmp(brand, "samsung") == 0 ? "se-corp.samsung.com" : "google.com");
 
     const char *parts[] = {"", "system.", "vendor.", "product.", "system_ext.", "odm.", "vendor_dlkm."};
@@ -834,6 +867,7 @@ static void apply_props(cJSON *json) {
     set_prop("ro.baseband", baseband);
     set_prop("ro.boot.baseband", baseband);
     set_prop("gsm.version.baseband", baseband_ver);
+    set_prop("ro.kernel.version", "5.10");
 
     // SoC properties
     const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");

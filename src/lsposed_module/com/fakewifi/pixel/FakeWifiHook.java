@@ -513,88 +513,262 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         return null;
     }
 
+    private static String getExpectedBrandStorePackage() {
+        String brand = android.os.Build.BRAND != null ? android.os.Build.BRAND.toLowerCase() : "";
+        String mf = android.os.Build.MANUFACTURER != null ? android.os.Build.MANUFACTURER.toLowerCase() : "";
+        if (brand.contains("samsung") || mf.contains("samsung")) {
+            return "com.sec.android.app.samsungapps";
+        }
+        if (brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco") || mf.contains("xiaomi")) {
+            return "com.xiaomi.mipicks";
+        }
+        if (brand.contains("huawei") || brand.contains("honor") || mf.contains("huawei")) {
+            return "com.huawei.appmarket";
+        }
+        return null;
+    }
+
+    private static android.content.pm.PackageInfo createMockBrandStorePackageInfo(String pkg) {
+        android.content.pm.PackageInfo pi = new android.content.pm.PackageInfo();
+        pi.packageName = pkg;
+        pi.versionName = "4.5.70.1";
+        pi.versionCode = 457001000;
+        pi.firstInstallTime = 1672531199000L;
+        pi.lastUpdateTime = 1672531199000L;
+        android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
+        ai.packageName = pkg;
+        ai.name = pkg.contains("samsung") ? "Galaxy Store" : "App Store";
+        ai.flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM | android.content.pm.ApplicationInfo.FLAG_INSTALLED;
+        ai.sourceDir = "/system/priv-app/" + (pkg.contains("samsung") ? "GalaxyStore/GalaxyStore.apk" : "AppStore/AppStore.apk");
+        ai.publicSourceDir = ai.sourceDir;
+        ai.dataDir = "/data/user/0/" + pkg;
+        ai.uid = 1000;
+        ai.enabled = true;
+        pi.applicationInfo = ai;
+        return pi;
+    }
+
+    private static android.content.pm.ApplicationInfo createMockBrandStoreAppInfo(String pkg) {
+        android.content.pm.ApplicationInfo ai = new android.content.pm.ApplicationInfo();
+        ai.packageName = pkg;
+        ai.name = pkg.contains("samsung") ? "Galaxy Store" : "App Store";
+        ai.flags = android.content.pm.ApplicationInfo.FLAG_SYSTEM | android.content.pm.ApplicationInfo.FLAG_INSTALLED;
+        ai.sourceDir = "/system/priv-app/" + (pkg.contains("samsung") ? "GalaxyStore/GalaxyStore.apk" : "AppStore/AppStore.apk");
+        ai.publicSourceDir = ai.sourceDir;
+        ai.dataDir = "/data/user/0/" + pkg;
+        ai.uid = 1000;
+        ai.enabled = true;
+        return ai;
+    }
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         XposedBridge.log("FakeWifiPixel: Hooking package: " + lpparam.packageName);
 
-        // ==========================================
-        // 0. Hook PackageManager.hasSystemFeature
-        // ==========================================
-        try {
-            XC_MethodHook featureHook = new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    String feature = (String) param.args[0];
-                    if (isSupportedFeature(feature)) {
-                        param.setResult(true);
-                    }
-                }
-            };
-
+        // Hook Pixelscan specifically
+        if ("net.pixelscan.check".equals(lpparam.packageName)) {
             try {
-                Class<?> appPmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", lpparam.classLoader);
-                if (appPmClass != null) {
-                    XposedHelpers.findAndHookMethod(appPmClass, "hasSystemFeature", String.class, featureHook);
-                    XposedHelpers.findAndHookMethod(appPmClass, "hasSystemFeature", String.class, int.class, featureHook);
-
-                    XC_MethodHook hidePkgHook = new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            String pkg = (String) param.args[0];
-                            if ("com.topjohnwu.magisk".equals(pkg) || "io.github.lsposed.manager".equals(pkg) || "org.lsposed.manager".equals(pkg)) {
-                                throw new PackageManager.NameNotFoundException(pkg);
-                            }
+                Class<?> mainAct = XposedHelpers.findClass("net.pixelscan.check.MainActivity", lpparam.classLoader);
+                XposedHelpers.findAndHookMethod(mainAct, "s", String.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String pkg = (String) param.args[0];
+                        android.util.Log.i("FakeWifiPixel", "MainActivity.s hooked for: " + pkg);
+                        if ("com.sec.android.app.samsungapps".equals(pkg) ||
+                            "com.xiaomi.mipicks".equals(pkg) ||
+                            "com.xiaomi.market".equals(pkg) ||
+                            "com.huawei.appmarket".equals(pkg) ||
+                            "com.hihonor.appmarket".equals(pkg) ||
+                            "com.heytap.market".equals(pkg) ||
+                            "com.oppo.market".equals(pkg) ||
+                            "com.bbk.appstore".equals(pkg)) {
+                            android.util.Log.i("FakeWifiPixel", "MainActivity.s FORCING TRUE for brand store: " + pkg);
+                            param.setResult(true);
                         }
-                    };
+                    }
+                });
+                android.util.Log.i("FakeWifiPixel", "Successfully hooked net.pixelscan.check.MainActivity.s");
+            } catch (Throwable t) {
+                android.util.Log.e("FakeWifiPixel", "Failed to hook net.pixelscan.check.MainActivity.s", t);
+            }
+        }
 
-                    try {
-                        XposedHelpers.findAndHookMethod(appPmClass, "getPackageInfo", String.class, int.class, hidePkgHook);
-                        XposedHelpers.findAndHookMethod(appPmClass, "getApplicationInfo", String.class, int.class, hidePkgHook);
-                        if (android.os.Build.VERSION.SDK_INT >= 33) {
-                            Class<?> flagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$PackageInfoFlags", lpparam.classLoader);
-                            Class<?> appFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$ApplicationInfoFlags", lpparam.classLoader);
-                            if (flagsClass != null) {
-                                XposedHelpers.findAndHookMethod(appPmClass, "getPackageInfo", String.class, flagsClass, hidePkgHook);
-                            }
-                            if (appFlagsClass != null) {
-                                XposedHelpers.findAndHookMethod(appPmClass, "getApplicationInfo", String.class, appFlagsClass, hidePkgHook);
-                            }
+        // Hook Google Play Store (Finsky) & GMS Compliance
+        if ("com.android.vending".equals(lpparam.packageName) ||
+            "com.google.android.gms".equals(lpparam.packageName) ||
+            "com.google.android.googlequicksearchbox".equals(lpparam.packageName)) {
+            try {
+                Class<?> respCls = XposedHelpers.findClass("com.google.android.gms.gmscompliance.GmsDeviceComplianceResponse", lpparam.classLoader);
+                XposedBridge.hookAllConstructors(respCls, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (param.args != null && param.args.length >= 3) {
+                            param.args[1] = true; // isCompliant = true
+                            param.args[2] = null; // pendingIntent = null
                         }
+                    }
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        try {
+                            XposedHelpers.setBooleanField(param.thisObject, "b", true);
+                            XposedHelpers.setObjectField(param.thisObject, "c", null);
+                        } catch (Throwable ignored) {}
+                    }
+                });
 
-                        XC_MethodHook hideInstalledAppsHook = new XC_MethodHook() {
+                // Hook Parcelable.CREATOR.createFromParcel (deserialization across Binder IPC)
+                try {
+                    Field creatorField = respCls.getField("CREATOR");
+                    Object creator = creatorField.get(null);
+                    if (creator != null) {
+                        XposedHelpers.findAndHookMethod(creator.getClass(), "createFromParcel", android.os.Parcel.class, new XC_MethodHook() {
                             @Override
                             protected void afterHookedMethod(MethodHookParam param) {
-                                List<?> list = (List<?>) param.getResult();
-                                if (list == null) return;
-                                List<Object> clean = new ArrayList<>();
-                                for (Object item : list) {
-                                    String pkg = null;
-                                    if (item instanceof android.content.pm.PackageInfo) {
-                                        pkg = ((android.content.pm.PackageInfo) item).packageName;
-                                    } else if (item instanceof android.content.pm.ApplicationInfo) {
-                                        pkg = ((android.content.pm.ApplicationInfo) item).packageName;
-                                    }
-                                    if (pkg != null && (pkg.contains("magisk") || pkg.contains("lsposed") || pkg.contains("rootcheck") || pkg.contains("fakewifi"))) {
-                                        continue;
-                                    }
-                                    clean.add(item);
+                                Object obj = param.getResult();
+                                if (obj != null) {
+                                    try {
+                                        XposedHelpers.setBooleanField(obj, "b", true);
+                                        XposedHelpers.setObjectField(obj, "c", null);
+                                        android.util.Log.i("FakeWifiPixel", "createFromParcel: FORCED isCompliant=true, pendingIntent=null!");
+                                    } catch (Throwable ignored) {}
                                 }
-                                param.setResult(clean);
                             }
-                        };
-                        XposedHelpers.findAndHookMethod(appPmClass, "getInstalledPackages", int.class, hideInstalledAppsHook);
-                        XposedHelpers.findAndHookMethod(appPmClass, "getInstalledApplications", int.class, hideInstalledAppsHook);
-                        if (android.os.Build.VERSION.SDK_INT >= 33) {
-                            Class<?> pFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$PackageInfoFlags", lpparam.classLoader);
-                            Class<?> aFlagsClass = XposedHelpers.findClass("android.content.pm.PackageManager$ApplicationInfoFlags", lpparam.classLoader);
-                            if (pFlagsClass != null) XposedHelpers.findAndHookMethod(appPmClass, "getInstalledPackages", pFlagsClass, hideInstalledAppsHook);
-                            if (aFlagsClass != null) XposedHelpers.findAndHookMethod(appPmClass, "getInstalledApplications", aFlagsClass, hideInstalledAppsHook);
-                        }
-                    } catch (Throwable ignored) {}
+                        });
+                        android.util.Log.i("FakeWifiPixel", "Successfully hooked GmsDeviceComplianceResponse.CREATOR");
+                    }
+                } catch (Throwable t) {
+                    android.util.Log.e("FakeWifiPixel", "Failed hooking CREATOR", t);
                 }
+
+                android.util.Log.i("FakeWifiPixel", "Successfully hooked GmsDeviceComplianceResponse for: " + lpparam.packageName);
             } catch (Throwable ignored) {}
+
+            try {
+                Class<?> uncertCls = XposedHelpers.findClass("com.google.android.gms.gmscompliance.ui.UncertifiedDeviceActivity", lpparam.classLoader);
+                XposedHelpers.findAndHookMethod(uncertCls, "onCreate", android.os.Bundle.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        android.util.Log.i("FakeWifiPixel", "Closing UncertifiedDeviceActivity in afterHookedMethod");
+                        android.app.Activity act = (android.app.Activity) param.thisObject;
+                        act.finish();
+                    }
+                });
+                android.util.Log.i("FakeWifiPixel", "Successfully hooked UncertifiedDeviceActivity for: " + lpparam.packageName);
+            } catch (Throwable ignored) {}
+        }
+
+        // ==========================================
+        // 0. Hook PackageManager
+        // ==========================================
+        try {
+            Class<?> appPmClass = null;
+            try {
+                appPmClass = Class.forName("android.app.ApplicationPackageManager");
+            } catch (Throwable t) {
+                try {
+                    appPmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", lpparam.classLoader);
+                } catch (Throwable t2) {
+                    android.util.Log.e("FakeWifiPixel", "Cannot find ApplicationPackageManager", t2);
+                }
+            }
+
+            if (appPmClass != null) {
+                XC_MethodHook featureHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String feature = (String) param.args[0];
+                        if (isSupportedFeature(feature)) {
+                            param.setResult(true);
+                        }
+                    }
+                };
+
+                for (Method m : appPmClass.getMethods()) {
+                    if ("hasSystemFeature".equals(m.getName())) {
+                        XposedBridge.hookMethod(m, featureHook);
+                    }
+                }
+
+                XC_MethodHook hidePkgHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (param.args == null || param.args.length == 0 || !(param.args[0] instanceof String)) {
+                            return;
+                        }
+                        String pkg = (String) param.args[0];
+                        String expectedStore = getExpectedBrandStorePackage();
+                        android.util.Log.i("FakeWifiPixel", "hidePkgHook checking: " + pkg + ", expected=" + expectedStore);
+                        if ("com.topjohnwu.magisk".equals(pkg) || "io.github.lsposed.manager".equals(pkg) || "org.lsposed.manager".equals(pkg)) {
+                            throw new PackageManager.NameNotFoundException(pkg);
+                        }
+                        if (expectedStore != null && expectedStore.equals(pkg)) {
+                            android.util.Log.i("FakeWifiPixel", ">>> INTERCEPTED: returning mock BrandStore for " + pkg);
+                            String mName = param.method != null ? param.method.getName() : "";
+                            if (mName.startsWith("getApplicationInfo")) {
+                                param.setResult(createMockBrandStoreAppInfo(pkg));
+                            } else {
+                                param.setResult(createMockBrandStorePackageInfo(pkg));
+                            }
+                        }
+                    }
+                };
+
+                XC_MethodHook hideInstalledAppsHook = new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        List<?> list = (List<?>) param.getResult();
+                        if (list == null) return;
+                        List<Object> clean = new ArrayList<>();
+                        boolean hasBrandStore = false;
+                        String expectedStore = getExpectedBrandStorePackage();
+
+                        for (Object item : list) {
+                            String pkg = null;
+                            if (item instanceof android.content.pm.PackageInfo) {
+                                pkg = ((android.content.pm.PackageInfo) item).packageName;
+                            } else if (item instanceof android.content.pm.ApplicationInfo) {
+                                pkg = ((android.content.pm.ApplicationInfo) item).packageName;
+                            }
+                            if (pkg != null && (pkg.contains("magisk") || pkg.contains("lsposed") || pkg.contains("rootcheck") || pkg.contains("fakewifi"))) {
+                                continue;
+                            }
+                            if (pkg != null && expectedStore != null && expectedStore.equals(pkg)) {
+                                hasBrandStore = true;
+                            }
+                            clean.add(item);
+                        }
+
+                        if (expectedStore != null && !hasBrandStore) {
+                            String mName = param.method != null ? param.method.getName() : "";
+                            if (mName.startsWith("getInstalledApplications")) {
+                                clean.add(createMockBrandStoreAppInfo(expectedStore));
+                            } else {
+                                clean.add(createMockBrandStorePackageInfo(expectedStore));
+                            }
+                        }
+
+                        param.setResult(clean);
+                    }
+                };
+
+                java.util.Set<Method> allPmMethods = new java.util.HashSet<>();
+                allPmMethods.addAll(java.util.Arrays.asList(appPmClass.getDeclaredMethods()));
+                allPmMethods.addAll(java.util.Arrays.asList(appPmClass.getMethods()));
+                int hookedCount = 0;
+                for (Method m : allPmMethods) {
+                    String mName = m.getName();
+                    if ("getPackageInfo".equals(mName) || "getApplicationInfo".equals(mName)) {
+                        XposedBridge.hookMethod(m, hidePkgHook);
+                        hookedCount++;
+                    } else if ("getInstalledPackages".equals(mName) || "getInstalledApplications".equals(mName)) {
+                        XposedBridge.hookMethod(m, hideInstalledAppsHook);
+                        hookedCount++;
+                    }
+                }
+                android.util.Log.i("FakeWifiPixel", "Successfully hooked " + hookedCount + " PM methods on " + appPmClass);
+            }
         } catch (Throwable t) {
-            XposedBridge.log("FakeWifiPixel: PackageManager hook error: " + t);
+            android.util.Log.e("FakeWifiPixel", "Error hooking ApplicationPackageManager", t);
         }
 
         // ==========================================
@@ -634,6 +808,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "HOST", devBuildHost);
             XposedHelpers.setStaticObjectField(android.os.Build.class, "USER", "android-build");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "BOOTLOADER", devBootloader);
+
+            String socManuf = ProfileConfig.getString("cpu", "soc_manufacturer", "Qualcomm");
+            String socModel = ProfileConfig.getString("cpu", "soc_model", "SM7250");
+            try {
+                XposedHelpers.setStaticObjectField(android.os.Build.class, "SOC_MANUFACTURER", socManuf);
+            } catch (Throwable ignored) {}
+            try {
+                XposedHelpers.setStaticObjectField(android.os.Build.class, "SOC_MODEL", socModel);
+            } catch (Throwable ignored) {}
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TAGS", "release-keys");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "TYPE", "user");
             try {
@@ -663,6 +846,12 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     String prop = (String) param.args[0];
                     if ("os.arch".equals(prop)) {
                         param.setResult("aarch64");
+                    } else if ("os.version".equals(prop)) {
+                        String kVer = ProfileConfig.getString("kernel", "version", "5.10.149-android12-9-00001-ge5f3ba2132a1");
+                        if (kVer == null || kVer.equals("5.10.0") || kVer.equals("unknown")) {
+                            kVer = "5.10.149-android12-9-00001-ge5f3ba2132a1";
+                        }
+                        param.setResult(kVer);
                     }
                 }
             };
@@ -1702,14 +1891,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 10. Hook DevCheck (CPU Kryo Clusters)
+        // 10. Hook DevCheck & DeviceInfo (CPU Clusters & Processor Name)
         // ==========================================
-        if ("flar2.devcheck".equals(lpparam.packageName)) {
+        if ("flar2.devcheck".equals(lpparam.packageName) || "com.ytheekshana.deviceinfo".equals(lpparam.packageName)) {
             try {
                 org.json.JSONObject root = ProfileConfig.get();
                 String silverName = "Kryo Silver (A55)";
                 String goldName = "Kryo Gold (A76)";
                 String primeName = "Kryo Prime (A76)";
+                String chipName = ProfileConfig.getString("cpu", "chipname", "Qualcomm® Snapdragon™ 765G");
                 int silverCount = 6;
                 int goldCount = 1;
                 int primeCount = 1;
@@ -1734,6 +1924,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 final String fSilver = silverName;
                 final String fGold = goldName;
                 final String fPrime = primeName;
+                final String fChip = chipName;
                 final int fSilverCount = silverCount;
                 final int fGoldCount = goldCount;
                 final int fPrimeCount = primeCount;
@@ -1744,6 +1935,10 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         CharSequence cs = (CharSequence) param.args[0];
                         if (cs == null) return;
                         String s = cs.toString();
+                        if ("unknown unknown".equalsIgnoreCase(s.trim()) || "unknown".equalsIgnoreCase(s.trim())) {
+                            param.args[0] = fChip;
+                            return;
+                        }
                         if (s.contains("× Unknown") || s.contains("× ARM")) {
                             if (s.contains("× Unknown")) {
                                 param.args[0] = s.replace("Unknown", fGold);
@@ -1764,7 +1959,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText", CharSequence.class, textHook);
                 XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText", CharSequence.class, android.widget.TextView.BufferType.class, textHook);
             } catch (Throwable t) {
-                XposedBridge.log("FakeWifiPixel: DevCheck TextView hook error: " + t);
+                XposedBridge.log("FakeWifiPixel: DevCheck/DeviceInfo TextView hook error: " + t);
             }
         }
     }

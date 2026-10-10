@@ -23,16 +23,16 @@
     "flavor": "gale_global-user",
     "type": "user",
     "tags": "release-keys",
-    "bootloader": "unknown",
-    "baseband": "unknown",
-    "baseband_version": "unknown",
+    "bootloader": "V14.0.7.0.TGPMIXM",
+    "baseband": "mt6768",
+    "baseband_version": "MOLY.LR12A.R3.MP.V182.P6",
     "build_host": "build",
     "sku": "23100RN82L",
     "color": "black"
   },
   "kernel": {
-    "version": "5.10.0",
-    "full_version": "Linux version 5.10.0"
+    "version": "5.10.149-android12-9-00001-ge5f3ba2132a1",
+    "full_version": "Linux version 5.10.149-android12-9-00001-ge5f3ba2132a1 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023"
   },
   "cpu": {
     "soc_manufacturer": "MediaTek",

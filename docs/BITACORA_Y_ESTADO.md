@@ -163,13 +163,68 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ### 17. Arquitectura de Granja de Dispositivos (Estilo GeeLark / GenFarmer) y Estructura de Directorios
 * **Objetivo:** Establecer las bases estructurales y de orquestación para el panel de administración de CloudPhones, separando limpiamente las plantillas inmutables de hardware, los catálogos de operadoras y las instancias activas de usuario.
-* **Nueva Estructura de Directorios:**
-  - `templates/<marca>/<modelo>.json`: Plantillas oficiales inmutables de hardware (SoC, GPU, cámaras CMOS, sensores MEMS, TAC base, OUI MAC). Organizadas por fabricante (`samsung/`, `motorola/`, `xiaomi/`, `google/`).
-  - `carriers/<operadora>.json`: Perfiles de red y telefonía (`ar_claro.json`, `ar_personal.json`, `ar_movistar.json`) con sus respectivos códigos MCC/MNC, formatos de IMSI, ICCID y números telefónicos.
-  - `instances/<nombre_instancia>/`: Directorio aislado por contenedor activo que contiene su `profile.json` (perfil congelado con identidad única) y su volumen persistente `data/` (`/data` de Android).
-  - `tools/instance_manager.py`: Herramienta CLI de gestión que permite listar plantillas (`list-templates`), listar operadoras (`list-carriers`), generar/previsualizar identidades aleatorias en rango (`randomize`) y crear instancias con perfil congelado (`create`).
+* **Estructura de Directorios Consolidada:**
+  - `templates/<marca>/<modelo>.json`: Plantillas oficiales inmutables de hardware (SoC, GPU, cámaras CMOS, sensores MEMS, TAC base, OUI MAC, Kernel GKI, Bootloader). Organizadas por fabricante (`samsung/`, `motorola/`, `xiaomi/`, `google/`) sumando 17 modelos.
+  - `carriers/<operadora>.json`: Perfiles de red y telefonía (`ar_claro.json`, `ar_personal.json`, `ar_movistar.json`) con MCC/MNC, formatos de IMSI, ICCID, números y zona horaria vinculada (`America/Argentina/Buenos_Aires`).
+  - `instances/<nombre_instancia>/`: Directorio aislado por contenedor activo que contiene su `profile.json` congelado y su volumen `/data` clonado desde la imagen dorada limpia `data-clean/`.
+  - `tools/instance_manager.py`: Herramienta CLI para ciclo de vida completo (`list-templates`, `list-carriers`, `randomize`, `create`, `list-instances`, `start`, `stop`).
 * **Soporte en `profile-loader`:**
-  - `profile-loader` lee de forma nativa bloques `"generated_identity"` pre-configurados por el gestor de instancias, aplicando directamente los identificadores asignados sin re-generarlos, manteniendo el fallback a `"identity_template"` si no estuvieran presentes.
+  - `profile-loader` lee de forma nativa bloques `"generated_identity"` congelados en `profile.json`, evitando re-randomización involuntaria en reinicios.
+
+### 18. Consistencia de Tienda de Fabricante (Brand Store) y Stubs Nativos (Pixelscan 75/100)
+* **Problema:** En auditorías antifraude (Pixelscan), los perfiles Samsung y Xiaomi recibían penalizaciones (`Brand Store Missing`, riesgo `WARN`/`HIGH_RISK` con puntajes de 40 a 60/100) porque la app chequea la presencia de tiendas propietarias (`com.sec.android.app.samsungapps` en Samsung, `com.xiaomi.mipicks` en Xiaomi, `com.huawei.appmarket` en Huawei).
+* **Solución Híbrida (Stubs APK + Hooks LSPosed):**
+  1. Se compilaron paquetes APK ultraligeros en `stubs/` (2.8 KB cada uno) con `android:hasCode="false"`. Consumen cero RAM/CPU pero se registran físicamente en `/data/system/packages.xml` del sistema operativo.
+  2. `instance_manager.py start` detecta la marca de la instancia y asegura la instalación automática del stub correspondiente (`samsung_galaxy_store.apk` o `xiaomi_getapps.apk`).
+  3. En `FakeWifiHook.java`, se interceptaron las consultas de `PackageManager` / `ApplicationPackageManager` y la función interna de validación `net.pixelscan.check.MainActivity.s`, devolviendo `true` para la tienda esperada.
+  4. **Resultado:** Alerta `Brand Store Missing` completamente erradicada en Pixelscan; el puntaje de integridad se elevó a **75/100** tanto en Samsung como en Xiaomi.
+
+### 19. Bypass de Certificación de Play Protect en Google Play Store
+* **Problema:** Al abrir Google Play Store (`com.android.vending`), la aplicación bloqueaba el acceso de inmediato con la pantalla roja *"Dispositivo no certificado por Play Protect"*, impidiendo iniciar sesión con cuentas de Google.
+* **Causa Raíz:** El demonio `GmsDeviceComplianceService` de Google Play Services evalúa la certificación del dispositivo y deserializa el objeto IPC `com.google.android.gms.gmscompliance.GmsDeviceComplianceResponse` con `isCompliant = false`, despachando un `PendingIntent` hacia `UncertifiedDeviceActivity`.
+* **Solución en Zygisk/LSPosed (`FakeWifiHook.java`):**
+  1. Se hookeó el constructor y creador Parcelable (`CREATOR.createFromParcel`) de `GmsDeviceComplianceResponse`, forzando en memoria `isCompliant = true` y anulando el `pendingIntent`.
+  2. Se hookeó el ciclo de vida `onCreate` de `com.google.android.gms.gmscompliance.ui.UncertifiedDeviceActivity` para ejecutar inmediatamente `activity.finish()`.
+  3. Se incluyeron los paquetes de Google (`com.android.vending`, `com.google.android.gms`, `com.google.android.googlequicksearchbox`) dentro del scope de LSPosed en `modules_config.db`.
+  4. **Resultado:** Google Play Store abre de forma limpia, directa y oficial en la pantalla de bienvenida y login (`UnauthenticatedMainActivity`).
+
+### 20. Resolución del Stack de Red Cronet en Google Search (`libcronet.so`)
+* **Problema:** En la app del Buscador de Google (`com.google.android.googlequicksearchbox`), cualquier consulta de búsqueda fallaba con una pantalla de error (*"Ocurrió un error"* con icono de nube mareada).
+* **Causa Raíz:**
+  - El buscador de Google utiliza **Cronet** (stack de red nativo de Chromium) empaquetado dinámicamente por GMS (`split_CronetDynamite_installtime.apk`).
+  - Al ejecutar `System.loadLibrary("cronet")`, el linker dinámico de Bionic en Android 13 bloqueaba el acceso por aislamiento de namespaces (`classloader-namespace`), arrojando:
+    `UnsatisfiedLinkError: dlopen failed: library "libcronet.so" not found`.
+* **Solución:**
+  1. Se extrajo e integró `libcronet.so` nativo de 64 y 32 bits en `/system/lib64/libcronet.so` y `/system/lib/libcronet.so`.
+  2. Se configuró `/system/etc/public.libraries.txt` añadiendo `libcronet.so` a las librerías públicas del sistema. Esto autoriza al linker dinámico a permitir su carga desde cualquier namespace de aplicación.
+  3. **Resultado:** Búsquedas web y noticias en vivo (ej. Infobae, Google Web) se renderizan y conectan al 100% sin pantallas de fallo.
+
+### 21. Eliminación de Fugas de Host en Kernel y Normalización de Bootloader y Baseband
+* **Problemas:**
+  1. **Fuga de Kernel (`5.10.01-cachyos`):** En utilidades como Device Info o DevCheck, la versión de kernel mostraba `5.10.01-cachyos`, delatando la distribución host.
+  2. **Banda Base Desconocida (`unknown`):** Modelos de Xiaomi y Motorola mostraban `Banda base: unknown`.
+  3. **Bootloader Desconocido (`unknown`):** Modelos de Xiaomi y Motorola reportaban `Bootloader: unknown (Bloqueado)`.
+* **Causas Raíz y Soluciones:**
+  1. **Bug de buffer en C (`src/libpixel_hw/pixel_hw64.c` y `pixel_hw32.c`):** El bucle de copia de `uname(2)` no colocaba el terminador nulo `\0` al final de la cadena de release falseada (`"5.10.0"`), dejando expuestos los bytes residuales del host (`"1-cachyos"`). Se corrigió con `buf->release[i] = '\0'`, asegurando truncado exacto.
+  2. **Intercepción Java:** Se hookeó `System.getProperty("os.version")` en `FakeWifiHook.java` devolviendo la cadena de kernel GKI de Android 13 (`5.10.149-android12-9-00001-ge5f3ba2132a1`).
+  3. **Firmware de Módem Baseband:** Se mapearon los firmwares oficiales en las 10 plantillas (`HA18_V14.0.14.0.TMTMIXM` para Xiaomi, `M6375_HI433_...` para Motorola) y se añadió deducción automática por SoC en `profile-loader`.
+  4. **Bootloader:** Se configuraron las cadenas de bootloader oficiales (`V14.0.14.0.TMTMIXM` en Xiaomi, `MBM-3.0-...` en Motorola) y se añadió fallback dinámico por marca en `src/profile_loader/main.c`.
+  5. **Resultado:** Verificado en pantalla con `Device Info`: Bootloader oficial bloqueado, módem fidedigno y kernel Android GKI puro sin ningún rastro del host.
+
+### 22. Normalización Permanente de Topología de CPU y Resolución de "unknown unknown"
+* **Problemas:**
+  1. En **DevCheck** y **Device Info**, la pestaña de CPU reportaba únicamente `1 núcleos` en lugar de los 8 núcleos físicos del procesador.
+  2. El gobernador del procesador figuraba como `Desconocido` y los rangos de frecuencias de los núcleos aparecían vacíos.
+  3. En **Device Info**, el campo `Procesador` mostraba literalmente `unknown unknown`.
+* **Causas Raíz:**
+  1. **Restricción de Permisos en Sysfs:** `/system/bin/profile-loader` creaba el directorio simulado `/data/local/tmp/fake_sys_cpu` bajo la máscara de permisos del init (`umask 077`), asignándole `0700` (`drwx------`). Al montarse sobre `/sys/devices/system/cpu`, las aplicaciones de usuario sin privilegios (UID 10xxx) recibían `Permission Denied` al intentar leer la tabla de núcleos y frecuencias, cayendo en el fallback de 1 núcleo.
+  2. **Inicialización de Constantes en Zygote:** `Build.SOC_MANUFACTURER` y `Build.SOC_MODEL` son constantes estáticas de Android que leen `ro.soc.manufacturer` y `ro.soc.model` de `build.prop`. Al no estar presentes en `build.prop` antes de que despierte Zygote, se inicializaban como `"unknown"`. La app leía ambos campos concatenados como `"unknown unknown"`.
+* **Soluciones Permanentes:**
+  1. **Permisos Universales:** `profile-loader` y `mask-early.sh` fuerzan incondicionalmente permisos `0755` en directorios y `0644` en archivos de `/sys/devices/system/cpu`. Además, `instance_manager.py start` valida estos permisos en cada arranque.
+  2. **Inyección en Build Props:** `profile-loader` inyecta `ro.soc.manufacturer` y `ro.soc.model` en tiempo de arranque en `system_build.prop` y `vendor_build.prop`.
+  3. **Ganchos en LSPosed:** `FakeWifiHook.java` sobrescribe en memoria `Build.SOC_MANUFACTURER` y `Build.SOC_MODEL` acorde al perfil activo y extiende el hook de `TextView` para `com.ytheekshana.deviceinfo` y `flar2.devcheck`, sustituyendo cualquier valor desconocido residual por el `chipname` oficial.
+* **Resultado Verificado en Pantalla:**
+  - DevCheck y Device Info reconocen exactamente los **8 núcleos**, los clústeres multieje fidedignos, las frecuencias mínimas y máximas en MHz, el gobernador `schedutil` y el nombre comercial del procesador (`Samsung s5e8835` / `Qualcomm SM6225`) en todas las instancias activas y futuras.
 
 ---
 
@@ -179,5 +234,5 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
    * Construir el backend/API que administre el ciclo de vida de los contenedores Docker (`start`, `stop`, `restart`, `clone`).
    * Interfaz gráfica interactiva con catálogo de dispositivos (Pixel, Samsung, Motorola, Xiaomi) para generar instancias con operadora, proxy residencial e identidad personalizada en 1 clic.
 2. **Catálogo de Presets de Hardware Adicionales:**
-   * ✅ Completado: 15 perfiles masivos de Argentina / LATAM incorporados (Samsung Galaxy A, Motorola Moto G, Xiaomi Redmi).
-   * Agregar perfiles de gama alta (POCO F5, Samsung Galaxy S23/S24, Motorola Edge 30) y OnePlus.
+   * ✅ Completado: 17 perfiles masivos oficiales incorporados (Samsung Galaxy S y A, Motorola Moto G, Xiaomi Redmi, Google Pixel).
+   * Incorporar soporte de proxies residenciales enrutados por contenedor (SOCKS5 / WireGuard per-instance).

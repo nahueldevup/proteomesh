@@ -77,7 +77,7 @@ struct utsname {
     char domainname[65];
 };
 
-static char s_uname_rel[65] = "4.19.282-g9e27c0faec01";
+static char s_uname_rel[65] = "5.10.149-android12-9-00001-ge5f3ba2132a1";
 static char s_uname_ver[65] = "#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023";
 static int s_uname_loaded = 0;
 
@@ -118,10 +118,15 @@ int uname(struct utsname *buf) {
     );
     if (ret == 0 && buf) {
         load_fake_uname();
-        for (unsigned long i = 0; i < sizeof(s_uname_rel) && s_uname_rel[i]; i++) buf->release[i] = s_uname_rel[i];
-        buf->release[sizeof(buf->release)-1] = '\0';
-        for (unsigned long i = 0; i < sizeof(s_uname_ver) && s_uname_ver[i]; i++) buf->version[i] = s_uname_ver[i];
-        buf->version[sizeof(buf->version)-1] = '\0';
+        unsigned long i;
+        for (i = 0; i < sizeof(buf->release) - 1 && s_uname_rel[i]; i++) {
+            buf->release[i] = s_uname_rel[i];
+        }
+        buf->release[i] = '\0';
+        for (i = 0; i < sizeof(buf->version) - 1 && s_uname_ver[i]; i++) {
+            buf->version[i] = s_uname_ver[i];
+        }
+        buf->version[i] = '\0';
     }
     return (int)ret;
 }

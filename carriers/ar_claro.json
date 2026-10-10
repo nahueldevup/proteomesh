@@ -7,5 +7,6 @@
   "network_type": "13",
   "imsi_prefix": "722310",
   "iccid_prefix": "895431",
-  "phone_prefix": "+54911"
+  "phone_prefix": "+54911",
+  "timezone": "America/Argentina/Buenos_Aires"
 }
