@@ -28,6 +28,53 @@ CARRIERS_DIR = BASE_DIR / "carriers"
 INSTANCES_DIR = BASE_DIR / "instances"
 CLEAN_DATA_DIR = BASE_DIR / "data-clean"
 
+# ── Optimización de renderizado ──────────────────────────────────────────────
+# SurfaceFlinger renderiza a resolución/fps reducidos para ahorrar CPU/RAM.
+# Las apps ven la resolución real del perfil gracias a wm size/density post-boot.
+RENDER_WIDTH = 720
+RENDER_HEIGHT = 1280
+RENDER_DPI = 270
+RENDER_FPS = 30
+
+# Paquetes del sistema inútiles en un CloudPhone sin hardware real.
+# Se desactivan con pm disable (siguen reportados en packages.xml pero no
+# consumen RAM ni CPU — Android los reconoce como presentes pero detenidos).
+DISABLE_PACKAGES = [
+    # Bluetooth / NFC (no hay adaptador físico)
+    "com.android.bluetooth",
+    "com.android.bluetoothmidiservice",
+    "com.android.nfc",
+    # Cámara / Galería (no hay sensor de cámara)
+    "com.android.camera2",
+    "com.android.cameraextensions",
+    "com.android.gallery3d",
+    # Multimedia local (no se reproduce música/audio local)
+    "com.android.music",
+    "com.android.musicfx",
+    # Impresión (no hay impresoras conectadas)
+    "com.android.printservice.recommendation",
+    "com.android.printspooler",
+    # Calendario y contactos (operación headless, no hay agenda personal)
+    "com.android.calendar",
+    "com.android.providers.calendar",
+    "com.google.android.syncadapters.calendar",
+    # Diagnóstico / Google que no aportan a operación de granja
+    "com.google.android.feedback",
+    "com.google.ar.core",
+    "com.google.android.apps.restore",
+    "com.google.android.contactkeys",
+    # Red sobrante (no hay hotspot, VPN nativa, ni tethering)
+    "com.android.hotspot2.osulogin",
+    "com.android.vpndialogs",
+]
+
+# Propiedades de agresividad de procesos background de Android.
+# Reduce el footprint de RAM matando procesos inactivos rápidamente.
+BG_PROCESS_SETTINGS = {
+    "settings put global settings_bg_apps_limit": "4",
+    "settings put global activity_manager_constants": "max_cached_processes=4,background_settle_time=5000",
+}
+
 
 def calc_luhn(digits: str) -> int:
     """Calcula el dígito verificador de Luhn para una cadena de dígitos numéricos."""
@@ -315,7 +362,7 @@ def cmd_create_instance(args):
     print(f"  • Directorio  : {inst_dir.relative_to(BASE_DIR)}/data/")
     print(f"\nPara levantar el contenedor con el gestor:")
     print(f"  python3 tools/instance_manager.py start {inst_name}")
-    print(f"\nO con Docker directamente:")
+    print(f"\nO con Docker directamente (renderizado optimizado 720x1280@30fps):")
     print(f"  docker run -d --name {inst_name} --privileged \\")
     print(f"    --sysctl net.ipv6.conf.all.disable_ipv6=1 \\")
     print(f"    --sysctl net.ipv6.conf.default.disable_ipv6=1 \\")
@@ -325,10 +372,11 @@ def cmd_create_instance(args):
     print(f"    proteomesh:latest \\")
     print(f"    androidboot.redroid_gpu_mode=guest \\")
     print(f"    androidboot.use_redroid_c2=1 \\")
-    print(f"    androidboot.redroid_width={w} \\")
-    print(f"    androidboot.redroid_height={h} \\")
-    print(f"    androidboot.redroid_dpi={dpi} \\")
-    print(f"    androidboot.redroid_fps={fps}\n")
+    print(f"    androidboot.redroid_width={RENDER_WIDTH} \\")
+    print(f"    androidboot.redroid_height={RENDER_HEIGHT} \\")
+    print(f"    androidboot.redroid_dpi={RENDER_DPI} \\")
+    print(f"    androidboot.redroid_fps={RENDER_FPS}")
+    print(f"  # Post-boot: adb shell wm size {w}x{h} && adb shell wm density {dpi}\n")
 
     if getattr(args, "start", False):
         cmd_start_instance(args)
@@ -353,6 +401,10 @@ def cmd_start_instance(args):
     port = meta.get("adb_port", 5580)
     profile_out = inst_dir / "profile.json"
 
+    # Resolución de renderizado real (SurfaceFlinger) vs lógica (apps).
+    # Docker arranca con la reducida; post-boot se sobrescribe con wm size/density.
+    rw, rh, rdpi, rfps = RENDER_WIDTH, RENDER_HEIGHT, RENDER_DPI, RENDER_FPS
+
     # Detener contenedor previo si ya existía
     subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -369,10 +421,10 @@ def cmd_start_instance(args):
         "proteomesh:latest",
         "androidboot.redroid_gpu_mode=guest",
         "androidboot.use_redroid_c2=1",
-        f"androidboot.redroid_width={w}",
-        f"androidboot.redroid_height={h}",
-        f"androidboot.redroid_dpi={dpi}",
-        f"androidboot.redroid_fps={fps}"
+        f"androidboot.redroid_width={rw}",
+        f"androidboot.redroid_height={rh}",
+        f"androidboot.redroid_dpi={rdpi}",
+        f"androidboot.redroid_fps={rfps}"
     ]
 
     res = subprocess.run(run_cmd, capture_output=True, text=True)
@@ -436,6 +488,37 @@ def cmd_start_instance(args):
             print(f"[✓] Tienda del fabricante ({pkg_name}) instalada.")
         else:
             print(f"[✓] Tienda del fabricante verificada ({pkg_name}).")
+
+    # ── Optimización post-boot ───────────────────────────────────────────────
+    adb_s = f"127.0.0.1:{port}"
+
+    # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
+    #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
+    #    renderice internamente a 720x1280@30fps.
+    subprocess.run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
+
+    # 2. Desactivar paquetes inútiles en CloudPhone para liberar RAM y servicios.
+    disabled_count = 0
+    for pkg in DISABLE_PACKAGES:
+        res_d = subprocess.run(
+            ["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
+            capture_output=True, text=True
+        )
+        if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
+            disabled_count += 1
+    print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, cámara, impresión, etc.)")
+
+    # 3. Limitar procesos background para reducir footprint de RAM.
+    for setting_cmd, value in BG_PROCESS_SETTINGS.items():
+        subprocess.run(
+            ["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    print("[✓] Límites de procesos background configurados (max_cached=4)")
 
     print(f"\nPara ver la pantalla ejecuta:")
     print(f"  scrcpy -s 127.0.0.1:{port}\n")

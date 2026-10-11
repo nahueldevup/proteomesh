@@ -226,6 +226,37 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Resultado Verificado en Pantalla:**
   - DevCheck y Device Info reconocen exactamente los **8 núcleos**, los clústeres multieje fidedignos, las frecuencias mínimas y máximas en MHz, el gobernador `schedutil` y el nombre comercial del procesador (`Samsung s5e8835` / `Qualcomm SM6225`) en todas las instancias activas y futuras.
 
+### 23. Optimización Masiva de Rendimiento y Recursos para Granja CloudPhone
+* **Contexto y Problemática:**
+  - Cada contenedor ejecutaba SurfaceFlinger con resolución completa nativa (1080×2340 @ 120fps / 90fps) renderizando por software (`androidboot.redroid_gpu_mode=guest`), lo que obligaba a computar más de 227 millones de píxeles/segundo sin monitor activo.
+  - El consumo de memoria por contenedor rondaba los **~2.4 GB de RAM**, limitando la granja a apenas 5–6 instancias concurrentes en un host de 16 GB.
+  - Se ejecutaban más de 133 paquetes de sistema, muchos de ellos asociados a hardware físico inexistente (Bluetooth, NFC, cámara, sensores ópticos, spooler de impresión).
+* **Solución Implementada (Arquitectura de Alto Desempeño):**
+  1. **Desacoplamiento de Renderizado vs Reporte Lógico:**
+     * **Renderizado Interno Ligero:** SurfaceFlinger arranca en `720x1280 @ 30fps (270 dpi)` en `tools/instance_manager.py`. Reduce el cómputo de GPU en un **88%** y los búferes de cuadro de 29 MB a 10.5 MB.
+     * **Escalado Lógico Oficial:** Post-arranque, `wm size` y `wm density` inyectan la resolución física real del perfil (`1080x2340 @ 440dpi` en Galaxy A54, `1080x2400 @ 395dpi` en Redmi 12). `WindowManager` reporta la pantalla completa oficial a las apps.
+     * **Hook de Tasa de Refresco en LSPosed (`FakeWifiHook.java`):** Se interceptaron `Display.getRefreshRate()` y `Display.Mode.getRefreshRate()` para devolver el `fps` oficial del perfil (`display.fps`, ej. 120.0 Hz o 90.0 Hz) en lugar de los 30 fps de renderizado interno.
+  2. **Desactivación Masiva de Paquetes Innecesarios (`DISABLE_PACKAGES`):**
+     * Se deshabilitaron selectivamente 19 paquetes del sistema mediante `pm disable-user --user 0`.
+     * *Bluetooth/NFC:* `com.android.bluetooth`, `com.android.bluetoothmidiservice`, `com.android.nfc`.
+     * *Cámara/Galería:* `com.android.camera2`, `com.android.cameraextensions`, `com.android.gallery3d`.
+     * *Multimedia:* `com.android.music`, `com.android.musicfx`.
+     * *Impresión:* `com.android.printservice.recommendation`, `com.android.printspooler`.
+     * *Calendario/Contactos:* `com.android.calendar`, `com.android.providers.calendar`, `com.google.android.syncadapters.calendar`.
+     * *Telemetría/Diagnóstico:* `com.google.android.feedback`, `com.google.ar.core`, `com.google.android.apps.restore`, `com.google.android.contactkeys`.
+     * *Red residual:* `com.android.hotspot2.osulogin`, `com.android.vpndialogs`.
+     * *Nota técnica:* Se usó `pm disable-user` y no desinstalación para preservar sus firmas en `packages.xml`, evitando anomalías en apps que auditen la integridad del árbol de paquetes.
+  3. **Límites Agresivos de Procesos Background (`BG_PROCESS_SETTINGS`):**
+     * `settings put global settings_bg_apps_limit 4`
+     * `settings put global activity_manager_constants max_cached_processes=4,background_settle_time=5000`
+     * Android elimina agresivamente procesos inactivos de la caché (como submódulos de Google Play Store).
+* **Resultados Verificados en Vivo:**
+  - **RAM:** Reducción de **~2.40 GB → 1.42–1.58 GB** por contenedor (**-35% a -38% de ahorro**).
+  - **CPU Idle:** Reducción de **~5% → 0.05–0.38%** (**~90% menos uso de CPU**).
+  - **PIDs:** Reducción de **1684 → ~1450 PIDs**.
+  - **Reporte en Apps:** Device Info y DevCheck muestran la resolución oficial (`2340×1080` / `2400×1080`) a `120 Hz` y los 8 núcleos intactos.
+  - **Capacidad de Granja:** Pasa de ~5 instancias a **10–12 instancias concurrentes** en 16 GB de RAM.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

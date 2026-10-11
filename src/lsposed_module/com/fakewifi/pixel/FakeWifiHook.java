@@ -122,6 +122,17 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             } catch (Throwable ignored) {}
             return null;
         }
+
+        public static int getInt(String section, String key, int defVal) {
+            try {
+                org.json.JSONObject root = get();
+                if (root != null && root.has(section)) {
+                    org.json.JSONObject sec = root.getJSONObject(section);
+                    if (sec.has(key)) return sec.getInt(key);
+                }
+            } catch (Throwable ignored) {}
+            return defVal;
+        }
     }
 
     public static class IdentityManager {
@@ -1888,6 +1899,30 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     });
                 }
             } catch (Throwable ignored) {}
+        }
+
+        // ==========================================
+        // 9.5 Hook Display.getRefreshRate() y Display.Mode.getRefreshRate()
+        //     SurfaceFlinger renderiza a RENDER_FPS (30) para ahorrar CPU/RAM,
+        //     pero las apps deben ver el refresh rate real del perfil del dispositivo.
+        // ==========================================
+        try {
+            final float profileFps = (float) ProfileConfig.getInt("display", "fps", 90);
+            XposedHelpers.findAndHookMethod(android.view.Display.class, "getRefreshRate", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(profileFps);
+                }
+            });
+            // Display.Mode.getRefreshRate() — usado por DevCheck y apps avanzadas
+            XposedHelpers.findAndHookMethod(android.view.Display.Mode.class, "getRefreshRate", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    param.setResult(profileFps);
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("FakeWifiPixel: Display refreshRate hook error: " + t);
         }
 
         // ==========================================

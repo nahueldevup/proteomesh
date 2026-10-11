@@ -108,7 +108,9 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
    * Se sintetiza `instances/<nombre>/profile.json` conteniendo el hardware completo y el bloque `generated_identity`. Este archivo se monta en el contenedor en modo solo lectura (`/system/etc/proteomesh_profile.json:ro`).
    * Se clona el volumen `/data` a partir de la imagen dorada `data-clean/`, garantizando permisos root de Magisk y llaves autorizadas de ADB sin rastros de cuentas anteriores.
 3. **Arranque y Normalización (`start`):**
-   * Se asignan dinámicamente los flags de resolución y tasa de refresco (`androidboot.redroid_width`, `height`, `dpi`, `fps`) según la pantalla física del modelo.
+   * **Desacoplamiento de Renderizado:** El contenedor arranca internamente con SurfaceFlinger optimizado a `720x1280 @ 30fps (270 dpi)` para minimizar uso de CPU/GPU software (reducción de 88% en carga de renderizado).
+   * **Métricas Lógicas Reales:** Post-boot, `instance_manager.py` aplica `wm size` y `wm density` con la resolución y DPI nativos del perfil (`1080x2340 @ 440dpi`, etc.), mientras que `FakeWifiHook.java` intercepta `Display.getRefreshRate()` reportando los Hz de fábrica (120 Hz, 90 Hz).
+   * **Poda de Servicios y Límites de Procesos:** Se desactivan 19 paquetes del sistema vinculados a hardware físico inexistente (`pm disable-user --user 0`) y se configuran límites estrictos de procesos en caché (`max_cached_processes=4`).
    * Al bootear, `/system/bin/profile-loader` parsea `profile.json` e inyecta propiedades en microsegundos vía `resetprop`.
    * Se sincroniza automáticamente la zona horaria del sistema con la operadora (`setprop persist.sys.timezone`).
    * Se asegura la presencia del stub de la tienda oficial según la marca del dispositivo.
