@@ -24,6 +24,14 @@ __pycache__/
 .probe/
 build/tests/
 
+# Sonda ashmem on-device (salidas de build)
+tests/ashmem/device/ashmem_probe.apk
+tests/ashmem/device/base.apk
+tests/ashmem/device/unsigned.apk
+tests/ashmem/device/classes/
+tests/ashmem/device/dex/
+tests/ashmem/device/tools/
+
 # IDE and OS metadata
 .DS_Store
 Thumbs.db

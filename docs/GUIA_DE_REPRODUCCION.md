@@ -48,6 +48,16 @@ bash tests/ashmem/run_host_test.sh
 ```
 *Compila el shim con `src/libpixel_hw/build.sh` y valida la API ashmem completa (`open`, sellos `F_ADD_SEALS`/`F_GET_SEALS`, los 10 ioctls `0x7701-0x770a`), la identidad por `readlink` tras `dup`/`F_DUPFD`/`SCM_RIGHTS`, la limpieza de marcas en `dup2` y la política `device.ashmem` (off/on/default). Salida esperada: `RESULT: OK` (el binario generado queda en `build/tests/`).*
 
+### E. Sonda On-device de Ashmem (`tests/ashmem/device/`)
+Corre como proceso de aplicación real (hijo de zygote → con `libpixel_hw.so` cargado) y registra la semántica de `/dev/ashmem`:
+```bash
+bash tests/ashmem/device/build_probe.sh
+adb -s 127.0.0.1:<puerto> install -r tests/ashmem/device/ashmem_probe.apk
+adb -s 127.0.0.1:<puerto> shell am start -n com.proteomesh.ashmemprobe/.AshmemProbe
+adb -s 127.0.0.1:<puerto> logcat -s AshmemProbe
+```
+*Esperado: `open OK`, `F_ADD_SEALS` ret=0, `F_GET_SEALS=0x6`, `dup: F_GET_SEALS=0x6`, `access(F_OK) OK`, `access(X_OK) errno=13`, `stat: chardev=true`, `PROBE-DONE`. Con `device.ashmem=false` en el perfil, `open` debe dar `errno=2`.*
+
 ---
 
 ## 3. Construcción de la Imagen Docker Base
@@ -191,4 +201,19 @@ El shim emula `/dev/ashmem` sobre `memfd_create` para las apps (requisito de Chr
 $A shell cat /data/local/tmp/fake_proc/ashmem_present   # esperado: 1 (default)
 ```
 
-Para simular un equipo **sin** nodo ashmem, poner `device.ashmem: false` en el `profile.json` de la instancia y reiniciar: `profile-loader` reescribe el marcador y el shim responde `ENOENT` coherente en `open`/`access`/`stat` (las apps usan su fallback memfd nativo). Este es el banco de pruebas A/B para Chromium cuando una app legacy dependa del nodo real.
+Para simular un equipo **sin** nodo ashmem, poner `device.ashmem: false` en el `profile.json` de la instancia y reiniciar: `profile-loader` reescribe el marcador y el shim responde `ENOENT` coherente en `open`/`access`/`stat` (las apps usan su fallback memfd nativo). Este es el banco de pruebas A/B para Chromium cuando una app legacy dependa del nodo real. Procedimiento verificado:
+
+```bash
+python3 - << 'EOF'
+import json
+p = "instances/<instancia>/profile.json"
+d = json.load(open(p)); d["device"]["ashmem"] = False
+json.dump(d, open(p, "w"), indent=2)
+EOF
+docker restart <instancia>        # aplica el perfil en el boot
+$A shell cat /data/local/tmp/fake_proc/ashmem_present   # -> 0
+# (lanzar la sonda de §2.E: open -> ENOENT errno=2)
+# restaurar: quitar la clave device.ashmem y reiniciar -> marcador 1 y sonda completa OK
+```
+
+**Nota sobre Chrome:** Chrome 155 de Play es hoy un vehículo no válido para verificar ashmem: crashea al arrancar por un problema de plataforma (lib ARM64 + carga RELRO + native bridge de Zygisk) ajeno al shim (ver desafío #27 de la bitácora). Usar la sonda de §2.E como verificación.
