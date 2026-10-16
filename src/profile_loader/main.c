@@ -176,6 +176,14 @@ static void generate_identity(cJSON *json) {
         if (!phone) phone = json_get_str(gen_id, "phone", NULL);
         if (phone && strlen(phone) > 0) set_prop("persist.sys.fake.phone", phone);
 
+        const char *ssid = json_get_str(gen_id, "wifi_ssid", NULL);
+        if (!ssid) ssid = json_get_str(gen_id, "ssid", NULL);
+        if (ssid && strlen(ssid) > 0) set_prop("persist.sys.fake.wifi_ssid", ssid);
+
+        const char *bssid = json_get_str(gen_id, "wifi_bssid", NULL);
+        if (!bssid) bssid = json_get_str(gen_id, "bssid", NULL);
+        if (bssid && strlen(bssid) > 0) set_prop("persist.sys.fake.wifi_bssid", bssid);
+
         return;
     }
 
@@ -259,6 +267,47 @@ static void generate_identity(cJSON *json) {
     char full_phone[32];
     snprintf(full_phone, sizeof(full_phone), "%s%s", phone_pfx, rand_phone);
     set_prop("persist.sys.fake.phone", full_phone);
+
+    // 10. Wi-Fi SSID & BSSID (red residencial creíble, único por instancia)
+    cJSON *net = cJSON_GetObjectItem(json, "network");
+    const char *ssid_pfx = json_get_str(net, "ssid_prefix", "Home");
+    const char *bssid_oui = json_get_str(net, "bssid_oui", "F4:EC:38");
+    char rand_ssid[8];
+    rand_hex(rand_ssid, 2, 0);
+    char full_ssid[64];
+    snprintf(full_ssid, sizeof(full_ssid), "%s-%s", ssid_pfx, rand_ssid);
+    set_prop("persist.sys.fake.wifi_ssid", full_ssid);
+
+    char r_bssid[8];
+    rand_hex(r_bssid, 3, 0);
+    char full_bssid[32];
+    snprintf(full_bssid, sizeof(full_bssid), "%s:%.2s:%.2s:%.2s", bssid_oui, r_bssid, r_bssid+2, r_bssid+4);
+    set_prop("persist.sys.fake.wifi_bssid", full_bssid);
+}
+
+static void apply_network_props(cJSON *json) {
+    cJSON *net = cJSON_GetObjectItem(json, "network");
+    char cur[128];
+
+    get_prop("persist.sys.fake.wifi_ssid", cur, sizeof(cur));
+    if (strlen(cur) == 0) {
+        const char *ssid_pfx = json_get_str(net, "ssid_prefix", "Home");
+        char rnd[8];
+        rand_hex(rnd, 2, 0);
+        char full[64];
+        snprintf(full, sizeof(full), "%s-%s", ssid_pfx, rnd);
+        set_prop("persist.sys.fake.wifi_ssid", full);
+    }
+
+    get_prop("persist.sys.fake.wifi_bssid", cur, sizeof(cur));
+    if (strlen(cur) == 0) {
+        const char *bssid_oui = json_get_str(net, "bssid_oui", "F4:EC:38");
+        char rnd[8];
+        rand_hex(rnd, 3, 0);
+        char full[32];
+        snprintf(full, sizeof(full), "%s:%.2s:%.2s:%.2s", bssid_oui, rnd, rnd+2, rnd+4);
+        set_prop("persist.sys.fake.wifi_bssid", full);
+    }
 }
 
 static void ensure_identity(cJSON *json) {
@@ -560,6 +609,188 @@ static void apply_camera_dump(cJSON *json) {
     }
     fclose(fp);
     chmod(path, 0644);
+}
+
+static void lower_copy(char *dst, const char *src, size_t max) {
+    size_t i = 0;
+    if (!src) { if (max) dst[0] = '\0'; return; }
+    for (; src[i] && i + 1 < max; i++) {
+        char c = src[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        dst[i] = c;
+    }
+    dst[i] = '\0';
+}
+
+// ---------------------------------------------------------------------------
+// Memoria RAM dinámica: /proc/meminfo y fake_proc/mem_total_kb para sysinfo()
+// ---------------------------------------------------------------------------
+static void apply_meminfo(cJSON *dev) {
+    mkdir(FAKEDIR, 0755);
+    int ram_mb = json_get_int(dev, "ram_mb", 8192);
+    if (ram_mb <= 0) ram_mb = 8192;
+    unsigned long total_kb = (unsigned long)ram_mb * 1024UL;
+
+    // Referencia base: 8 GB Pixel 5 (7854200 kB). Se escala todo proporcionalmente.
+    double r = (double)total_kb / 7854200.0;
+    if (r <= 0.0) r = 1.0;
+    #define MK(x) ((unsigned long)((double)(x) * r))
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/mem_total_kb", FAKEDIR);
+    FILE *fp = fopen(path, "w");
+    if (fp) { fprintf(fp, "%lu\n", total_kb); fclose(fp); chmod(path, 0644); }
+
+    snprintf(path, sizeof(path), "%s/meminfo", FAKEDIR);
+    fp = fopen(path, "w");
+    if (!fp) return;
+    fprintf(fp, "MemTotal:       %8lu kB\n", total_kb);
+    fprintf(fp, "MemFree:        %8lu kB\n", MK(2170340));
+    fprintf(fp, "MemAvailable:   %8lu kB\n", MK(4850120));
+    fprintf(fp, "Buffers:        %8lu kB\n", MK(112450));
+    fprintf(fp, "Cached:         %8lu kB\n", MK(2540120));
+    fprintf(fp, "SwapCached:            0 kB\n");
+    fprintf(fp, "Active:         %8lu kB\n", MK(3120450));
+    fprintf(fp, "Inactive:       %8lu kB\n", MK(1850230));
+    fprintf(fp, "Active(anon):   %8lu kB\n", MK(1520100));
+    fprintf(fp, "Inactive(anon): %8lu kB\n", MK(320140));
+    fprintf(fp, "Active(file):   %8lu kB\n", MK(1600350));
+    fprintf(fp, "Inactive(file): %8lu kB\n", MK(1530090));
+    fprintf(fp, "Unevictable:    %8lu kB\n", MK(8192));
+    fprintf(fp, "Mlocked:        %8lu kB\n", MK(8192));
+    fprintf(fp, "SwapTotal:      %8lu kB\n", MK(2097148));
+    fprintf(fp, "SwapFree:       %8lu kB\n", MK(2097148));
+    fprintf(fp, "Dirty:                 64 kB\n");
+    fprintf(fp, "Writeback:              0 kB\n");
+    fprintf(fp, "AnonPages:      %8lu kB\n", MK(1840240));
+    fprintf(fp, "Mapped:         %8lu kB\n", MK(520130));
+    fprintf(fp, "Shmem:          %8lu kB\n", MK(24500));
+    fprintf(fp, "KReclaimable:   %8lu kB\n", MK(180200));
+    fprintf(fp, "Slab:           %8lu kB\n", MK(280140));
+    fprintf(fp, "SReclaimable:   %8lu kB\n", MK(180200));
+    fprintf(fp, "SUnreclaim:     %8lu kB\n", MK(99940));
+    fprintf(fp, "KernelStack:    %8lu kB\n", MK(45000));
+    fprintf(fp, "PageTables:     %8lu kB\n", MK(62000));
+    fprintf(fp, "NFS_Unstable:           0 kB\n");
+    fprintf(fp, "Bounce:                 0 kB\n");
+    fprintf(fp, "WritebackTmp:           0 kB\n");
+    fprintf(fp, "CommitLimit:    %8lu kB\n", MK(6024248));
+    fprintf(fp, "Committed_AS:   %8lu kB\n", MK(35210450));
+    fprintf(fp, "VmallocTotal:   %8lu kB\n", MK(263061440));
+    fprintf(fp, "VmallocUsed:    %8lu kB\n", MK(75400));
+    fprintf(fp, "VmallocChunk:           0 kB\n");
+    fprintf(fp, "Percpu:         %8lu kB\n", MK(4500));
+    fprintf(fp, "AnonHugePages:          0 kB\n");
+    fprintf(fp, "ShmemHugePages:         0 kB\n");
+    fprintf(fp, "ShmemPmdMapped:         0 kB\n");
+    fprintf(fp, "FileHugePages:          0 kB\n");
+    fprintf(fp, "FilePmdMapped:          0 kB\n");
+    fprintf(fp, "CmaTotal:       %8lu kB\n", MK(819200));
+    fprintf(fp, "CmaFree:        %8lu kB\n", MK(210400));
+    fclose(fp);
+    chmod(path, 0644);
+    #undef MK
+}
+
+// ---------------------------------------------------------------------------
+// Almacenamiento dinámico: fake_proc/storage_bytes, storage_type y /proc/partitions
+// ---------------------------------------------------------------------------
+static void apply_storage(cJSON *dev) {
+    mkdir(FAKEDIR, 0755);
+    int storage_gb = json_get_int(dev, "storage_gb", 128);
+    if (storage_gb <= 0) storage_gb = 128;
+    const char *stype = json_get_str(dev, "storage_type", "ufs");
+    int is_emmc = (stype && stype[0] == 'e');
+
+    unsigned long long total_bytes = (unsigned long long)storage_gb * 1000000000ULL;
+    unsigned long total_blocks = (unsigned long)(total_bytes / 1024ULL);
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/storage_bytes", FAKEDIR);
+    FILE *fp = fopen(path, "w");
+    if (fp) { fprintf(fp, "%llu\n", total_bytes); fclose(fp); chmod(path, 0644); }
+
+    snprintf(path, sizeof(path), "%s/storage_type", FAKEDIR);
+    fp = fopen(path, "w");
+    if (fp) { fprintf(fp, "%s\n", is_emmc ? "emmc" : "ufs"); fclose(fp); chmod(path, 0644); }
+
+    snprintf(path, sizeof(path), "%s/partitions", FAKEDIR);
+    fp = fopen(path, "w");
+    if (!fp) return;
+    fprintf(fp, "major minor  #blocks  name\n\n");
+    unsigned long reserved = 4096UL + 4096UL + 131072UL + 15728640UL;
+    unsigned long data_blocks = total_blocks > reserved ? total_blocks - reserved : total_blocks / 2;
+    if (is_emmc) {
+        fprintf(fp, " 179        0  %8lu mmcblk0\n", total_blocks);
+        fprintf(fp, " 179        1       4096 mmcblk0p1\n");
+        fprintf(fp, " 179        2       4096 mmcblk0p2\n");
+        fprintf(fp, " 179        3     131072 mmcblk0p3\n");
+        fprintf(fp, " 179        4   15728640 mmcblk0p4\n");
+        fprintf(fp, " 179        5  %8lu mmcblk0p5\n", data_blocks);
+    } else {
+        fprintf(fp, " 259        0  %8lu sda\n", total_blocks);
+        fprintf(fp, " 259        1       4096 sda1\n");
+        fprintf(fp, " 259        2       4096 sda2\n");
+        fprintf(fp, " 259        3     131072 sda3\n");
+        fprintf(fp, " 259        4   15728640 sda4\n");
+        fprintf(fp, " 259        5  %8lu sda5\n", data_blocks);
+    }
+    fprintf(fp, " 254        0    3145728 dm-0\n");
+    fprintf(fp, " 254        1    1048576 dm-1\n");
+    fprintf(fp, " 254        2    1048576 dm-2\n");
+    fprintf(fp, " 254        3     524288 dm-3\n");
+    fprintf(fp, " 253        0    4194304 zram0\n");
+    fclose(fp);
+    chmod(path, 0644);
+}
+
+// ---------------------------------------------------------------------------
+// Módulo D — Abstracción dinámica del HAL gráfico (hwcomposer / gralloc)
+// ---------------------------------------------------------------------------
+static void apply_graphics_hal(cJSON *json) {
+    mkdir(FAKEDIR, 0755);
+    cJSON *dev = cJSON_GetObjectItem(json, "device");
+    cJSON *cpu = cJSON_GetObjectItem(json, "cpu");
+    cJSON *gpu = cJSON_GetObjectItem(json, "gpu");
+
+    const char *brand = json_get_str(dev, "brand", "google");
+    const char *platform = json_get_str(dev, "platform", "sm7250");
+    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
+    const char *gpu_vendor = json_get_str(gpu, "vendor", "Qualcomm");
+
+    char brand_l[32], manuf_l[48], gpu_l[48];
+    lower_copy(brand_l, brand, sizeof(brand_l));
+    lower_copy(manuf_l, soc_manuf, sizeof(manuf_l));
+    lower_copy(gpu_l, gpu_vendor, sizeof(gpu_l));
+
+    const char *hwc = "qcom";
+    const char *gralloc = "qcom";
+
+    int is_mtk = (strstr(manuf_l, "mediatek") != NULL) || (strncmp(platform, "mt", 2) == 0);
+    int is_samsung = (strstr(manuf_l, "samsung") != NULL) || (strstr(brand_l, "samsung") != NULL);
+    int is_google = (strstr(manuf_l, "google") != NULL) || (strncmp(platform, "gs", 2) == 0);
+    int arm_gpu = (strstr(gpu_l, "arm") != NULL);
+
+    if (is_mtk) {
+        hwc = "mtk"; gralloc = "mali";
+    } else if (is_samsung) {
+        hwc = platform; gralloc = "mali";
+    } else if (is_google) {
+        hwc = platform; gralloc = "mali";
+    } else if (arm_gpu) {
+        hwc = platform; gralloc = "mali";
+    } else {
+        hwc = "qcom"; gralloc = "qcom";
+    }
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/hwcomposer", FAKEDIR);
+    FILE *fp = fopen(path, "w");
+    if (fp) { fprintf(fp, "%s\n", hwc); fclose(fp); chmod(path, 0644); }
+
+    snprintf(path, sizeof(path), "%s/gralloc", FAKEDIR);
+    fp = fopen(path, "w");
+    if (fp) { fprintf(fp, "%s\n", gralloc); fclose(fp); chmod(path, 0644); }
 }
 
 static void apply_build_props(cJSON *json) {
@@ -885,6 +1116,21 @@ static void apply_props(cJSON *json) {
     set_prop("ro.telephony.default_network", "22");
     set_prop("ro.com.android.mobiledata", "true");
 
+    // Telefonía dinámica para apply-props.sh (telephony.db) y servicios RIL
+    const char *op_num = json_get_str(tel, "operator_numeric", "72234");
+    const char *country = json_get_str(tel, "country_iso", "ar");
+    const char *apn = json_get_str(tel, "apn", "internet");
+    char mcc[8] = "";
+    char mnc[8] = "";
+    snprintf(mcc, sizeof(mcc), "%.3s", op_num);
+    if (strlen(op_num) > 3) snprintf(mnc, sizeof(mnc), "%s", op_num + 3);
+    set_prop("persist.sys.fake.carrier_name", carrier);
+    set_prop("persist.sys.fake.operator_numeric", op_num);
+    set_prop("persist.sys.fake.country_iso", country);
+    set_prop("persist.sys.fake.mcc", mcc);
+    set_prop("persist.sys.fake.mnc", mnc);
+    set_prop("persist.sys.fake.apn", apn);
+
     // GPU properties
     if (gpu) {
         const char *gpu_rend = json_get_str(gpu, "renderer", "Adreno (TM) 620");
@@ -903,7 +1149,11 @@ static void apply_props(cJSON *json) {
     apply_sensors_dump(json);
     apply_camera_dump(json);
     apply_build_props(json);
+    apply_meminfo(dev);
+    apply_storage(dev);
+    apply_graphics_hal(json);
     ensure_identity(json);
+    apply_network_props(json);
 }
 
 static void show_status(cJSON *json) {
