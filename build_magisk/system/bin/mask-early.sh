@@ -610,13 +610,19 @@ fi
 mount -o remount,ro / 2>/dev/null || true
 
 # 10. Wrapper de /system/bin/ip (Enmascarar eth0 -> wlan0)
-if [ -f /system/bin/ip ] && [ ! -d /data/local/tmp/ip_bin ]; then
+# El binario real se conserva en /data/local/tmp/ip_bin/ip y el wrapper solo
+# reescribe la salida. El DIRECTORIO debe quedar 755: Magisk corre con umask
+# 077 y lo crea en 700, dejando ip_bin/ip inaccesible para el shell (uid 2000).
+if [ -f /system/bin/ip ]; then
     mkdir -p /data/local/tmp/ip_bin
-    cp /system/bin/ip /data/local/tmp/ip_bin/ip
-    chmod 755 /data/local/tmp/ip_bin/ip
+    if [ ! -x /data/local/tmp/ip_bin/ip ]; then
+        cp /system/bin/ip /data/local/tmp/ip_bin/ip
+    fi
 fi
 
 if [ -f /data/local/tmp/ip_bin/ip ]; then
+    chmod 755 /data/local/tmp/ip_bin
+    chmod 755 /data/local/tmp/ip_bin/ip
     cat << 'EOF' > /data/local/tmp/fake_ip.sh
 #!/system/bin/sh
 /data/local/tmp/ip_bin/ip "$@" | sed -E 's/eth0@[^:]+/wlan0/g; s/eth0/wlan0/g'
