@@ -449,6 +449,14 @@ def cmd_start_instance(args):
     adb_res = subprocess.run(["adb", "connect", f"127.0.0.1:{port}"], capture_output=True, text=True)
     print(f"[✓] ADB: {adb_res.stdout.strip()}")
 
+    # Limpiar marcadores del arranque anterior: sys.boot_completed se pone a 1
+    # antes de que apply-props.sh empiece, y las banderas viejas causarían
+    # falsos positivos en wait_boot()/detección del módulo actualizado.
+    subprocess.run(["adb", "-s", f"127.0.0.1:{port}", "shell", "rm", "-f",
+                    "/data/local/tmp/.proteomesh_boot_done",
+                    "/data/local/tmp/.proteomesh_module_updated"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     # Configurar zona horaria del operador
     tz = "America/Argentina/Buenos_Aires"
     brand = ""
@@ -502,33 +510,73 @@ def cmd_start_instance(args):
     # ── Optimización post-boot ───────────────────────────────────────────────
     adb_s = f"127.0.0.1:{port}"
 
-    # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
-    #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
-    #    renderice internamente a 720x1280@30fps.
-    subprocess.run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
+    def wait_boot():
+        """Espera sys.boot_completed=1 y a que apply-props.sh termine (marcador)."""
+        for _ in range(150):
+            r = subprocess.run(["adb", "-s", adb_s, "shell", "getprop", "sys.boot_completed"],
+                               capture_output=True, text=True)
+            if r.stdout.strip() == "1":
+                m = subprocess.run(["adb", "-s", adb_s, "shell", "ls", "/data/local/tmp/.proteomesh_boot_done"],
+                                   capture_output=True, text=True)
+                if ".proteomesh_boot_done" in m.stdout:
+                    return True
+            time.sleep(2)
+        return False
 
-    # 2. Desactivar paquetes inútiles en CloudPhone para liberar RAM y servicios.
-    disabled_count = 0
-    for pkg in DISABLE_PACKAGES:
-        res_d = subprocess.run(
-            ["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
-            capture_output=True, text=True
-        )
-        if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
-            disabled_count += 1
-    print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, impresión, galería, etc.)")
+    def post_boot():
+        # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
+        #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
+        #    renderice internamente a 720x1280@30fps.
+        subprocess.run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
 
-    # 3. Limitar procesos background para reducir footprint de RAM.
-    for setting_cmd, value in BG_PROCESS_SETTINGS.items():
-        subprocess.run(
-            ["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    print("[✓] Límites de procesos background configurados (max_cached=4)")
+        # 2. Desactivar paquetes inútiles en CloudPhone para liberar RAM y servicios.
+        disabled_count = 0
+        for pkg in DISABLE_PACKAGES:
+            res_d = subprocess.run(
+                ["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
+                capture_output=True, text=True
+            )
+            if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
+                disabled_count += 1
+        print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, impresión, galería, etc.)")
+
+        # 3. Limitar procesos background para reducir footprint de RAM.
+        for setting_cmd, value in BG_PROCESS_SETTINGS.items():
+            subprocess.run(
+                ["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        print("[✓] Límites de procesos background configurados (max_cached=4)")
+
+    if not wait_boot():
+        print("[!] Aviso: timeout esperando el arranque completo del sistema.")
+    post_boot()
+
+    # 4. Módulo LSPosed actualizado durante este arranque: lspd no recarga APKs
+    #    en caliente (reiniciarlo tarde forzaría un reinicio parcial). Se
+    #    reinicia el contenedor una vez; en el siguiente arranque lspd precarga
+    #    el APK nuevo desde la DB ya actualizada por apply-props.sh.
+    m = subprocess.run(["adb", "-s", adb_s, "shell", "ls", "/data/local/tmp/.proteomesh_module_updated"],
+                       capture_output=True, text=True)
+    if ".proteomesh_module_updated" in m.stdout:
+        print("[*] Módulo LSPosed actualizado en este arranque: reiniciando para cargarlo...")
+        subprocess.run(["adb", "-s", adb_s, "shell", "rm", "-f", "/data/local/tmp/.proteomesh_module_updated"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["docker", "restart", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(5)
+        subprocess.run(["adb", "connect", f"127.0.0.1:{port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["adb", "-s", adb_s, "shell", "rm", "-f",
+                        "/data/local/tmp/.proteomesh_boot_done",
+                        "/data/local/tmp/.proteomesh_module_updated"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not wait_boot():
+            print("[!] Aviso: timeout esperando el segundo arranque.")
+        post_boot()
+        print("[✓] Módulo LSPosed recargado desde el arranque.")
 
     print(f"\nPara ver la pantalla ejecuta:")
     print(f"  scrcpy -s 127.0.0.1:{port}\n")

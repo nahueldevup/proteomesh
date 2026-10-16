@@ -532,6 +532,8 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         final boolean isAbiTarget = !"android".equals(lpparam.packageName) && !"com.android.vending".equals(lpparam.packageName);
         // Módulo C: system_server conserva los valores reales de Ajustes/ADB
         final boolean isSystemServer = "android".equals(lpparam.packageName);
+        // Display: system_server (SurfaceFlinger/DMS) conserva los modos reales de render
+        final boolean isDisplayTarget = !"android".equals(lpparam.packageName);
 
         // Hook Pixelscan specifically
         if ("net.pixelscan.check".equals(lpparam.packageName)) {
@@ -1887,27 +1889,86 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 9.5 Hook Display.getRefreshRate() y Display.Mode.getRefreshRate()
-        //     SurfaceFlinger renderiza a RENDER_FPS (30) para ahorrar CPU/RAM,
-        //     pero las apps deben ver el refresh rate real del perfil del dispositivo.
+        // 9.5 Hook Display: modos, resoluciones y densidad física
+        //     SurfaceFlinger renderiza a 720x1280@30 para ahorrar CPU/RAM, pero
+        //     las apps deben ver la pantalla real del perfil (resolución lógica,
+        //     fps, ppi físico y modos soportados). system_server conserva lo real.
         // ==========================================
-        try {
-            final float profileFps = (float) ProfileConfig.getInt("display", "fps", 90);
-            XposedHelpers.findAndHookMethod(android.view.Display.class, "getRefreshRate", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult(profileFps);
-                }
-            });
-            // Display.Mode.getRefreshRate() — usado por DevCheck y apps avanzadas
-            XposedHelpers.findAndHookMethod(android.view.Display.Mode.class, "getRefreshRate", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult(profileFps);
-                }
-            });
-        } catch (Throwable t) {
-            XposedBridge.log("FakeWifiPixel: Display refreshRate hook error: " + t);
+        if (isDisplayTarget) {
+            try {
+                final int dW = ProfileConfig.getInt("display", "width", 1080);
+                final int dH = ProfileConfig.getInt("display", "height", 2340);
+                final int dPpi = ProfileConfig.getInt("display", "ppi", ProfileConfig.getInt("display", "dpi", 440));
+                final float profileFps = (float) ProfileConfig.getInt("display", "fps", 90);
+
+                // Modos sintéticos del perfil (principal + 60 Hz estándar)
+                final Class<?> modeCls = android.view.Display.Mode.class;
+                final Object modePrimary = XposedHelpers.newInstance(modeCls, 1, dW, dH, profileFps);
+                final Object modeStd = XposedHelpers.newInstance(modeCls, 2, dW, dH, 60.0f);
+
+                XposedHelpers.findAndHookMethod(android.view.Display.class, "getRefreshRate", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(profileFps);
+                    }
+                });
+                XposedHelpers.findAndHookMethod(android.view.Display.class, "getMode", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(modePrimary);
+                    }
+                });
+                XposedHelpers.findAndHookMethod(android.view.Display.class, "getSupportedModes", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Object arr;
+                        if (Math.abs(profileFps - 60.0f) < 0.01f) {
+                            arr = java.lang.reflect.Array.newInstance(modeCls, 1);
+                            java.lang.reflect.Array.set(arr, 0, modePrimary);
+                        } else {
+                            arr = java.lang.reflect.Array.newInstance(modeCls, 2);
+                            java.lang.reflect.Array.set(arr, 0, modePrimary);
+                            java.lang.reflect.Array.set(arr, 1, modeStd);
+                        }
+                        param.setResult(arr);
+                    }
+                });
+                // Display.getSupportedRefreshRates() (API 31+)
+                try {
+                    XposedHelpers.findAndHookMethod(android.view.Display.class, "getSupportedRefreshRates", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (Math.abs(profileFps - 60.0f) < 0.01f) {
+                                param.setResult(new float[]{60.0f});
+                            } else {
+                                param.setResult(new float[]{60.0f, profileFps});
+                            }
+                        }
+                    });
+                } catch (Throwable ignored) {}
+                // Nota: NO se hookea Display.Mode.getRefreshRate() globalmente;
+                // los modos que devolvemos ya llevan su fps correcto (perfil y 60),
+                // y un hook global pisaría el modo estándar de 60 Hz.
+                // Densidad física real del panel (xDpi/yDpi) para que el tamaño
+                // físico de pantalla no se derive del dpi de renderizado (270).
+                XC_MethodHook metricsHook = new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (param.args != null && param.args.length > 0 &&
+                                param.args[0] instanceof android.util.DisplayMetrics) {
+                            android.util.DisplayMetrics dm = (android.util.DisplayMetrics) param.args[0];
+                            if (dm != null) {
+                                dm.xdpi = dPpi;
+                                dm.ydpi = dPpi;
+                            }
+                        }
+                    }
+                };
+                XposedHelpers.findAndHookMethod(android.view.Display.class, "getMetrics", android.util.DisplayMetrics.class, metricsHook);
+                XposedHelpers.findAndHookMethod(android.view.Display.class, "getRealMetrics", android.util.DisplayMetrics.class, metricsHook);
+            } catch (Throwable t) {
+                XposedBridge.log("FakeWifiPixel: Display hook error: " + t);
+            }
         }
 
         // ==========================================

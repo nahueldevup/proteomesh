@@ -88,7 +88,8 @@
     "width": 1080,
     "height": 2340,
     "dpi": 440,
-    "fps": 90
+    "fps": 90,
+  "ppi": 432
   },
   "telephony": {
     "carrier_name": "Personal",

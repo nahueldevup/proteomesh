@@ -5,6 +5,13 @@
 # Se ejecuta en sys.boot_completed=1
 # ==============================================================================
 
+# Banderas de arranque (consumidas por tools/instance_manager.py):
+#   .proteomesh_module_updated → el APK LSPosed cambió en este arranque y hace
+#   falta reiniciar una vez para que lspd lo precargue desde el inicio.
+#   .proteomesh_boot_done → este script terminó (señal de "sistema listo").
+rm -f /data/local/tmp/.proteomesh_boot_done 2>/dev/null || true
+rm -f /data/local/tmp/.proteomesh_module_updated 2>/dev/null || true
+
 # ==============================================================================
 
 RP="/sbin/resetprop"
@@ -232,6 +239,36 @@ if [ -x /sbin/magisk ]; then
     # Auto-recuperar LSPosed y sincronizar path de FakeWifi
     rm -f /data/adb/modules/zygisk_lsposed/disable 2>/dev/null || true
     rm -f /data/adb/modules/zygisk_shamiko/disable 2>/dev/null || true
+
+    # Instalar/actualizar el módulo LSPosed desde la imagen si el APK cambió.
+    # Sin esto, las instancias reutilizan el módulo horneado en /data-clean y
+    # todos los cambios del APK quedan inertes.
+    MODULE_SRC="/system/etc/proteomesh/FakeWifiPixel.apk"
+    MODULE_UPDATED=0
+    if [ -f "$MODULE_SRC" ]; then
+        CUR_APK=$(pm path eu.chylek.adam.fakewifi 2>/dev/null | cut -d: -f2)
+        CUR_MD5=""
+        [ -n "$CUR_APK" ] && CUR_MD5=$(md5sum "$CUR_APK" 2>/dev/null | cut -d' ' -f1)
+        NEW_MD5=$(md5sum "$MODULE_SRC" 2>/dev/null | cut -d' ' -f1)
+        if [ -n "$NEW_MD5" ] && [ "$CUR_MD5" != "$NEW_MD5" ]; then
+            cp "$MODULE_SRC" /data/local/tmp/FakeWifiPixel.apk 2>/dev/null
+            chmod 644 /data/local/tmp/FakeWifiPixel.apk 2>/dev/null
+            if ! pm install -r -d /data/local/tmp/FakeWifiPixel.apk >/dev/null 2>&1; then
+                pm uninstall eu.chylek.adam.fakewifi >/dev/null 2>&1 || true
+                pm install -d /data/local/tmp/FakeWifiPixel.apk >/dev/null 2>&1 || true
+            fi
+            rm -f /data/local/tmp/FakeWifiPixel.apk 2>/dev/null
+            MODULE_UPDATED=1
+        fi
+        if [ "$MODULE_UPDATED" = "1" ]; then
+            # lspd NO se reinicia en caliente: arrancar el daemon tarde forzaría
+            # un reinicio parcial del sistema. instance_manager.py detecta esta
+            # bandera y reinicia el contenedor una vez; en el siguiente arranque
+            # lspd precarga el APK nuevo desde la DB ya actualizada.
+            touch /data/local/tmp/.proteomesh_module_updated 2>/dev/null || true
+        fi
+    fi
+
     if [ -x /data/adb/modules/zygisk_lsposed/daemon ]; then
         if ! pgrep -f lspd >/dev/null 2>&1; then
             setsid /data/adb/modules/zygisk_lsposed/daemon --from-service >/dev/null 2>&1 &
@@ -260,3 +297,6 @@ if [ -d /data/data/com.google.android.gms/files ]; then
     chmod -R u+rw /data/data/com.google.android.gms/files/ 2>/dev/null || true
     chown -R "$GMS_UID:$GMS_UID" /data/data/com.google.android.gms/files/ 2>/dev/null || true
 fi
+
+# Señal de sistema listo para tools/instance_manager.py
+touch /data/local/tmp/.proteomesh_boot_done 2>/dev/null || true

@@ -78,7 +78,8 @@
     "width": 1080,
     "height": 2400,
     "dpi": 409,
-    "fps": 90
+    "fps": 90,
+  "ppi": 409
   },
   "telephony": {
     "carrier_name": "Claro AR",

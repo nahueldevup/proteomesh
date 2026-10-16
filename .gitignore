@@ -21,6 +21,7 @@ build_gapps/
 *.orig
 __pycache__/
 *.py[cod]
+.probe/
 
 # IDE and OS metadata
 .DS_Store
