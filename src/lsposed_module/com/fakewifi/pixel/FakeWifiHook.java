@@ -44,8 +44,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class FakeWifiHook implements IXposedHookLoadPackage {
 
-    private static final String SSID = "Personal-WiFi-5.8G";
-    private static final String BSSID = "00:1a:2b:3c:4d:5e";
+    private static final String SSID = "Home-WiFi";
+    private static final String BSSID = "4e:b7:d0:03:31:a9";
     private static final String MAC = "4e:b7:d0:03:31:a9";
 
     private static final java.util.Map<Object, String> sCameraIds =
@@ -166,6 +166,21 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return getProp("persist.sys.fake.wifi_mac", "ce:5c:0d:36:77:87");
         }
 
+        public static String getWifiSsid() {
+            String v = getProp("persist.sys.fake.wifi_ssid", null);
+            if (v == null || v.isEmpty()) v = ProfileConfig.getString("generated_identity", "wifi_ssid", null);
+            if (v == null || v.isEmpty()) v = ProfileConfig.getString("network", "ssid_prefix", null);
+            if (v == null || v.isEmpty()) v = SSID;
+            return v;
+        }
+
+        public static String getWifiBssid() {
+            String v = getProp("persist.sys.fake.wifi_bssid", null);
+            if (v == null || v.isEmpty()) v = ProfileConfig.getString("generated_identity", "wifi_bssid", null);
+            if (v == null || v.isEmpty()) v = BSSID;
+            return v;
+        }
+
         public static String getBtMac() {
             return getProp("persist.sys.fake.bt_mac", "3c:28:6d:a1:b2:c4");
         }
@@ -192,69 +207,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
 
         public static String getCountryIso() {
             return ProfileConfig.getString("telephony", "country_iso", "ar");
-        }
-    }
-
-    private static List<Sensor> sCachedSensors = null;
-
-    private static synchronized List<Sensor> getPixel5Sensors() {
-        if (sCachedSensors != null) return sCachedSensors;
-        List<Sensor> list = new ArrayList<>();
-        try {
-            list.add(createSensor("BMI260 Accelerometer", "Bosch Sensortec", 1, 1, Sensor.TYPE_ACCELEROMETER,
-                    78.4532f, 0.00239282f, 0.18f, 2500, 3000, 3000, "android.sensor.accelerometer", 200000, 0));
-            list.add(createSensor("AK09918 Magnetometer", "Asahi Kasei Microdevices", 1, 2, Sensor.TYPE_MAGNETIC_FIELD,
-                    4912.0f, 0.15f, 0.10f, 10000, 600, 600, "android.sensor.magnetic_field", 200000, 0));
-            list.add(createSensor("BMI260 Gyroscope", "Bosch Sensortec", 1, 3, Sensor.TYPE_GYROSCOPE,
-                    34.906586f, 0.0010652644f, 0.55f, 2500, 3000, 3000, "android.sensor.gyroscope", 200000, 0));
-            list.add(createSensor("TMD3702 Ambient Light Sensor", "AMS AG", 1, 4, Sensor.TYPE_LIGHT,
-                    65535.0f, 1.0f, 0.09f, 200000, 0, 0, "android.sensor.light", 10000000, 2));
-            list.add(createSensor("BMP380 Pressure Sensor", "Bosch Sensortec", 1, 5, Sensor.TYPE_PRESSURE,
-                    1250.0f, 0.0018f, 0.015f, 20000, 300, 300, "android.sensor.pressure", 1000000, 0));
-            list.add(createSensor("TMD3702 Proximity Sensor", "AMS AG", 1, 6, Sensor.TYPE_PROXIMITY,
-                    5.0f, 5.0f, 0.18f, 200000, 0, 0, "android.sensor.proximity", 10000000, 3));
-            list.add(createSensor("Gravity", "Google", 1, 7, Sensor.TYPE_GRAVITY,
-                    78.4532f, 0.00239282f, 0.73f, 5000, 0, 0, "android.sensor.gravity", 100000, 0));
-            list.add(createSensor("Linear Acceleration", "Google", 1, 8, Sensor.TYPE_LINEAR_ACCELERATION,
-                    78.4532f, 0.00239282f, 0.73f, 5000, 0, 0, "android.sensor.linear_acceleration", 100000, 0));
-            list.add(createSensor("Rotation Vector", "Google", 1, 9, Sensor.TYPE_ROTATION_VECTOR,
-                    1.0f, 5.9604645e-8f, 0.73f, 5000, 0, 0, "android.sensor.rotation_vector", 100000, 0));
-            list.add(createSensor("Step Counter", "Bosch Sensortec", 1, 10, Sensor.TYPE_STEP_COUNTER,
-                    4294967295.0f, 1.0f, 0.02f, 0, 0, 0, "android.sensor.step_counter", 0, 2));
-            list.add(createSensor("Step Detector", "Bosch Sensortec", 1, 11, Sensor.TYPE_STEP_DETECTOR,
-                    1.0f, 1.0f, 0.02f, 0, 0, 0, "android.sensor.step_detector", 0, 6));
-        } catch (Throwable t) {
-            XposedBridge.log("FakeWifiPixel: Error initializing sensors: " + t);
-        }
-        sCachedSensors = list;
-        return list;
-    }
-
-    private static Sensor createSensor(String name, String vendor, int version, int handle, int type,
-                                      float maxRange, float resolution, float power, int minDelay,
-                                      int fifoReserved, int fifoMax, String stringType, int maxDelay, int flags) {
-        try {
-            Sensor s = (Sensor) XposedHelpers.newInstance(Sensor.class);
-            XposedHelpers.setObjectField(s, "mName", name);
-            XposedHelpers.setObjectField(s, "mVendor", vendor);
-            XposedHelpers.setIntField(s, "mVersion", version);
-            XposedHelpers.setIntField(s, "mHandle", handle);
-            XposedHelpers.setIntField(s, "mType", type);
-            XposedHelpers.setFloatField(s, "mMaxRange", maxRange);
-            XposedHelpers.setFloatField(s, "mResolution", resolution);
-            XposedHelpers.setFloatField(s, "mPower", power);
-            XposedHelpers.setIntField(s, "mMinDelay", minDelay);
-            XposedHelpers.setIntField(s, "mFifoReservedEventCount", fifoReserved);
-            XposedHelpers.setIntField(s, "mFifoMaxEventCount", fifoMax);
-            XposedHelpers.setObjectField(s, "mStringType", stringType);
-            XposedHelpers.setObjectField(s, "mRequiredPermission", "");
-            XposedHelpers.setIntField(s, "mMaxDelay", maxDelay);
-            XposedHelpers.setIntField(s, "mFlags", flags);
-            XposedHelpers.setIntField(s, "mId", handle);
-            return s;
-        } catch (Throwable t) {
-            XposedBridge.log("FakeWifiPixel: createSensor failed: " + t);
-            return null;
         }
     }
 
@@ -576,6 +528,11 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         XposedBridge.log("FakeWifiPixel: Hooking package: " + lpparam.packageName);
 
+        // Módulo F: Play Store y system_server conservan ABIs completas (x86_64 para Chrome)
+        final boolean isAbiTarget = !"android".equals(lpparam.packageName) && !"com.android.vending".equals(lpparam.packageName);
+        // Módulo C: system_server conserva los valores reales de Ajustes/ADB
+        final boolean isSystemServer = "android".equals(lpparam.packageName);
+
         // Hook Pixelscan specifically
         if ("net.pixelscan.check".equals(lpparam.packageName)) {
             try {
@@ -889,10 +846,10 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     String key = (String) param.args[0];
-                    if ("ro.product.cpu.abi".equals(key)) param.setResult("arm64-v8a");
-                    else if ("ro.product.cpu.abilist".equals(key)) param.setResult("arm64-v8a,armeabi-v7a,armeabi");
-                    else if ("ro.product.cpu.abilist64".equals(key)) param.setResult("arm64-v8a");
-                    else if ("ro.product.cpu.abilist32".equals(key)) param.setResult("armeabi-v7a,armeabi");
+                    if (isAbiTarget && "ro.product.cpu.abi".equals(key)) param.setResult("arm64-v8a");
+                    else if (isAbiTarget && "ro.product.cpu.abilist".equals(key)) param.setResult("arm64-v8a,armeabi-v7a,armeabi");
+                    else if (isAbiTarget && "ro.product.cpu.abilist64".equals(key)) param.setResult("arm64-v8a");
+                    else if (isAbiTarget && "ro.product.cpu.abilist32".equals(key)) param.setResult("armeabi-v7a,armeabi");
                     else if ("ro.board.platform".equals(key)) param.setResult(fPlatform);
                     else if ("ro.hardware".equals(key)) param.setResult(fHw);
                     else if ("ro.build.tags".equals(key)) param.setResult("release-keys");
@@ -929,7 +886,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String name = (String) param.args[1];
-                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                        if (!isSystemServer && ("development_settings_enabled".equals(name) || "adb_enabled".equals(name))) {
                             param.setResult(0);
                         }
                     }
@@ -941,7 +898,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String name = (String) param.args[1];
-                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                        if (!isSystemServer && ("development_settings_enabled".equals(name) || "adb_enabled".equals(name))) {
                             param.setResult("0");
                         }
                     }
@@ -955,7 +912,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String name = (String) param.args[1];
-                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                        if (!isSystemServer && ("development_settings_enabled".equals(name) || "adb_enabled".equals(name))) {
                             param.setResult(0);
                         }
                     }
@@ -967,7 +924,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String name = (String) param.args[1];
-                        if ("development_settings_enabled".equals(name) || "adb_enabled".equals(name)) {
+                        if (!isSystemServer && ("development_settings_enabled".equals(name) || "adb_enabled".equals(name))) {
                             param.setResult("0");
                         } else if ("android_id".equals(name)) {
                             param.setResult(IdentityManager.getAndroidId());
@@ -976,6 +933,34 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 };
                 XposedHelpers.findAndHookMethod(settingsSecure, "getString", contentResolverClass, String.class, secureStringHook);
             }
+
+            // Módulo C: las apps ven un timeout de pantalla plausible; el sistema permanece despierto
+            try {
+                Class<?> settingsSystem = XposedHelpers.findClass("android.provider.Settings.System", lpparam.classLoader);
+                if (settingsSystem != null && contentResolverClass != null) {
+                    XC_MethodHook timeoutIntHook = new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!isSystemServer && "screen_off_timeout".equals(param.args[1])) {
+                                param.setResult(60000);
+                            }
+                        }
+                    };
+                    XposedHelpers.findAndHookMethod(settingsSystem, "getInt", contentResolverClass, String.class, timeoutIntHook);
+                    XposedHelpers.findAndHookMethod(settingsSystem, "getInt", contentResolverClass, String.class, int.class, timeoutIntHook);
+
+                    XC_MethodHook timeoutLongHook = new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!isSystemServer && "screen_off_timeout".equals(param.args[1])) {
+                                param.setResult(60000L);
+                            }
+                        }
+                    };
+                    XposedHelpers.findAndHookMethod(settingsSystem, "getLong", contentResolverClass, String.class, timeoutLongHook);
+                    XposedHelpers.findAndHookMethod(settingsSystem, "getLong", contentResolverClass, String.class, long.class, timeoutLongHook);
+                }
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: Settings hook error: " + t);
         }
@@ -1093,14 +1078,14 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(WifiInfo.class, "getSSID", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult("\"" + SSID + "\"");
+                    param.setResult("\"" + IdentityManager.getWifiSsid() + "\"");
                 }
             });
 
             XposedHelpers.findAndHookMethod(WifiInfo.class, "getBSSID", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    param.setResult(BSSID);
+                    param.setResult(IdentityManager.getWifiBssid());
                 }
             });
 
@@ -1167,7 +1152,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         XposedHelpers.setIntField(info, "mRssi", -52);
                         XposedHelpers.setIntField(info, "mLinkSpeed", 866);
                         XposedHelpers.setIntField(info, "mFrequency", 5180);
-                        XposedHelpers.setObjectField(info, "mBSSID", BSSID);
+                        XposedHelpers.setObjectField(info, "mBSSID", IdentityManager.getWifiBssid());
                         XposedHelpers.setObjectField(info, "mMacAddress", IdentityManager.getWifiMac());
                         XposedHelpers.setObjectField(info, "mSupplicantState", SupplicantState.COMPLETED);
                         param.setResult(info);
