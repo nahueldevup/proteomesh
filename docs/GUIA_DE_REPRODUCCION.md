@@ -41,6 +41,13 @@ bash src/lsposed_module/build_apk.sh
 ```
 *Compila con D8/R8 y firma `modules/FakeWifiPixel.apk`.*
 
+### D. Tests Host-side del Shim Ashmem (`tests/ashmem/`)
+El shim incluye un selftest que corre en Linux (sin Android) con `LD_PRELOAD`:
+```bash
+bash tests/ashmem/run_host_test.sh
+```
+*Compila el shim con `src/libpixel_hw/build.sh` y valida la API ashmem completa (`open`, sellos `F_ADD_SEALS`/`F_GET_SEALS`, los 10 ioctls `0x7701-0x770a`), la identidad por `readlink` tras `dup`/`F_DUPFD`/`SCM_RIGHTS`, la limpieza de marcas en `dup2` y la política `device.ashmem` (off/on/default). Salida esperada: `RESULT: OK` (el binario generado queda en `build/tests/`).*
+
 ---
 
 ## 3. Construcción de la Imagen Docker Base
@@ -176,3 +183,12 @@ Valores esperados (todos provienen del `profile.json` de la instancia; el sistem
 | Redmi 13C (`gale`) | `720x1600@90` / `[90, 60]` / 90 | 260 |
 
 Si la sonda reporta `refreshRate=30.0` y `mode=720x1280@30`, el módulo LSPosed no está cargado en la instancia (dex/scope cacheados): reiniciar el contenedor y reintentar. Si la sonda no aparece hookeada, verificar que el paquete esté en el scope (`manage-spoof status`).
+
+### D. Verificación de Ashmem y su Política (`device.ashmem`)
+El shim emula `/dev/ashmem` sobre `memfd_create` para las apps (requisito de Chromium 154+/Brave/Meta). Su semántica se valida en el host con `bash tests/ashmem/run_host_test.sh` (§2.D) y, dentro de la instancia, el marcador de política debe existir:
+
+```bash
+$A shell cat /data/local/tmp/fake_proc/ashmem_present   # esperado: 1 (default)
+```
+
+Para simular un equipo **sin** nodo ashmem, poner `device.ashmem: false` en el `profile.json` de la instancia y reiniciar: `profile-loader` reescribe el marcador y el shim responde `ENOENT` coherente en `open`/`access`/`stat` (las apps usan su fallback memfd nativo). Este es el banco de pruebas A/B para Chromium cuando una app legacy dependa del nodo real.

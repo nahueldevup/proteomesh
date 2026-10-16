@@ -8,12 +8,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_64="${SCRIPT_DIR}/../../build_magisk/system/lib64/libpixel_hw.so"
 TARGET_32="${SCRIPT_DIR}/../../build_magisk/system/lib/libpixel_hw.so"
 
+# Algunos entornos (p.ej. AppImage) rompen argv[0] del driver gcc y este no
+# encuentra cc1. En ese caso se le indica con -B el directorio real de cc1.
+CC=(gcc)
+if ! "${CC[0]}" -print-prog-name=cc1 2>/dev/null | grep -q '^/'; then
+    CC1DIR="$("${CC[0]}" -print-search-dirs 2>/dev/null | sed -n 's/^libraries: =//p' | cut -d: -f1)"
+    if [[ -n "${CC1DIR}" && -d "${CC1DIR}" ]]; then
+        [[ "${CC1DIR}" == */ ]] || CC1DIR="${CC1DIR}/"
+        CC+=("-B${CC1DIR}")
+        echo "[*] gcc sin cc1 resoluble; usando -B${CC1DIR}"
+    fi
+fi
+
 echo "[*] Compiling libpixel_hw (64-bit)..."
-gcc -m64 -shared -fPIC -O2 -nostdlib -fno-stack-protector \
+"${CC[@]}" -m64 -shared -fPIC -O2 -nostdlib -fno-stack-protector \
     "${SCRIPT_DIR}/pixel_hw64.c" -o "${TARGET_64}" -ldl
 
 echo "[*] Compiling libpixel_hw (32-bit)..."
-gcc -m32 -shared -fPIC -O2 -nostdlib -fno-stack-protector \
+"${CC[@]}" -m32 -shared -fPIC -O2 -nostdlib -fno-stack-protector \
     "${SCRIPT_DIR}/pixel_hw32.c" -o "${TARGET_32}" -ldl
 
 echo "[+] Compilation finished successfully:"

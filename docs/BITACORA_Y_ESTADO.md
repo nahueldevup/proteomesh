@@ -34,6 +34,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | **Fingerprint Pro SDK (Smart Signals)** | **100% Funcional** | Saneamiento de `build.prop`, wrappers de `mountstats`/`getprop`, filtro de paquetes y hooks en `Settings.Global`/`FingerprintResponse`. | **Suspect Score: 0**, Emulator: `Not detected`, Root: `Not detected`, Developer Tools: `Not detected`. |
 | **Identidad Dinámica y Perfiles (GeeLark-style)** | **100% Funcional** | `IdentityManager` en `FakeWifiHook.java` (IMEI, MEID, Serial, Android ID, MACs, IMSI, ICCID) + CLI `/system/bin/set-device-profile`. | IMEI con algoritmo Luhn, Serial Pixel 5 y MACs con OUI de Google visibles en Ajustes (`com.android.settings`), Device Info y rotación al vuelo con `set-device-profile random`. |
 | **Arquitectura Profile-Driven (`profile.json`)** | **100% Funcional** | Esquema universal JSON (`profiles/`) + binario nativo estático C `/system/bin/profile-loader` + `FakeWifiHook` reactivo. | Toda la identidad del teléfono, SoC, cámaras, frecuencias y operadora se definen en un solo archivo JSON, sin tocar código fuente ni scripts. |
+| **Compatibilidad Ashmem (Chromium 154+ / Memfd)** | **Funcional (host-verificado; regresión on-device pendiente)** | Shim v2 de `libpixel_hw.so`: `/dev/ashmem` sobre `memfd_create` con API completa (`F_ADD_SEALS`/`F_GET_SEALS`, 10 ioctls `0x7701-0x770a`), identidad por `readlink` de file-description (`dup`/`F_DUPFD`/`SCM_RIGHTS`), coherencia de `stat`/`access`/`readlink`/`fopen` y política `device.ashmem` (`fake_proc/ashmem_present`). | `tests/ashmem/run_host_test.sh` (35 assertions `LD_PRELOAD` sobre Linux): `RESULT: OK`; smoke del writer `apply_ashmem` en `profile-loader` (false→0, true→1, default→1). |
 
 ---
 
@@ -318,6 +319,18 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | `v-tapas` | 5606 | 23028RA60L / SM6225 (SD685) | `Xiaomi` `bengal` | 8 GB | `1080x2400 @395` | `qcom` / `qcom` | Claro-BFA4 | `1080x2400@120` @395ppi |
 
 * **Nota sobre almacenamiento:** `df` ejecutado por ADB shell muestra el disco del **host** (447 GB) porque el hook `statfs/statvfs` de `libpixel_hw.so` viaja por `LD_PRELOAD` y solo aplica a procesos de aplicaciones (no a `adbd`). El almacenamiento del perfil (128/256 GB) debe verificarse con apps de diagnóstico dentro de la instancia, no por shell.
+
+### 26. Compatibilidad de Ashmem con Apps Modernas (Chromium 154+, Memfd y Kernel 5.18+)
+* **Problema:** Los kernels modernos (5.18+) eliminaron `/dev/ashmem`. Las apps basadas en Chromium 154+ (Chrome, Brave, Meta) exigen la API ashmem completa y contra el shim anterior fallaban en tres frentes: (a) `F_ADD_SEALS`/`F_GET_SEALS` (1033/1034) no se atendían, rompiendo el contrato `IsMemfdFd` (Chromium exige `GROW|SHRINK` vía `readlink` de `/proc/self/fd`); (b) la emulación de ioctls reconocía una lista incompleta de opcodes (`ENOTTY` → SIGSEGV en el allocador gráfico); (c) `stat`/`access`/`readlink` de `/dev/ashmem` no eran coherentes (mismatch que los anti-bot detectan).
+* **Solución (shim v2 en `pixel_hw64.c`/`pixel_hw32.c`):**
+  * Identidad por *file-description*: `readlink("/proc/self/fd/N")` con prefijo `/memfd:ashmem` (sobrevive `dup`, `F_DUPFD` y `SCM_RIGHTS`); clasificación solo en comandos ashmem (fcntl 1033/1034, ioctl `0x7701-0x770a`) para no castigar el hot-path de Binder.
+  * API completa: tabla de los 10 ioctls, `GET_SIZE` vía `lseek(CUR/END/SET)` (sin depender del layout de `struct stat`), nombre y `prot` en estado por fd (128 slots), `F_ADD_SEALS` sintético acumulativo y `F_GET_SEALS` = `0x6 | seals`.
+  * Coherencia de FS: `stat`/`lstat`/`fstatat`/`statx`/`readlink(at)`/`fopen` de `/dev/ashmem` → dispositivo de caracteres (`/dev/null`, 0666); `access` `F_OK/R_OK/W_OK`→0 y `X_OK`→`EACCES`.
+  * `errno` POSIX con doble vía `__errno` (bionic) / `__errno_location` (glibc) y `syscall_ret` que normaliza `-errno`; se exporta además la familia `__open_2`/`__open64_2`/`__openat_2`/`__openat64_2`.
+  * `dup2`/`dup3` limpian las marcas del descriptor destino (sin falsos positivos en `fcntl` para pipes/binder).
+  * Política por dispositivo: `device.ashmem` → `fake_proc/ashmem_present` (default `true`); `profile-loader` la escribe en cada boot (`apply_ashmem`) y el shim, con `false`, responde `ENOENT` coherente en `open`/`access`/`stat` (fallback memfd nativo de las apps).
+* **Verificación host-side (`tests/ashmem/ashmem_selftest.c` + `run_host_test.sh`):** 35 assertions con `LD_PRELOAD` sobre Linux: open/readlink memfd, sellos, los 10 ioctls, `F_GETFD`/`F_SETFD` (comandos con/sin argumento), `dup`/`F_DUPFD`, limpieza en `dup2` (pipe → `EINVAL` real), `SCM_RIGHTS` con fork (sellos y tamaño en el proceso hijo) y política off/on/default → `RESULT: OK`. El writer se validó además con smoke test del loader (perfil real: false→`0`, true→`1`, sin clave→`1`).
+* **Pendiente:** regresión on-device (reconstruir imagen, recrear instancia y probar Chrome/Brave real) — los binarios del selftest host son glibc y no corren en Android; la verificación funcional en dispositivo se hará con la imagen nueva.
 
 ---
 

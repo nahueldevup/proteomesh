@@ -68,6 +68,20 @@ static long raw_ftruncate(int fd, unsigned long length) {
     return rax;
 }
 
+static long raw_lseek(int fd, long offset, int whence) {
+    register long rax asm("rax") = 8; // SYS_lseek (x86_64)
+    register long rdi asm("rdi") = (long)fd;
+    register long rsi asm("rsi") = offset;
+    register long rdx asm("rdx") = (long)whence;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi), "r" (rsi), "r" (rdx)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
 // --- Módulo A/B: seguimiento de descriptores en memoria ---
 #define FD_TABLE_SIZE 65536
 static unsigned char s_ashmem_fds[FD_TABLE_SIZE];
@@ -461,7 +475,7 @@ static void scale_blocks(const char *path, void *buf) {
 
 int statvfs(const char *path, void *buf) {
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statvfs");
+    if (!real_fn) real_fn = dlsym_next("statvfs");
     int ret = real_fn ? real_fn(path, buf) : -1;
     if (ret == 0) scale_blocks(path, buf);
     return ret;
@@ -469,8 +483,8 @@ int statvfs(const char *path, void *buf) {
 
 int statvfs64(const char *path, void *buf) {
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statvfs64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statvfs");
+    if (!real_fn) real_fn = dlsym_next("statvfs64");
+    if (!real_fn) real_fn = dlsym_next("statvfs");
     int ret = real_fn ? real_fn(path, buf) : -1;
     if (ret == 0) scale_blocks(path, buf);
     return ret;
@@ -478,7 +492,7 @@ int statvfs64(const char *path, void *buf) {
 
 int statfs(const char *path, void *buf) {
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statfs");
+    if (!real_fn) real_fn = dlsym_next("statfs");
     int ret = real_fn ? real_fn(path, buf) : -1;
     if (ret == 0) scale_blocks(path, buf);
     return ret;
@@ -486,8 +500,8 @@ int statfs(const char *path, void *buf) {
 
 int statfs64(const char *path, void *buf) {
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statfs64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statfs");
+    if (!real_fn) real_fn = dlsym_next("statfs64");
+    if (!real_fn) real_fn = dlsym_next("statfs");
     int ret = real_fn ? real_fn(path, buf) : -1;
     if (ret == 0) scale_blocks(path, buf);
     return ret;
@@ -506,7 +520,7 @@ struct ifaddrs_stub {
 
 int getifaddrs(struct ifaddrs_stub **ifap) {
     static int (*real_fn)(struct ifaddrs_stub **) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "getifaddrs");
+    if (!real_fn) real_fn = dlsym_next("getifaddrs");
     int res = real_fn ? real_fn(ifap) : -1;
     if (res == 0 && ifap && *ifap) {
         if (my_getuid() >= 10000) {
@@ -542,12 +556,12 @@ char *getenv(const char *name) {
         return (char *)0;
     }
     static char *(*real_fn)(const char *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "getenv");
+    if (!real_fn) real_fn = dlsym_next("getenv");
     return real_fn ? real_fn(name) : (char *)0;
 }
 
 __attribute__((constructor)) static void init_pixel_hw(void) {
-    int (*real_unsetenv)(const char *) = dlsym(get_libc_handle(), "unsetenv");
+    int (*real_unsetenv)(const char *) = dlsym_next("unsetenv");
     if (real_unsetenv) {
         real_unsetenv("LD_PRELOAD");
     }
@@ -684,93 +698,283 @@ int __system_property_get(const char *name, char *value) {
         return len;
     }
     static int (*real_fn)(const char *, char *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "__system_property_get");
+    if (!real_fn) real_fn = dlsym_next("__system_property_get");
     return real_fn ? real_fn(name, value) : 0;
 }
 
 // 10. Wrappers de Archivos (stat, access, open, fopen)
 #define ENOENT_VAL 2
+#define EACCES_VAL 13
 
-static void set_enoent(void) {
-    int *(*real_errno)(void) = dlsym(get_libc_handle(), "__errno");
+static void set_errno_val(int val) {
+    static int *(*real_errno)(void) = (void *)0;
+    if (!real_errno) {
+        real_errno = (int *(*)(void))dlsym_next("__errno");
+        if (!real_errno) real_errno = (int *(*)(void))dlsym_next("__errno_location");
+        if (!real_errno) real_errno = (int *(*)(void))dlsym_next("__errno");
+        if (!real_errno) real_errno = (int *(*)(void))dlsym_next("__errno_location");
+    }
     if (real_errno) {
         int *err = real_errno();
-        if (err) *err = ENOENT_VAL;
+        if (err) *err = val;
     }
 }
 
+static void set_enoent(void) { set_errno_val(ENOENT_VAL); }
+
+static long syscall_ret(long rax) {
+    if (rax < 0 && rax >= -4095) {
+        set_errno_val((int)-rax);
+        return -1;
+    }
+    return rax;
+}
+
+// 10.0 Ashmem v2: identidad por file-description (readlink /proc/self/fd/N),
+// fcntl 1033/1034, tabla completa de ioctls y política por perfil.
+static void build_fake_proc_path(char *dst, unsigned long dstsz, const char *name) {
+    const char *base = "/data/local/tmp/fake_proc";
+    char *(*real_getenv)(const char *) = (char *(*)(const char *))dlsym_next("getenv");
+    if (real_getenv) {
+        const char *env = real_getenv("PIXEL_HW_FAKE_PROC");
+        if (env && env[0]) base = env;
+    }
+    unsigned long i = 0;
+    while (base[i] && i < dstsz - 2) { dst[i] = base[i]; i++; }
+    if (i == 0 || dst[i - 1] != '/') dst[i++] = '/';
+    unsigned long j = 0;
+    while (name[j] && i < dstsz - 1) { dst[i++] = name[j++]; }
+    dst[i] = '\0';
+}
+
+// Política device.ashmem: fake_proc/ashmem_present == "0" => /dev/ashmem ausente
+static int ashmem_policy_present(void) {
+    char path[160];
+    build_fake_proc_path(path, sizeof(path), "ashmem_present");
+    long fd = raw_open(path, 0);
+    if (fd < 0) return 1;
+    char b[8];
+    long n = raw_read((int)fd, b, sizeof(b) - 1);
+    raw_close((int)fd);
+    if (n > 0) {
+        b[n] = '\0';
+        if (b[0] == '0') return 0;
+    }
+    return 1;
+}
+
+#define ASHMEM_FD_MAX 128
+struct ashmem_state {
+    int fd;
+    int prot;
+    int seals;
+    char name[32];
+};
+static struct ashmem_state s_ashmem_state[ASHMEM_FD_MAX];
+static int s_ashmem_state_init = 0;
+
+static void ashmem_state_table_init(void) {
+    if (s_ashmem_state_init) return;
+    s_ashmem_state_init = 1;
+    for (int i = 0; i < ASHMEM_FD_MAX; i++) {
+        s_ashmem_state[i].fd = -1;
+        s_ashmem_state[i].prot = 3;
+        s_ashmem_state[i].seals = 0;
+        s_ashmem_state[i].name[0] = '\0';
+    }
+}
+
+static struct ashmem_state *ashmem_state_get(int fd) {
+    ashmem_state_table_init();
+    if (fd < 0) return (void *)0;
+    for (int i = 0; i < ASHMEM_FD_MAX; i++) {
+        if (s_ashmem_state[i].fd == fd) return &s_ashmem_state[i];
+    }
+    return (void *)0;
+}
+
+static struct ashmem_state *ashmem_state_new(int fd) {
+    ashmem_state_table_init();
+    struct ashmem_state *st = ashmem_state_get(fd);
+    if (st) {
+        st->prot = 3;
+        st->seals = 0;
+        st->name[0] = '\0';
+        return st;
+    }
+    for (int i = 0; i < ASHMEM_FD_MAX; i++) {
+        if (s_ashmem_state[i].fd < 0) {
+            st = &s_ashmem_state[i];
+            st->fd = fd;
+            st->prot = 3;
+            st->seals = 0;
+            st->name[0] = '\0';
+            return st;
+        }
+    }
+    return (void *)0;
+}
+
+static void ashmem_state_free(int fd) {
+    struct ashmem_state *st = ashmem_state_get(fd);
+    if (st) st->fd = -1;
+}
+
+// Clasificación por file-description: sobrevive dup, fork y paso de fds por
+// Binder/SCM_RIGHTS (a diferencia del bitmap, que solo cubre el fd original).
+static int fd_is_ashmem(int fd) {
+    if (!fd_in_range(fd)) return 0;
+    if (s_ashmem_fds[fd]) return 1;
+    char linkpath[32];
+    const char *prefix = "/proc/self/fd/";
+    int k = 0;
+    while (prefix[k]) { linkpath[k] = prefix[k]; k++; }
+    if (fd == 0) {
+        linkpath[k++] = '0';
+    } else {
+        char num[12];
+        int t = 0;
+        int v = fd;
+        while (v > 0) { num[t++] = (char)('0' + v % 10); v /= 10; }
+        while (t > 0) linkpath[k++] = num[--t];
+    }
+    linkpath[k] = '\0';
+    long (*real_readlink)(const char *, char *, unsigned long) =
+        (long (*)(const char *, char *, unsigned long))dlsym_next("readlink");
+    if (!real_readlink) real_readlink = (long (*)(const char *, char *, unsigned long))dlsym_next("readlink");
+    if (!real_readlink) return 0;
+    char target[64];
+    long n = real_readlink(linkpath, target, sizeof(target) - 1);
+    if (n > 0) {
+        target[n] = '\0';
+        if (str_starts_with(target, "/memfd:ashmem")) {
+            fd_mark(s_ashmem_fds, fd);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ashmem_open(void) {
+    if (!ashmem_policy_present()) {
+        set_enoent();
+        return -1;
+    }
+    long mfd = raw_memfd_create("ashmem", 0x0001); // MFD_CLOEXEC
+    if (mfd < 0) return (int)syscall_ret(mfd);
+    fd_mark(s_ashmem_fds, (int)mfd);
+    ashmem_state_new((int)mfd);
+    return (int)mfd;
+}
+
+static int path_is_ashmem(const char *path) {
+    return path && str_eq(path, "/dev/ashmem");
+}
+
+// Coherencia stat/readlink: /dev/ashmem se resuelve sobre /dev/null (char 0666),
+// o ENOENT si la política del perfil lo declara ausente.
+static int ashmem_fake_path(const char **path) {
+    if (!path_is_ashmem(*path)) return 0;
+    if (!ashmem_policy_present()) {
+        set_enoent();
+        return -1;
+    }
+    *path = "/dev/null";
+    return 1;
+}
+
 int stat(const char *path, void *buf) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "stat");
+    if (!real_fn) real_fn = dlsym_next("stat");
     return real_fn ? real_fn(path, buf) : -1;
 }
 
 int stat64(const char *path, void *buf) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "stat64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "stat");
+    if (!real_fn) real_fn = dlsym_next("stat64");
+    if (!real_fn) real_fn = dlsym_next("stat");
     return real_fn ? real_fn(path, buf) : -1;
 }
 
 int lstat(const char *path, void *buf) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "lstat");
+    if (!real_fn) real_fn = dlsym_next("lstat");
     return real_fn ? real_fn(path, buf) : -1;
 }
 
 int lstat64(const char *path, void *buf) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "lstat64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "lstat");
+    if (!real_fn) real_fn = dlsym_next("lstat64");
+    if (!real_fn) real_fn = dlsym_next("lstat");
     return real_fn ? real_fn(path, buf) : -1;
 }
 
 int access(const char *path, int mode) {
+    if (path_is_ashmem(path)) {
+        if (!ashmem_policy_present()) {
+            set_enoent();
+            return -1;
+        }
+        if (mode & 1) { // X_OK: /dev/ashmem real es 0666 (sin execute)
+            set_errno_val(EACCES_VAL);
+            return -1;
+        }
+        return 0;
+    }
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, int) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "access");
+    if (!real_fn) real_fn = dlsym_next("access");
     return real_fn ? real_fn(path, mode) : -1;
 }
 
 int faccessat(int dirfd, const char *path, int mode, int flags) {
+    if (path_is_ashmem(path)) {
+        if (!ashmem_policy_present()) {
+            set_enoent();
+            return -1;
+        }
+        if (mode & 1) { // X_OK
+            set_errno_val(EACCES_VAL);
+            return -1;
+        }
+        return 0;
+    }
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, int) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "faccessat");
+    if (!real_fn) real_fn = dlsym_next("faccessat");
     return real_fn ? real_fn(dirfd, path, mode, flags) : -1;
-}
-
-static int ashmem_fd(void) {
-    long mfd = raw_memfd_create("ashmem", 0x0001); // MFD_CLOEXEC
-    if (mfd >= 0) fd_mark(s_ashmem_fds, (int)mfd);
-    return (int)mfd;
 }
 
 static void mark_net_fd(const char *path, int fd) {
@@ -785,7 +989,7 @@ int open(const char *path, int flags, ...) {
         return -1;
     }
     if (path && str_eq(path, "/dev/ashmem")) {
-        return ashmem_fd();
+        return ashmem_open();
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, int, ...) = (void *)0;
@@ -811,7 +1015,7 @@ int open64(const char *path, int flags, ...) {
         return -1;
     }
     if (path && str_eq(path, "/dev/ashmem")) {
-        return ashmem_fd();
+        return ashmem_open();
     }
     path = redirect_path(path);
     static int (*real_fn)(const char *, int, ...) = (void *)0;
@@ -838,7 +1042,7 @@ int openat(int dirfd, const char *path, int flags, ...) {
         return -1;
     }
     if (path && str_eq(path, "/dev/ashmem")) {
-        return ashmem_fd();
+        return ashmem_open();
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
@@ -864,7 +1068,7 @@ int openat64(int dirfd, const char *path, int flags, ...) {
         return -1;
     }
     if (path && str_eq(path, "/dev/ashmem")) {
-        return ashmem_fd();
+        return ashmem_open();
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
@@ -885,8 +1089,17 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     return fd;
 }
 
+// Variantes FORTIFY de Bionic/glibc (rutas __open_2/__openat_2 de libc)
+int __open_2(const char *path, int flags) { return open(path, flags); }
+int __open64_2(const char *path, int flags) { return open64(path, flags); }
+int __openat_2(int dirfd, const char *path, int flags) { return openat(dirfd, path, flags); }
+int __openat64_2(int dirfd, const char *path, int flags) { return openat64(dirfd, path, flags); }
+
 int close(int fd) {
-    fd_clear(s_ashmem_fds, fd);
+    if (fd_in_range(fd) && s_ashmem_fds[fd]) {
+        s_ashmem_fds[fd] = 0;
+        ashmem_state_free(fd);
+    }
     fd_clear(s_tcp_fds, fd);
     fd_clear(s_dev_fds, fd);
     static int (*real_fn)(int) = (void *)0;
@@ -894,62 +1107,163 @@ int close(int fd) {
     return real_fn ? real_fn(fd) : -1;
 }
 
+// Comandos de fcntl que llevan argumento (Linux genérico x86/x86_64)
+static int fcntl_cmd_has_arg(int cmd) {
+    return cmd == 0 || cmd == 2 || cmd == 4 || cmd == 5 || cmd == 6 || cmd == 7 ||
+           cmd == 8 || cmd == 10 || cmd == 15 || cmd == 16 ||
+           cmd == 1024 || cmd == 1026 || cmd == 1030 || cmd == 1031 || cmd == 1033;
+}
+
+// Sellos de ashmem: se sintetizan y se recuerdan por fd. Nunca se sella de
+// verdad (rompería ASHMEM_SET_SIZE/ftruncate), pero se reportan siempre
+// F_SEAL_GROW|F_SEAL_SHRINK porque IsMemfdFd() de Chromium los exige.
+static int ashmem_fcntl(int fd, int cmd, unsigned long arg) {
+    if (cmd == 1033) { // F_ADD_SEALS: éxito sintético, acumular
+        struct ashmem_state *st = ashmem_state_new(fd);
+        if (st) st->seals |= (int)arg;
+        return 0;
+    }
+    if (cmd == 1034) { // F_GET_SEALS
+        struct ashmem_state *st = ashmem_state_get(fd);
+        return 0x0006 | (st ? st->seals : 0);
+    }
+    return -2; // no es un comando ashmem
+}
+
 int fcntl(int fd, int cmd, ...) {
-    if (cmd == 1034 && fd_test(s_ashmem_fds, fd)) {
-        return 0x0004 | 0x0002; // F_SEAL_GROW | F_SEAL_SHRINK
+    if (cmd == 1033 || cmd == 1034) {
+        if (fd_is_ashmem(fd)) {
+            __builtin_va_list args;
+            __builtin_va_start(args, cmd);
+            unsigned long arg = __builtin_va_arg(args, unsigned long);
+            __builtin_va_end(args);
+            return ashmem_fcntl(fd, cmd, arg);
+        }
     }
     static int (*real_fn)(int, int, ...) = (void *)0;
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
     if (!real_fn) return -1;
-    __builtin_va_list args;
-    __builtin_va_start(args, cmd);
-    unsigned long arg = __builtin_va_arg(args, unsigned long);
-    __builtin_va_end(args);
-    return real_fn(fd, cmd, arg);
+    if (fcntl_cmd_has_arg(cmd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return real_fn(fd, cmd, arg);
+    }
+    return real_fn(fd, cmd);
 }
 
 int fcntl64(int fd, int cmd, ...) {
-    if (cmd == 1034 && fd_test(s_ashmem_fds, fd)) {
-        return 0x0004 | 0x0002; // F_SEAL_GROW | F_SEAL_SHRINK
+    if (cmd == 1033 || cmd == 1034) {
+        if (fd_is_ashmem(fd)) {
+            __builtin_va_list args;
+            __builtin_va_start(args, cmd);
+            unsigned long arg = __builtin_va_arg(args, unsigned long);
+            __builtin_va_end(args);
+            return ashmem_fcntl(fd, cmd, arg);
+        }
     }
     static int (*real_fn)(int, int, ...) = (void *)0;
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl64");
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
     if (!real_fn) return -1;
-    __builtin_va_list args;
-    __builtin_va_start(args, cmd);
-    unsigned long arg = __builtin_va_arg(args, unsigned long);
-    __builtin_va_end(args);
-    return real_fn(fd, cmd, arg);
+    if (fcntl_cmd_has_arg(cmd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return real_fn(fd, cmd, arg);
+    }
+    return real_fn(fd, cmd);
+}
+
+int dup2(int oldfd, int newfd) {
+    if (fd_in_range(newfd)) {
+        fd_clear(s_ashmem_fds, newfd);
+        fd_clear(s_tcp_fds, newfd);
+        fd_clear(s_dev_fds, newfd);
+        ashmem_state_free(newfd);
+    }
+    static int (*real_fn)(int, int) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int, int))dlsym_next("dup2");
+    return real_fn ? real_fn(oldfd, newfd) : -1;
+}
+
+int dup3(int oldfd, int newfd, int flags) {
+    if (fd_in_range(newfd)) {
+        fd_clear(s_ashmem_fds, newfd);
+        fd_clear(s_tcp_fds, newfd);
+        fd_clear(s_dev_fds, newfd);
+        ashmem_state_free(newfd);
+    }
+    static int (*real_fn)(int, int, int) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int, int, int))dlsym_next("dup3");
+    return real_fn ? real_fn(oldfd, newfd, flags) : -1;
+}
+
+#define ASHMEM_IS_OPCODE(r) ((r) >= 0x7701 && (r) <= 0x770a)
+
+static int ioctl_cmd_has_arg(unsigned long request) {
+    return request == 0x7701 || request == 0x7702 || request == 0x7703 ||
+           request == 0x7705 || request == 0x7707 || request == 0x7708;
 }
 
 int ioctl(int fd, unsigned long request, ...) {
-    if (fd_test(s_ashmem_fds, fd)) {
-        __builtin_va_list args;
-        __builtin_va_start(args, request);
-        void *arg = __builtin_va_arg(args, void *);
-        __builtin_va_end(args);
+    // Solo se clasifica el fd para opcodes ashmem: evita un readlink por
+    // cada ioctl de Binder/socket/etc. en el camino caliente.
+    if (ASHMEM_IS_OPCODE(request) && fd_is_ashmem(fd)) {
+        unsigned long arg = 0;
+        if (ioctl_cmd_has_arg(request)) {
+            __builtin_va_list args;
+            __builtin_va_start(args, request);
+            arg = __builtin_va_arg(args, unsigned long);
+            __builtin_va_end(args);
+        }
         switch (request) {
-            case 0x7706: // ASHMEM_GET_PROT_MASK
-                return 3; // PROT_READ | PROT_WRITE
-            case 0x7705: // ASHMEM_SET_PROT_MASK
+            case 0x7701: { // ASHMEM_SET_NAME
+                struct ashmem_state *st = ashmem_state_new(fd);
+                const char *src = (const char *)arg;
+                if (st && src) {
+                    int i = 0;
+                    while (src[i] && i < (int)sizeof(st->name) - 1) { st->name[i] = src[i]; i++; }
+                    st->name[i] = '\0';
+                }
                 return 0;
-            case 0x7703: // ASHMEM_SET_SIZE
-                return (int)raw_ftruncate(fd, (unsigned long)arg);
-            case 0x7701: // ASHMEM_SET_NAME
-                return 0;
+            }
             case 0x7702: { // ASHMEM_GET_NAME
+                struct ashmem_state *st = ashmem_state_get(fd);
                 char *dst = (char *)arg;
+                const char *nm = (st && st->name[0]) ? st->name : "ashmem";
                 if (dst) {
-                    const char *nm = "ashmem";
                     int i = 0;
                     while (nm[i]) { dst[i] = nm[i]; i++; }
                     dst[i] = '\0';
                 }
                 return 0;
             }
+            case 0x7703: // ASHMEM_SET_SIZE
+                return (int)syscall_ret(raw_ftruncate(fd, (unsigned long)arg));
+            case 0x7704: { // ASHMEM_GET_SIZE (vía lseek END, sin tocar el offset)
+                long cur = raw_lseek(fd, 0, 1 /*SEEK_CUR*/);
+                long size = raw_lseek(fd, 0, 2 /*SEEK_END*/);
+                if (cur >= 0) raw_lseek(fd, cur, 0 /*SEEK_SET*/);
+                if (size < 0) return (int)syscall_ret(size);
+                return (int)size;
+            }
+            case 0x7705: { // ASHMEM_SET_PROT_MASK
+                struct ashmem_state *st = ashmem_state_new(fd);
+                if (st) st->prot = (int)arg;
+                return 0;
+            }
+            case 0x7706: { // ASHMEM_GET_PROT_MASK
+                struct ashmem_state *st = ashmem_state_get(fd);
+                return st ? st->prot : 3; // PROT_READ | PROT_WRITE
+            }
             case 0x7707: // ASHMEM_PIN
             case 0x7708: // ASHMEM_UNPIN
+            case 0x7709: // ASHMEM_GET_PIN_STATUS
+                return 0;
+            case 0x770a: // ASHMEM_PURGE_ALL_CACHES
                 return 0;
             default:
                 break;
@@ -1000,79 +1314,86 @@ ssize_t __read_chk(int fd, void *buf, size_t count, size_t buflen) {
 }
 
 void *fopen(const char *path, const char *mode) {
+    if (ashmem_fake_path(&path) < 0) return (void *)0;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return (void *)0;
     }
     path = redirect_path(path);
     static void *(*real_fn)(const char *, const char *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fopen");
+    if (!real_fn) real_fn = dlsym_next("fopen");
     return real_fn ? real_fn(path, mode) : (void *)0;
 }
 
 void *fopen64(const char *path, const char *mode) {
+    if (ashmem_fake_path(&path) < 0) return (void *)0;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return (void *)0;
     }
     path = redirect_path(path);
     static void *(*real_fn)(const char *, const char *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fopen64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fopen");
+    if (!real_fn) real_fn = dlsym_next("fopen64");
+    if (!real_fn) real_fn = dlsym_next("fopen");
     return real_fn ? real_fn(path, mode) : (void *)0;
 }
 
 int fstatat(int dirfd, const char *path, void *buf, int flags) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, void *, int) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat");
+    if (!real_fn) real_fn = dlsym_next("fstatat");
     return real_fn ? real_fn(dirfd, path, buf, flags) : -1;
 }
 
 int fstatat64(int dirfd, const char *path, void *buf, int flags) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, void *, int) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "fstatat");
+    if (!real_fn) real_fn = dlsym_next("fstatat64");
+    if (!real_fn) real_fn = dlsym_next("fstatat");
     return real_fn ? real_fn(dirfd, path, buf, flags) : -1;
 }
 
 int statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, unsigned int, void *) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "statx");
+    if (!real_fn) real_fn = dlsym_next("statx");
     return real_fn ? real_fn(dirfd, path, flags, mask, buf) : -1;
 }
 
 ssize_t readlink(const char *path, char *buf, size_t bufsiz) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     static ssize_t (*real_fn)(const char *, char *, size_t) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "readlink");
+    if (!real_fn) real_fn = dlsym_next("readlink");
     return real_fn ? real_fn(path, buf, bufsiz) : -1;
 }
 
 ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
+    if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
     static ssize_t (*real_fn)(int, const char *, char *, size_t) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "readlinkat");
+    if (!real_fn) real_fn = dlsym_next("readlinkat");
     return real_fn ? real_fn(dirfd, path, buf, bufsiz) : -1;
 }
 
@@ -1098,6 +1419,6 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         }
     }
     static int (*real_fn)(const char *, char *const [], char *const []) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "execve");
+    if (!real_fn) real_fn = dlsym_next("execve");
     return real_fn ? real_fn(pathname, argv, envp) : -1;
 }

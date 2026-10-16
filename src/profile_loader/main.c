@@ -7,7 +7,9 @@
 #include "cJSON.h"
 
 #define DEFAULT_PROFILE_PATH "/system/etc/proteomesh_profile.json"
+#ifndef FAKEDIR
 #define FAKEDIR "/data/local/tmp/fake_proc"
+#endif
 
 static const char *get_resetprop_bin(void) {
     if (access("/sbin/resetprop", X_OK) == 0) return "/sbin/resetprop";
@@ -745,6 +747,33 @@ static void apply_storage(cJSON *dev) {
 }
 
 // ---------------------------------------------------------------------------
+// Ashmem: fake_proc/ashmem_present (política device.ashmem; default true).
+// El shim libpixel_hw.so lo lee para decidir si /dev/ashmem existe (open,
+// access y stat coherentes). Acepta JSON bool, número o string.
+// ---------------------------------------------------------------------------
+static void apply_ashmem(cJSON *dev) {
+    mkdir(FAKEDIR, 0755);
+    int present = 1;
+    if (dev) {
+        cJSON *it = cJSON_GetObjectItem(dev, "ashmem");
+        if (cJSON_IsBool(it)) present = cJSON_IsTrue(it) ? 1 : 0;
+        else if (cJSON_IsNumber(it)) present = (it->valueint != 0) ? 1 : 0;
+        else if (cJSON_IsString(it)) {
+            const char *s = it->valuestring;
+            present = (s && (s[0] == '0' || s[0] == 'f' || s[0] == 'F')) ? 0 : 1;
+        }
+    }
+    char path[256];
+    snprintf(path, sizeof(path), "%s/ashmem_present", FAKEDIR);
+    FILE *fp = fopen(path, "w");
+    if (fp) {
+        fprintf(fp, "%d\n", present);
+        fclose(fp);
+        chmod(path, 0644);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Módulo D — Abstracción dinámica del HAL gráfico (hwcomposer / gralloc)
 // ---------------------------------------------------------------------------
 static void apply_graphics_hal(cJSON *json) {
@@ -1151,6 +1180,7 @@ static void apply_props(cJSON *json) {
     apply_build_props(json);
     apply_meminfo(dev);
     apply_storage(dev);
+    apply_ashmem(dev);
     apply_graphics_hal(json);
     ensure_identity(json);
     apply_network_props(json);

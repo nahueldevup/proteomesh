@@ -163,3 +163,12 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
 * **Mecanismo:**
   * La base `data-clean/` se mantiene desprovista de aplicaciones de terceros, bases de datos de cuentas SQLite (`accounts_ce.db`, `accounts_de.db`), identificadores SSAID (`settings_ssaid.xml`) y cachés de diagnóstico.
   * Preserva únicamente el framework de Magisk, módulos de Zygisk y llaves autorizadas de ADB para arranque inmediato.
+
+### G. Emulación de Ashmem para Aplicaciones Modernas (Chromium 154+)
+* **Reto:** Los kernels modernos (5.18+) eliminaron `/dev/ashmem`; aplicaciones como Chrome/Brave 154+ exigen la API ashmem completa (sellos `F_ADD_SEALS`/`F_GET_SEALS`, ioctls `0x7701-0x770a`) y fallaban (SIGSEGV/`ENOTTY`) contra un shim que solo reconocía una lista incompleta de opcodes.
+* **Mecanismo:**
+  * El shim identifica descriptores ashmem por *file-description*: `readlink("/proc/self/fd/N")` con prefijo `/memfd:ashmem` (sobrevive `dup`, `F_DUPFD` y el paso por `SCM_RIGHTS`), y solo clasifica en comandos ashmem (`fcntl` 1033/1034, `ioctl` `0x7701-0x770a`) para no penalizar el hot-path de Binder.
+  * Emula la API completa sobre `memfd_create`: tamaño vía `lseek`, nombre y máscara de protección en estado por fd (128 slots), `F_ADD_SEALS` sintético y `F_GET_SEALS` devolviendo `GROW|SHRINK` (contrato `IsMemfdFd` de Chromium).
+  * Coherencia de sistema de archivos: `stat`/`lstat`/`fstatat`/`statx`/`readlink(at)`/`fopen` de `/dev/ashmem` se resuelven como dispositivo de caracteres (`/dev/null`); `access` con `X_OK` → `EACCES`; `dup2`/`dup3` limpian marcas obsoletas del descriptor destino.
+  * Política por dispositivo: `device.ashmem` en `profile.json` → `fake_proc/ashmem_present` (default `true`); con `false` el shim responde `ENOENT` coherente en `open`/`access`/`stat` y las apps usan su fallback memfd nativo, igual que un equipo sin nodo ashmem.
+  * Verificación reproducible sin Android: `tests/ashmem/run_host_test.sh` ejecuta el selftest del shim con `LD_PRELOAD` sobre Linux.
