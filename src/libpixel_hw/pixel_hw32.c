@@ -42,6 +42,102 @@ static long raw_close(int fd) {
     return eax;
 }
 
+static long raw_memfd_create(const char *name, unsigned int flags) {
+    register long eax asm("eax") = 356; // SYS_memfd_create (i386)
+    register long ebx asm("ebx") = (long)name;
+    register long ecx asm("ecx") = (long)flags;
+    __asm__ volatile (
+        "int $0x80"
+        : "+r" (eax)
+        : "r" (ebx), "r" (ecx)
+        : "memory"
+    );
+    return eax;
+}
+
+static long raw_ftruncate(int fd, unsigned long long length) {
+    register long eax asm("eax") = 194; // SYS_ftruncate64 (i386)
+    register long ebx asm("ebx") = (long)fd;
+    register long ecx asm("ecx") = (long)(unsigned int)(length & 0xffffffffULL);
+    register long edx asm("edx") = (long)(unsigned int)(length >> 32);
+    __asm__ volatile (
+        "int $0x80"
+        : "+r" (eax)
+        : "r" (ebx), "r" (ecx), "r" (edx)
+        : "memory"
+    );
+    return eax;
+}
+
+// --- Módulo A/B: seguimiento de descriptores en memoria ---
+#define FD_TABLE_SIZE 65536
+static unsigned char s_ashmem_fds[FD_TABLE_SIZE];
+static unsigned char s_tcp_fds[FD_TABLE_SIZE];
+static unsigned char s_dev_fds[FD_TABLE_SIZE];
+
+static int fd_in_range(int fd) {
+    return fd >= 0 && fd < FD_TABLE_SIZE;
+}
+static void fd_mark(unsigned char *tbl, int fd) {
+    if (fd_in_range(fd)) tbl[fd] = 1;
+}
+static void fd_clear(unsigned char *tbl, int fd) {
+    if (fd_in_range(fd)) tbl[fd] = 0;
+}
+static int fd_test(const unsigned char *tbl, int fd) {
+    return fd_in_range(fd) && tbl[fd];
+}
+
+static int str_contains(const char *hay, const char *needle) {
+    if (!hay || !needle) return 0;
+    for (; *hay; hay++) {
+        const char *h = hay;
+        const char *n = needle;
+        while (*h && *n && *h == *n) { h++; n++; }
+        if (!*n) return 1;
+    }
+    return 0;
+}
+
+// --- Módulo B: filtrado en-vuelo de buffers procfs ---
+static ssize_t filter_tcp_buffer(char *buf, ssize_t n) {
+    ssize_t out = 0;
+    ssize_t i = 0;
+    while (i < n) {
+        ssize_t start = i;
+        while (i < n && buf[i] != '\n') i++;
+        ssize_t end = i;
+        int drop = 0;
+        for (ssize_t k = start; k + 5 <= end; k++) {
+            if (buf[k] == ':' && buf[k+1] == '1' && buf[k+2] == '5' &&
+                (buf[k+3] == 'B' || buf[k+3] == 'b') && buf[k+4] == '3') {
+                drop = 1;
+                break;
+            }
+        }
+        if (!drop) {
+            if (out != start) {
+                for (ssize_t k = start; k < end; k++) buf[out++] = buf[k];
+            } else {
+                out = end;
+            }
+            if (i < n) buf[out++] = buf[i];
+        }
+        if (i < n) i++;
+    }
+    return out;
+}
+
+static ssize_t filter_dev_buffer(char *buf, ssize_t n) {
+    for (ssize_t i = 0; i + 7 <= n; i++) {
+        if (buf[i] == ' ' && buf[i+1] == ' ' && buf[i+2] == 'e' &&
+            buf[i+3] == 't' && buf[i+4] == 'h' && buf[i+5] == '0' && buf[i+6] == ':') {
+            buf[i+1] = 'w'; buf[i+2] = 'l'; buf[i+3] = 'a'; buf[i+4] = 'n'; buf[i+5] = '0';
+        }
+    }
+    return n;
+}
+
 extern void *dlopen(const char *filename, int flag);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dladdr(const void *addr, void *info);
@@ -61,9 +157,15 @@ static void *get_libc_handle(void) {
     return libc_handle;
 }
 
+static void *dlsym_next(const char *symbol) {
+    void *fn = dlsym((void *)-1l, symbol);
+    if (!fn) fn = dlsym(get_libc_handle(), symbol);
+    return fn;
+}
+
 static unsigned int my_getuid(void) {
     static unsigned int (*real_fn)(void) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "getuid");
+    if (!real_fn) real_fn = (unsigned int (*)(void))dlsym_next("getuid");
     return real_fn ? real_fn() : 0;
 }
 
@@ -131,7 +233,30 @@ int uname(struct utsname *buf) {
     return (int)ret;
 }
 
-// 2. RAM Spoofing (8 GB LPDDR4X Pixel 5)
+// 2. RAM Spoofing (dinámica desde el perfil activo)
+static unsigned long long load_fake_mem_bytes(void) {
+    static unsigned long long cached = 0;
+    static int loaded = 0;
+    if (loaded) return cached;
+    loaded = 1;
+    long fd = raw_open("/data/local/tmp/fake_proc/mem_total_kb", 0);
+    if (fd >= 0) {
+        char b[32];
+        ssize_t n = raw_read((int)fd, b, sizeof(b) - 1);
+        if (n > 0) {
+            b[n] = '\0';
+            unsigned long long kb = 0;
+            for (ssize_t i = 0; i < n && b[i] >= '0' && b[i] <= '9'; i++) {
+                kb = kb * 10ULL + (unsigned long long)(b[i] - '0');
+            }
+            if (kb > 0) cached = kb * 1024ULL;
+        }
+        raw_close((int)fd);
+    }
+    if (cached == 0) cached = 7854200ULL * 1024ULL; // fallback Pixel 5 8 GB
+    return cached;
+}
+
 struct sysinfo32 {
     long uptime;
     unsigned long loads[3];
@@ -163,7 +288,7 @@ int sysinfo(struct sysinfo32 *info) {
     if (ret == 0 && info) {
         unsigned long real_total = info->totalram;
         unsigned int unit = info->mem_unit ? info->mem_unit : 1;
-        unsigned long fake_total = (7854200ULL * 1024) / unit;
+        unsigned long fake_total = (unsigned long)(load_fake_mem_bytes() / unit);
         if (real_total > 0) {
             double ratio = (double)fake_total / (double)real_total;
             info->totalram = fake_total;
@@ -177,20 +302,13 @@ int sysinfo(struct sysinfo32 *info) {
     return (int)ret;
 }
 
-// 3. GPU Spoofing (Adreno 620 para Apps / JNI)
-static int is_java_call(void) {
+// 3. GPU Spoofing (perfil para Apps/SDK; SwiftShader real para HWUI/Skia)
+static int caller_in_ui_stack(void) {
     Dl_info info;
     if (dladdr(__builtin_return_address(0), &info) && info.dli_fname) {
         const char *name = info.dli_fname;
-        while (*name) {
-            if (name[0] == 'l' && name[1] == 'i' && name[2] == 'b' &&
-                name[3] == 'a' && name[4] == 'n' && name[5] == 'd' &&
-                name[6] == 'r' && name[7] == 'o' && name[8] == 'i' &&
-                name[9] == 'd' && name[10] == '_' && name[11] == 'r' &&
-                name[12] == 'u' && name[13] == 'n' && name[14] == 't') {
-                return 1;
-            }
-            name++;
+        if (str_contains(name, "libhwui.so") || str_contains(name, "libskia.so")) {
+            return 1;
         }
     }
     return 0;
@@ -251,7 +369,7 @@ static void load_fake_gpu(void) {
 }
 
 const unsigned char *glGetString(unsigned int name) {
-    if (is_java_call()) {
+    if (!caller_in_ui_stack()) {
         load_fake_gpu();
         if (name == 0x1F01) { // GL_RENDERER
             return (const unsigned char *)s_gpu_renderer;
@@ -274,6 +392,29 @@ struct generic_vfs32 {
     unsigned int bfree;      // 0x0C
     unsigned int bavail;     // 0x10
 };
+
+static unsigned long long load_fake_storage_bytes(void) {
+    static unsigned long long cached = 0;
+    static int loaded = 0;
+    if (loaded) return cached;
+    loaded = 1;
+    long fd = raw_open("/data/local/tmp/fake_proc/storage_bytes", 0);
+    if (fd >= 0) {
+        char b[32];
+        ssize_t n = raw_read((int)fd, b, sizeof(b) - 1);
+        if (n > 0) {
+            b[n] = '\0';
+            unsigned long long v = 0;
+            for (ssize_t i = 0; i < n && b[i] >= '0' && b[i] <= '9'; i++) {
+                v = v * 10ULL + (unsigned long long)(b[i] - '0');
+            }
+            if (v > 0) cached = v;
+        }
+        raw_close((int)fd);
+    }
+    if (cached == 0) cached = 109521666048ULL; // fallback ~102 GiB
+    return cached;
+}
 
 static void scale_blocks32(const char *path, void *buf) {
     if (!path || !buf) return;
@@ -300,7 +441,9 @@ static void scale_blocks32(const char *path, void *buf) {
     }
 
     if (is_data) {
-        unsigned long long fake_bytes = 109521666048ULL; // ~102 GiB
+        unsigned long long total_bytes = load_fake_storage_bytes();
+        unsigned long long system_bytes = 12884901888ULL; // 12 GiB reservados a /system
+        unsigned long long fake_bytes = total_bytes > system_bytes ? total_bytes - system_bytes : total_bytes;
         unsigned int fake_blocks = (unsigned int)(fake_bytes / fr);
         double free_ratio = (double)v->bfree / (double)v->blocks;
         if (free_ratio > 1.0) free_ratio = 0.85;
@@ -480,10 +623,39 @@ static const char *redirect_path(const char *path) {
 }
 
 // 9. Intercepción de System Properties para Apps
+static char s_hal_hwc[64] = "redroid";
+static char s_hal_gralloc[64] = "redroid";
+static int s_hal_loaded = 0;
+
+static void load_fake_hal(void) {
+    if (s_hal_loaded) return;
+    s_hal_loaded = 1;
+    long fd = raw_open("/data/local/tmp/fake_proc/hwcomposer", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_hal_hwc, sizeof(s_hal_hwc) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_hal_hwc[n-1] == '\n' || s_hal_hwc[n-1] == '\r')) n--;
+            s_hal_hwc[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+    fd = raw_open("/data/local/tmp/fake_proc/gralloc", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_hal_gralloc, sizeof(s_hal_gralloc) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_hal_gralloc[n-1] == '\n' || s_hal_gralloc[n-1] == '\r')) n--;
+            s_hal_gralloc[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+}
+
 static const char *get_fake_prop(const char *name) {
     if (!name) return (void *)0;
     if (my_getuid() < 10000) return (void *)0;
 
+    if (str_eq(name, "ro.hardware.hwcomposer")) { load_fake_hal(); return s_hal_hwc; }
+    if (str_eq(name, "ro.hardware.gralloc")) { load_fake_hal(); return s_hal_gralloc; }
     if (str_eq(name, "init.svc.adbd")) return "stopped";
     if (str_eq(name, "sys.usb.config")) return "none";
     if (str_eq(name, "sys.usb.state")) return "none";
@@ -595,23 +767,42 @@ int faccessat(int dirfd, const char *path, int mode, int flags) {
     return real_fn ? real_fn(dirfd, path, mode, flags) : -1;
 }
 
+static int ashmem_fd(void) {
+    long mfd = raw_memfd_create("ashmem", 0x0001); // MFD_CLOEXEC
+    if (mfd >= 0) fd_mark(s_ashmem_fds, (int)mfd);
+    return (int)mfd;
+}
+
+static void mark_net_fd(const char *path, int fd) {
+    if (my_getuid() < 10000 || !path || fd < 0) return;
+    if (str_contains(path, "/net/tcp")) fd_mark(s_tcp_fds, fd);
+    else if (str_contains(path, "/net/dev")) fd_mark(s_dev_fds, fd);
+}
+
 int open(const char *path, int flags, ...) {
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
     }
+    if (path && str_eq(path, "/dev/ashmem")) {
+        return ashmem_fd();
+    }
     path = redirect_path(path);
     static int (*real_fn)(const char *, int, ...) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "open");
+    if (!real_fn) real_fn = (int (*)(const char *, int, ...))dlsym_next("open");
     if (!real_fn) return -1;
+    int fd;
     if (flags & 0100) {
         __builtin_va_list args;
         __builtin_va_start(args, flags);
         unsigned int mode = __builtin_va_arg(args, unsigned int);
         __builtin_va_end(args);
-        return real_fn(path, flags, mode);
+        fd = real_fn(path, flags, mode);
+    } else {
+        fd = real_fn(path, flags);
     }
-    return real_fn(path, flags);
+    mark_net_fd(path, fd);
+    return fd;
 }
 
 int open64(const char *path, int flags, ...) {
@@ -619,19 +810,26 @@ int open64(const char *path, int flags, ...) {
         set_enoent();
         return -1;
     }
+    if (path && str_eq(path, "/dev/ashmem")) {
+        return ashmem_fd();
+    }
     path = redirect_path(path);
     static int (*real_fn)(const char *, int, ...) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "open64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "open");
+    if (!real_fn) real_fn = (int (*)(const char *, int, ...))dlsym_next("open64");
+    if (!real_fn) real_fn = (int (*)(const char *, int, ...))dlsym_next("open");
     if (!real_fn) return -1;
+    int fd;
     if (flags & 0100) {
         __builtin_va_list args;
         __builtin_va_start(args, flags);
         unsigned int mode = __builtin_va_arg(args, unsigned int);
         __builtin_va_end(args);
-        return real_fn(path, flags, mode);
+        fd = real_fn(path, flags, mode);
+    } else {
+        fd = real_fn(path, flags);
     }
-    return real_fn(path, flags);
+    mark_net_fd(path, fd);
+    return fd;
 }
 
 int openat(int dirfd, const char *path, int flags, ...) {
@@ -639,18 +837,25 @@ int openat(int dirfd, const char *path, int flags, ...) {
         set_enoent();
         return -1;
     }
+    if (path && str_eq(path, "/dev/ashmem")) {
+        return ashmem_fd();
+    }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat");
+    if (!real_fn) real_fn = (int (*)(int, const char *, int, ...))dlsym_next("openat");
     if (!real_fn) return -1;
+    int fd;
     if (flags & 0100) {
         __builtin_va_list args;
         __builtin_va_start(args, flags);
         unsigned int mode = __builtin_va_arg(args, unsigned int);
         __builtin_va_end(args);
-        return real_fn(dirfd, path, flags, mode);
+        fd = real_fn(dirfd, path, flags, mode);
+    } else {
+        fd = real_fn(dirfd, path, flags);
     }
-    return real_fn(dirfd, path, flags);
+    mark_net_fd(path, fd);
+    return fd;
 }
 
 int openat64(int dirfd, const char *path, int flags, ...) {
@@ -658,19 +863,140 @@ int openat64(int dirfd, const char *path, int flags, ...) {
         set_enoent();
         return -1;
     }
+    if (path && str_eq(path, "/dev/ashmem")) {
+        return ashmem_fd();
+    }
     path = redirect_path(path);
     static int (*real_fn)(int, const char *, int, ...) = (void *)0;
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat64");
-    if (!real_fn) real_fn = dlsym(get_libc_handle(), "openat");
+    if (!real_fn) real_fn = (int (*)(int, const char *, int, ...))dlsym_next("openat64");
+    if (!real_fn) real_fn = (int (*)(int, const char *, int, ...))dlsym_next("openat");
     if (!real_fn) return -1;
+    int fd;
     if (flags & 0100) {
         __builtin_va_list args;
         __builtin_va_start(args, flags);
         unsigned int mode = __builtin_va_arg(args, unsigned int);
         __builtin_va_end(args);
-        return real_fn(dirfd, path, flags, mode);
+        fd = real_fn(dirfd, path, flags, mode);
+    } else {
+        fd = real_fn(dirfd, path, flags);
     }
-    return real_fn(dirfd, path, flags);
+    mark_net_fd(path, fd);
+    return fd;
+}
+
+int close(int fd) {
+    fd_clear(s_ashmem_fds, fd);
+    fd_clear(s_tcp_fds, fd);
+    fd_clear(s_dev_fds, fd);
+    static int (*real_fn)(int) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int))dlsym_next("close");
+    return real_fn ? real_fn(fd) : -1;
+}
+
+int fcntl(int fd, int cmd, ...) {
+    if (cmd == 1034 && fd_test(s_ashmem_fds, fd)) {
+        return 0x0004 | 0x0002; // F_SEAL_GROW | F_SEAL_SHRINK
+    }
+    static int (*real_fn)(int, int, ...) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+    if (!real_fn) return -1;
+    __builtin_va_list args;
+    __builtin_va_start(args, cmd);
+    unsigned long arg = __builtin_va_arg(args, unsigned long);
+    __builtin_va_end(args);
+    return real_fn(fd, cmd, arg);
+}
+
+int fcntl64(int fd, int cmd, ...) {
+    if (cmd == 1034 && fd_test(s_ashmem_fds, fd)) {
+        return 0x0004 | 0x0002; // F_SEAL_GROW | F_SEAL_SHRINK
+    }
+    static int (*real_fn)(int, int, ...) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl64");
+    if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+    if (!real_fn) return -1;
+    __builtin_va_list args;
+    __builtin_va_start(args, cmd);
+    unsigned long arg = __builtin_va_arg(args, unsigned long);
+    __builtin_va_end(args);
+    return real_fn(fd, cmd, arg);
+}
+
+int ioctl(int fd, unsigned long request, ...) {
+    if (fd_test(s_ashmem_fds, fd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, request);
+        void *arg = __builtin_va_arg(args, void *);
+        __builtin_va_end(args);
+        switch (request) {
+            case 0x7706: // ASHMEM_GET_PROT_MASK
+                return 3; // PROT_READ | PROT_WRITE
+            case 0x7705: // ASHMEM_SET_PROT_MASK
+                return 0;
+            case 0x7703: // ASHMEM_SET_SIZE
+                return (int)raw_ftruncate(fd, (unsigned long long)(unsigned long)arg);
+            case 0x7701: // ASHMEM_SET_NAME
+                return 0;
+            case 0x7702: { // ASHMEM_GET_NAME
+                char *dst = (char *)arg;
+                if (dst) {
+                    const char *nm = "ashmem";
+                    int i = 0;
+                    while (nm[i]) { dst[i] = nm[i]; i++; }
+                    dst[i] = '\0';
+                }
+                return 0;
+            }
+            case 0x7707: // ASHMEM_PIN
+            case 0x7708: // ASHMEM_UNPIN
+                return 0;
+            default:
+                break;
+        }
+    }
+    static int (*real_fn)(int, unsigned long, ...) = (void *)0;
+    if (!real_fn) real_fn = (int (*)(int, unsigned long, ...))dlsym_next("ioctl");
+    if (!real_fn) return -1;
+    __builtin_va_list args;
+    __builtin_va_start(args, request);
+    void *arg = __builtin_va_arg(args, void *);
+    __builtin_va_end(args);
+    return real_fn(fd, request, arg);
+}
+
+ssize_t read(int fd, void *buf, size_t count) {
+    static ssize_t (*real_fn)(int, void *, size_t) = (void *)0;
+    if (!real_fn) real_fn = (ssize_t (*)(int, void *, size_t))dlsym_next("read");
+    ssize_t ret = real_fn ? real_fn(fd, buf, count) : -1;
+    if (ret > 0 && buf) {
+        if (fd_test(s_tcp_fds, fd)) {
+            ret = filter_tcp_buffer((char *)buf, ret);
+        } else if (fd_test(s_dev_fds, fd)) {
+            ret = filter_dev_buffer((char *)buf, ret);
+        }
+    }
+    return ret;
+}
+
+ssize_t __read_chk(int fd, void *buf, size_t count, size_t buflen) {
+    (void)buflen;
+    static ssize_t (*real_fn)(int, void *, size_t, size_t) = (void *)0;
+    if (!real_fn) real_fn = (ssize_t (*)(int, void *, size_t, size_t))dlsym_next("__read_chk");
+    ssize_t ret;
+    if (real_fn) {
+        ret = real_fn(fd, buf, count, buflen);
+    } else {
+        ret = read(fd, buf, count);
+    }
+    if (ret > 0 && buf) {
+        if (fd_test(s_tcp_fds, fd)) {
+            ret = filter_tcp_buffer((char *)buf, ret);
+        } else if (fd_test(s_dev_fds, fd)) {
+            ret = filter_dev_buffer((char *)buf, ret);
+        }
+    }
+    return ret;
 }
 
 void *fopen(const char *path, const char *mode) {
