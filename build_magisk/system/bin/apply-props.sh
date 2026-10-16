@@ -113,19 +113,33 @@ for part in "" "system." "vendor." "odm." "product." "system_ext."; do
     setprop "ro.${part}product.cpu.abi" "arm64-v8a"
 done
 
-# Modem / Baseband / Telephony SIM
+# Modem / Baseband / Telephony SIM (operador derivado del perfil activo)
+CUR_CARRIER=$(getprop persist.sys.fake.carrier_name)
+[ -z "$CUR_CARRIER" ] && CUR_CARRIER="Personal"
+CUR_NUM=$(getprop persist.sys.fake.operator_numeric)
+[ -z "$CUR_NUM" ] && CUR_NUM="72234"
+CUR_MCC=$(getprop persist.sys.fake.mcc)
+[ -z "$CUR_MCC" ] && CUR_MCC="722"
+CUR_MNC=$(getprop persist.sys.fake.mnc)
+[ -z "$CUR_MNC" ] && CUR_MNC="34"
+CUR_ISO=$(getprop persist.sys.fake.country_iso)
+[ -z "$CUR_ISO" ] && CUR_ISO="ar"
+CUR_APN=$(getprop persist.sys.fake.apn)
+[ -z "$CUR_APN" ] && CUR_APN="internet"
+CUR_EHPLMNS="${CUR_NUM},${CUR_NUM}0,${CUR_NUM}1"
+
 setprop "ro.telephony.sim.count" "1"
 setprop "ro.telephony.default_network" "22"
 setprop "ro.com.android.mobiledata" "true"
 setprop "gsm.sim.state" "READY,READY"
 setprop "gsm.network.type" "LTE"
 setprop "gsm.current.phone-type" "1"
-setprop "gsm.operator.alpha" "Personal"
-setprop "gsm.operator.numeric" "72234"
-setprop "gsm.operator.iso-country" "ar"
-setprop "gsm.sim.operator.alpha" "Personal"
-setprop "gsm.sim.operator.numeric" "72234"
-setprop "gsm.sim.operator.iso-country" "ar"
+setprop "gsm.operator.alpha" "$CUR_CARRIER"
+setprop "gsm.operator.numeric" "$CUR_NUM"
+setprop "gsm.operator.iso-country" "$CUR_ISO"
+setprop "gsm.sim.operator.alpha" "$CUR_CARRIER"
+setprop "gsm.sim.operator.numeric" "$CUR_NUM"
+setprop "gsm.sim.operator.iso-country" "$CUR_ISO"
 setprop "vendor.rild.libpath" "/vendor/lib64/libreference-ril.so"
 
 CUR_ICCID=$(getprop persist.sys.fake.iccid)
@@ -146,16 +160,16 @@ if [ -f "$TEL_DB" ] && [ -x /system/bin/sqlite3 ]; then
         iso_country_code, carrier_id, profile_class, subscription_type, imsi,
         uicc_applications_enabled, port_index
     ) VALUES (
-        1, '$CUR_ICCID', 0, 'Personal', 'Personal', 2, -16746133, '$CUR_PHONE',
-        1, 0, 722, 34, '722', '34',
-        '72234,722340,722341', '72234', 2, 0, '$CUR_ICCID', 1,
-        'ar', 1341, 2, 0, '$CUR_IMSI',
+        1, '$CUR_ICCID', 0, '$CUR_CARRIER', '$CUR_CARRIER', 2, -16746133, '$CUR_PHONE',
+        1, 0, $CUR_MCC, $CUR_MNC, '$CUR_MCC', '$CUR_MNC',
+        '$CUR_EHPLMNS', '$CUR_NUM', 2, 0, '$CUR_ICCID', 1,
+        '$CUR_ISO', 1341, 2, 0, '$CUR_IMSI',
         1, 0
     );
     INSERT OR REPLACE INTO carriers (
         _id, name, numeric, mcc, mnc, carrier_id, apn, user, password, type, current, carrier_enabled, sub_id
     ) VALUES (
-        1, 'Personal Datos', '72234', '722', '34', 1341, 'datos.personal.com', 'datos', 'datos', 'default,supl,mms,ia', 1, 1, 1
+        1, '$CUR_CARRIER', '$CUR_NUM', '$CUR_MCC', '$CUR_MNC', 1341, '$CUR_APN', '', '', 'default,supl,mms,ia', 1, 1, 1
     );
     " 2>/dev/null || true
     chown radio:radio "$TEL_DB"* 2>/dev/null || true
@@ -194,6 +208,10 @@ settings put global wifi_on 1 2>/dev/null || true
 # Optimización de red
 settings put global private_dns_mode off 2>/dev/null || true
 settings put global captive_portal_mode 0 2>/dev/null || true
+
+# Módulo C — El sistema nunca suspende la pantalla (el spoof de 60000 ms es solo en Java)
+settings put system screen_off_timeout 2147483647 2>/dev/null || true
+settings put global stay_on_while_plugged_in 7 2>/dev/null || true
 
 # ==============================================================================
 # 6. Magisk / Root Management

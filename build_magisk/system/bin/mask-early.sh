@@ -188,7 +188,8 @@ echo "1" > "$FAKEDIR/selinux_enforce"
 chmod 644 "$FAKEDIR/selinux_enforce"
 
 
-# 4. /proc/meminfo oficial Pixel 5 (8 GB LPDDR4X)
+# 4. /proc/meminfo (Fallback si profile-loader no generó meminfo dinámico)
+if [ ! -f "$FAKEDIR/meminfo" ]; then
 cat << 'EOF' > "$FAKEDIR/meminfo"
 MemTotal:        7854200 kB
 MemFree:         2170340 kB
@@ -234,6 +235,7 @@ FilePmdMapped:         0 kB
 CmaTotal:         819200 kB
 CmaFree:          210400 kB
 EOF
+fi
 
 chmod 644 "$FAKEDIR"/* 2>/dev/null || true
 
@@ -393,7 +395,8 @@ EOF
 
 chmod 644 "$FAKEDIR/selinux_enforce" "$FAKEDIR/mountinfo" "$FAKEDIR/mounts" 2>/dev/null || true
 
-# Partitions Mock (Pixel 5 128 GB UFS)
+# Partitions Mock (Fallback si profile-loader no generó tabla dinámica)
+if [ ! -f "$FAKEDIR/partitions" ]; then
 cat << 'EOF' > "$FAKEDIR/partitions"
 major minor  #blocks  name
 
@@ -409,6 +412,7 @@ major minor  #blocks  name
  254        3     524288 dm-3
  253        0    4194304 zram0
 EOF
+fi
 chmod 644 "$FAKEDIR/partitions" 2>/dev/null || true
 mount --bind "$FAKEDIR/partitions" /proc/partitions 2>/dev/null || true
 
@@ -457,7 +461,13 @@ SOF
         exit 0
     fi
     if [ "$arg" = "telephony.registry" ]; then
-        cat << 'SOF_TEL'
+        TELCARRIER=$(getprop persist.sys.fake.carrier_name)
+        [ -z "$TELCARRIER" ] && TELCARRIER="Personal"
+        TELMCC=$(getprop persist.sys.fake.mcc)
+        [ -z "$TELMCC" ] && TELMCC="722"
+        TELMNC=$(getprop persist.sys.fake.mnc)
+        [ -z "$TELMNC" ] && TELMNC="34"
+        cat << SOF_TEL
 last known state:
   Phone Id=0
     mCallState=0
@@ -467,7 +477,7 @@ last known state:
     mPreciseCallState=Ringing call state: -1, Foreground call state: -1, Background call state: -1, Disconnect cause: -1, Precise disconnect cause: -1
     mCallDisconnectCause=-1
     mCallIncomingNumber=
-    mServiceState={mVoiceRegState=0(IN_SERVICE), mDataRegState=0(IN_SERVICE), mChannelNumber=0, duplexMode()=0, mCellBandwidths=[], mOperatorAlphaLong=Personal, mOperatorAlphaShort=Personal, isManualNetworkSelection=false(automatic), getRilVoiceRadioTechnology=14(LTE), getRilDataRadioTechnology=14(LTE), mCssIndicator=supported, mNetworkId=0, mSystemId=0, mCdmaRoamingIndicator=0, mCdmaDefaultRoamingIndicator=0, mIsEmergencyOnly=false, isUsingCarrierAggregation=false, mArfcnRsrpBoost=0, mNetworkRegistrationInfos=[], mNrFrequencyRange=0, mOperatorAlphaLongRaw=Personal, mOperatorAlphaShortRaw=Personal, mIsDataRoamingFromRegistration=false, mIsIwlanPreferred=false}
+    mServiceState={mVoiceRegState=0(IN_SERVICE), mDataRegState=0(IN_SERVICE), mChannelNumber=0, duplexMode()=0, mCellBandwidths=[], mOperatorAlphaLong=$TELCARRIER, mOperatorAlphaShort=$TELCARRIER, isManualNetworkSelection=false(automatic), getRilVoiceRadioTechnology=14(LTE), getRilDataRadioTechnology=14(LTE), mCssIndicator=supported, mNetworkId=0, mSystemId=0, mCdmaRoamingIndicator=0, mCdmaDefaultRoamingIndicator=0, mIsEmergencyOnly=false, isUsingCarrierAggregation=false, mArfcnRsrpBoost=0, mNetworkRegistrationInfos=[], mNrFrequencyRange=0, mOperatorAlphaLongRaw=$TELCARRIER, mOperatorAlphaShortRaw=$TELCARRIER, mIsDataRoamingFromRegistration=false, mIsIwlanPreferred=false}
     mVoiceActivationState= 0
     mDataActivationState= 0
     mUserMobileDataState= true
@@ -476,8 +486,8 @@ last known state:
     mCallForwarding=false
     mDataActivity=0
     mDataConnectionState=2
-    mCellIdentity=CellIdentityLte:{ mPci=312 mEarfcn=1650 mBands=[3] mMcc=722 mMnc=34 mAlphaLong=Personal mAlphaShort=Personal }
-    mCellInfo=[CellInfoLte:{mRegistered=true mTimeStampType=OEM_RIL mTimeStamp=1791127000000ns mCellIdentity=CellIdentityLte:{ mPci=312 mEarfcn=1650 mBands=[3] mMcc=722 mMnc=34 mAlphaLong=Personal mAlphaShort=Personal } mCellSignalStrength=CellSignalStrengthLte: rssi=99 rsrp=-85 rsrq=-10 rssnr=150 cqi=15 ta=2147483647 level=4}]
+    mCellIdentity=CellIdentityLte:{ mPci=312 mEarfcn=1650 mBands=[3] mMcc=$TELMCC mMnc=$TELMNC mAlphaLong=$TELCARRIER mAlphaShort=$TELCARRIER }
+    mCellInfo=[CellInfoLte:{mRegistered=true mTimeStampType=OEM_RIL mTimeStamp=1791127000000ns mCellIdentity=CellIdentityLte:{ mPci=312 mEarfcn=1650 mBands=[3] mMcc=$TELMCC mMnc=$TELMNC mAlphaLong=$TELCARRIER mAlphaShort=$TELCARRIER } mCellSignalStrength=CellSignalStrengthLte: rssi=99 rsrp=-85 rsrq=-10 rssnr=150 cqi=15 ta=2147483647 level=4}]
     mSrvccState=-1
     mCallPreciseDisconnectCause=-1
     mCallNetworkType=13
@@ -488,12 +498,16 @@ SOF_TEL
     if [ "$arg" = "wifi" ]; then
         WMAC=$(getprop persist.sys.fake.wifi_mac)
         [ -z "$WMAC" ] && WMAC="82:5e:45:1a:27:54"
+        WSID=$(getprop persist.sys.fake.wifi_ssid)
+        [ -z "$WSID" ] && WSID="Home-WiFi"
+        WBSSID=$(getprop persist.sys.fake.wifi_bssid)
+        [ -z "$WBSSID" ] && WBSSID="$WMAC"
         cat << SOF_WIFI
 Wi-Fi is enabled
 WifiState 3
 Current wifi mode: EnabledState
 NumActiveModeManagers: 1
-WifiInfo SSID: "Personal-WiFi-5.8G", BSSID: $WMAC, MAC: $WMAC, Supplicant state: COMPLETED, RSSI: -52, Link speed: 866Mbps, Tx Link speed: 866Mbps, Rx Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 1, Metered hint: false, score: 60, isUsable: true, CarrierId: 1341
+WifiInfo SSID: "$WSID", BSSID: $WBSSID, MAC: $WMAC, Supplicant state: COMPLETED, RSSI: -52, Link speed: 866Mbps, Tx Link speed: 866Mbps, Rx Link speed: 866Mbps, Frequency: 5180MHz, Net ID: 1, Metered hint: false, score: 60, isUsable: true, CarrierId: 1341
 SOF_WIFI
         exit 0
     fi
