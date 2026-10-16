@@ -44,9 +44,8 @@ DISABLE_PACKAGES = [
     "com.android.bluetooth",
     "com.android.bluetoothmidiservice",
     "com.android.nfc",
-    # Cámara / Galería (no hay sensor de cámara)
-    "com.android.camera2",
-    "com.android.cameraextensions",
+    # Galería local (no hay archivos personales); la CÁMARA permanece activa:
+    # el módulo LSPosed virtualiza CameraManager con un stream de identidad.
     "com.android.gallery3d",
     # Multimedia local (no se reproduce música/audio local)
     "com.android.music",
@@ -145,12 +144,21 @@ def generate_identity(template_data: dict, carrier_data: Optional[dict] = None) 
     iccid = f"{iccid_pfx}{rand_digits(19 - len(iccid_pfx))}"
     phone = f"{phone_pfx}{rand_digits(8)}"
 
+    # 7. Wi-Fi SSID / BSSID (estables por instancia; profile-loader los respeta)
+    net = template_data.get("network", {})
+    ssid_pfx = net.get("ssid_prefix", "Home")
+    bssid_oui = net.get("bssid_oui", "F4:EC:38").lower()
+    wifi_ssid = f"{ssid_pfx}-{rand_hex(4, upper=True)}"
+    wifi_bssid = f"{bssid_oui}:{rand_hex(2)}:{rand_hex(2)}:{rand_hex(2)}"
+
     return {
         "imei": imei,
         "meid": meid,
         "serial": serial,
         "android_id": android_id,
         "wifi_mac": wifi_mac,
+        "wifi_ssid": wifi_ssid,
+        "wifi_bssid": wifi_bssid,
         "bt_mac": bt_mac,
         "imsi": imsi,
         "iccid": iccid,
@@ -253,6 +261,7 @@ def cmd_randomize(args):
     print(f"  Serial Number   : {identity['serial']}")
     print(f"  Android ID      : {identity['android_id']}")
     print(f"  Wi-Fi MAC       : {identity['wifi_mac']}")
+    print(f"  Wi-Fi SSID      : {identity['wifi_ssid']} ({identity['wifi_bssid']})")
     print(f"  Bluetooth MAC   : {identity['bt_mac']}")
     print(f"  SIM IMSI        : {identity['imsi']}")
     print(f"  SIM ICCID       : {identity['iccid']}")
@@ -358,6 +367,7 @@ def cmd_create_instance(args):
     print(f"  • IMEI        : {identity['imei']}")
     print(f"  • Serial      : {identity['serial']}")
     print(f"  • Wi-Fi MAC   : {identity['wifi_mac']}")
+    print(f"  • Wi-Fi SSID  : {identity['wifi_ssid']} ({identity['wifi_bssid']})")
     print(f"  • Perfil JSON : {profile_out.relative_to(BASE_DIR)}")
     print(f"  • Directorio  : {inst_dir.relative_to(BASE_DIR)}/data/")
     print(f"\nPara levantar el contenedor con el gestor:")
@@ -510,7 +520,7 @@ def cmd_start_instance(args):
         )
         if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
             disabled_count += 1
-    print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, cámara, impresión, etc.)")
+    print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, impresión, galería, etc.)")
 
     # 3. Limitar procesos background para reducir footprint de RAM.
     for setting_cmd, value in BG_PROCESS_SETTINGS.items():
