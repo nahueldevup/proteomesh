@@ -1,7 +1,7 @@
 #!/bin/sh
 # ==============================================================================
 # mask-early.sh — Enmascaramiento temprano de hardware en post-fs-data
-# Configurado para: Google Pixel 5 (redfin / Qualcomm Snapdragon 765G SM7250)
+# Identidad derivada dinámicamente del perfil activo (profile-loader)
 # ==============================================================================
 FAKEDIR="/data/local/tmp/fake_proc"
 mkdir -p "$FAKEDIR"

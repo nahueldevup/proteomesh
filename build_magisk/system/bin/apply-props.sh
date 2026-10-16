@@ -1,7 +1,7 @@
 #!/bin/sh
 # ==============================================================================
 # apply-props.sh — Propiedades de producción y anti-detección
-# Dispositivo objetivo: Google Pixel 5 (redfin / Android 13 Oficial)
+# Identidad derivada dinámicamente del perfil activo (profile-loader)
 # Se ejecuta en sys.boot_completed=1
 # ==============================================================================
 
