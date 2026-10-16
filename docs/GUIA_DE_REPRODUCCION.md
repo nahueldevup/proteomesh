@@ -87,6 +87,7 @@ Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI,
 ```bash
 python3 tools/instance_manager.py start mi-a54-01
 ```
+*Nota:* En el **primer arranque** de una instancia clonada de `data-clean/`, el gestor puede reiniciar automáticamente el contenedor una vez (pipeline de despliegue del módulo LSPosed): el primer boot detecta el APK desactualizado y lo instala, y el segundo lo precarga con `lspd` limpio. Es un comportamiento esperado (~2x el tiempo de arranque normal); no interrumpirlo.
 
 ### E. Visualizar la Pantalla del Dispositivo
 ```bash
@@ -102,6 +103,21 @@ python3 tools/instance_manager.py stop mi-a54-01
 ```bash
 python3 tools/instance_manager.py list-instances
 ```
+
+### H. Crear una Instancia de Cada Modelo (Verificación Masiva)
+Crea una instancia por cada plantilla del catálogo, con puerto incremental y saltando las que ya existen:
+```bash
+PORT=5590
+for t in templates/google/*.json templates/motorola/*.json templates/samsung/*.json templates/xiaomi/*.json; do
+  n="v-$(basename "$t" .json)"
+  [ -d "instances/$n" ] && continue
+  python3 tools/instance_manager.py create --name "$n" --template "$t" --carrier ar_personal --port $PORT
+  PORT=$((PORT+1))
+done
+```
+* Cada instancia clona la base limpia (≈1.2 GB de disco) y congela su `profile.json` con identidad única (IMEI/serial/MAC/SSID).
+* **Advertencia:** re-ejecutar `create` sobre un nombre existente regenera la identidad y sobrescribe `profile.json`; el `continue` del loop evita ese caso.
+* **Advertencia de recursos:** en hosts de 16 GB no arranques las 17 a la vez; cada instancia en caliente consume 0.4–1.8 GB de RAM. Arrancar de a 1–2.
 
 ---
 
@@ -122,9 +138,41 @@ adb -s 127.0.0.1:$PORT shell getprop ro.bootloader
 # Kernel (sin fugas del host)
 adb -s 127.0.0.1:$PORT shell cat /proc/version
 ```
+*Nota sobre almacenamiento:* `df` ejecutado por ADB shell muestra el disco del **host** (el hook `statfs` de `libpixel_hw.so` viaja por `LD_PRELOAD` y solo aplica a procesos de aplicación, no a `adbd`). El almacenamiento del perfil (128/256 GB) se verifica con una app de diagnóstico dentro de la instancia (Device Info / DevCheck).
 
 ### B. Verificación de Tiendas Oficiales y Servicios
 * **Google Play Store:** Abre directamente a la pantalla oficial de inicio de sesión (`UnauthenticatedMainActivity`) sin el bloqueo de "Dispositivo no certificado".
 * **Buscador de Google:** Ejecuta búsquedas web sin pantallas de error ("Ocurrió un error"), conectando mediante el stack Cronet expuesto en `public.libraries.txt`.
 * **Pixelscan:** Al ejecutar el test en el dispositivo, verifica un puntaje de **75/100** con cero advertencias de `Brand Store Missing`.
 * **Device Info / DevCheck:** Verifica en la pestaña *Sistema* que el Kernel muestre `5.10.149-android12-9-...`, el Bootloader esté reportado como bloqueado con su versión de compilación, y la Banda Base muestre el firmware de módem oficial.
+
+### C. Verificación de Pantalla Lógica (lo que ven las Aplicaciones)
+La sonda `com.proteomesh.displayprobe` (en `.probe/`, fuera del control de versiones) registra en logcat exactamente lo que observa una aplicación real sobre `android.view.Display`:
+
+```bash
+PORT=5601
+A="adb -s 127.0.0.1:$PORT"
+
+# 1. Instalar la sonda y autorizarla en el scope de LSPosed.
+#    lspd cachea el scope en memoria: el alta requiere reinicio del contenedor.
+$A install -r .probe/display_probe.apk
+$A shell "su -c 'manage-spoof add com.proteomesh.displayprobe'"
+docker restart v-samsung_s21      # o: python3 tools/instance_manager.py start v-samsung_s21
+
+# 2. Tras el boot, lanzar la sonda y leer sus valores
+$A logcat -c
+$A shell am start -n com.proteomesh.displayprobe/.ProbeActivity
+$A logcat -d -s DisplayProbe
+```
+
+Valores esperados (todos provienen del `profile.json` de la instancia; el sistema conserva `Physical 720x1280@30` para el render, visible en `wm size`):
+
+| Instancia | `mode` / `supportedModes` / `refreshRate` | `xdpi` = `ydpi` |
+|---|---|---|
+| `v-samsung_s21` (Exynos 2100) | `1080x2400@120` / `[120, 60]` / 120 | 421 |
+| `v-cancunf` (MT6855) | `1080x2400@120` / `[120, 60]` / 120 | 405 |
+| `v-tapas` (SM6225) | `1080x2400@120` / `[120, 60]` / 120 | 395 |
+| Galaxy A54 (`a54x`) | `1080x2340@120` / `[120, 60]` / 120 | 403 |
+| Redmi 13C (`gale`) | `720x1600@90` / `[90, 60]` / 90 | 260 |
+
+Si la sonda reporta `refreshRate=30.0` y `mode=720x1280@30`, el módulo LSPosed no está cargado en la instancia (dex/scope cacheados): reiniciar el contenedor y reintentar. Si la sonda no aparece hookeada, verificar que el paquete esté en el scope (`manage-spoof status`).

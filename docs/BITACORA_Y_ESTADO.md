@@ -18,6 +18,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 | **Kernel Linux Spoofing** | **100% Funcional** | Hook de Bionic `uname()` en `libpixel_hw.so` (`LD_PRELOAD`). | Reporta kernel Google `4.19.282-g9e27c0faec01` sobre kernel host CachyOS 7.x. |
 | **Memoria RAM y Almacenamiento** | **100% Funcional** | Hooks Bionic `sysinfo()`, `statvfs()` y `statfs()` en `libpixel_hw.so`. | Reporta 8 GB RAM LPDDR4X y 128 GB UFS ocupando < 2 GB físicos en host. |
 | **GPU / Aceleración Gráfica** | **100% Funcional** | Render software SwiftShader/ANGLE mapeado a `Adreno (TM) 620`. | Validación en OpenGL ES 3.1 / 3.2 sin colapso gráfico. |
+| **Pantalla: Render Físico vs Reporte Lógico** | **100% Funcional** | Render interno `720x1280@30` en SurfaceFlinger + `wm size`/`wm density` del perfil post-boot + hooks de `android.view.Display` exclusivos para apps (modos, tasas y `xdpi/ydpi`). | Sonda `com.proteomesh.displayprobe` en 5 perfiles (A54, gale, S21, cancunf, tapas): las apps ven el panel real (`1080x2340@120` @403ppi, etc.) mientras `wm size`/`dumpsys display` conservan `720x1280@30` para el sistema. |
 | **Red Wi-Fi 5 GHz** | **100% Funcional** | `FakeWifiHook.java` interceptando `WifiManager`, `WifiInfo` y `NetworkCapabilities`. | Reporta `wlan0`, 866 Mbps, 5180 MHz (Canal 36), RSSI -52 dBm y DHCP válido. |
 | **Telefonía y SIM Móvil** | **100% Funcional** | `FakeWifiHook.java` interceptando `TelephonyManager`. | SIM Personal Argentina (MCC/MNC `72234`), red `LTE` 4G, SIM lista y 1 módem. |
 | **Sensores de Hardware (11)** | **100% Funcional** | `FakeSensors.java` con hilos concurrentes y micro-ruido termal. | 11 sensores activos en `Device Info` y liveness test aprobado en `Pixelscan`. |
@@ -235,7 +236,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   1. **Desacoplamiento de Renderizado vs Reporte Lógico:**
      * **Renderizado Interno Ligero:** SurfaceFlinger arranca en `720x1280 @ 30fps (270 dpi)` en `tools/instance_manager.py`. Reduce el cómputo de GPU en un **88%** y los búferes de cuadro de 29 MB a 10.5 MB.
      * **Escalado Lógico Oficial:** Post-arranque, `wm size` y `wm density` inyectan la resolución física real del perfil (`1080x2340 @ 440dpi` en Galaxy A54, `1080x2400 @ 395dpi` en Redmi 12). `WindowManager` reporta la pantalla completa oficial a las apps.
-     * **Hook de Tasa de Refresco en LSPosed (`FakeWifiHook.java`):** Se interceptaron `Display.getRefreshRate()` y `Display.Mode.getRefreshRate()` para devolver el `fps` oficial del perfil (`display.fps`, ej. 120.0 Hz o 90.0 Hz) en lugar de los 30 fps de renderizado interno.
+     * **Hook de Tasa de Refresco en LSPosed (`FakeWifiHook.java`) — versión inicial:** Se interceptaron `Display.getRefreshRate()` y `Display.Mode.getRefreshRate()`. *(Cobertura incompleta: `getMode()`, `getSupportedModes()` y `xdpi/ydpi` seguían filtrando la pantalla real de render, y el hook global de `Mode.getRefreshRate()` pisaba cualquier modo estándar. Corregido y completado en el desafío #24.)*
   2. **Desactivación Masiva de Paquetes Innecesarios (`DISABLE_PACKAGES`):**
      * Se deshabilitaron selectivamente 19 paquetes del sistema mediante `pm disable-user --user 0`.
      * *Bluetooth/NFC:* `com.android.bluetooth`, `com.android.bluetoothmidiservice`, `com.android.nfc`.
@@ -256,6 +257,67 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - **PIDs:** Reducción de **1684 → ~1450 PIDs**.
   - **Reporte en Apps:** Device Info y DevCheck muestran la resolución oficial (`2340×1080` / `2400×1080`) a `120 Hz` y los 8 núcleos intactos.
   - **Capacidad de Granja:** Pasa de ~5 instancias a **10–12 instancias concurrentes** en 16 GB de RAM.
+
+### 24. Corrección de Fuga de Pantalla hacia las Apps (Modos, Hz y PPI) y Despliegue Atómico del Módulo LSPosed
+* **Problemas Detectados (fuga de display):**
+  1. `Display.getMode()` devolvía `720x1280@30` y `getSupportedModes()` `[720x1280@30]`: `wm size` reescribe las métricas lógicas de `DisplayMetrics`, pero **no** el modo físico que sigue exponiendo SurfaceFlinger. DevCheck/Device Info mostraban la resolución de render optimizada.
+  2. `xdpi/ydpi` permanecían en **270** (dpi de renderizado): cualquier app que calcule el tamaño físico de pantalla derivaba **9.55"** en diagonal para un Galaxy A54 de 6.4" (con el `dpi` lógico de 450 daría 5.73"; el valor real es el `ppi` físico del panel, 403). El `dpi` lógico (escala de UI) **no** es el `ppi` físico del panel.
+  3. La cobertura parcial de hooks dejaba sin interceptar `getSupportedModes()`, `getSupportedRefreshRates()` y las métricas físicas; y el hook global sobre `Display.Mode.getRefreshRate()` era contraproducente: pisaba el modo estándar de 60 Hz (listas incoherentes `[120, 120]`) o producía combinaciones físicamente inexistentes como `720x1280@120`.
+* **Problema Detectado (despliegue):** El módulo LSPosed **nunca llegaba a las instancias clonadas**: `apply-props.sh` no instalaba el APK desde la imagen, por lo que cada instancia recién creada ejecutaba el módulo horneado en `data-clean/` (7 de octubre). Todos los hooks del repositorio quedaban inertes en clones nuevos (incluso el `fps` se reportaba a 30 Hz).
+* **Causa Raíz (despliegue):** `lspd` (LSPosed 1.9.2) **cachea en memoria** el dex del módulo (`preloadDex`) y el scope (`cacheScopes`) al arrancar; cambios en el APK o en `modules_config.db` en caliente no se aplican hasta reiniciar el sistema. Reiniciar el daemon manualmente en un momento tardío del boot dispara *"System server injection fails, trying a restart"* (reinicio parcial del sistema que rompe los hooks de procesos nuevos).
+* **Solución (display) — `FakeWifiHook.java`, sección 9.5, activa solo si `isDisplayTarget = !"android".equals(lpparam.packageName)`:**
+  1. `Display.getRefreshRate()` → `display.fps` del perfil.
+  2. `Display.getMode()` → `Mode(1, W, H, fps)` sintético del perfil.
+  3. `Display.getSupportedModes()` → `[modo perfil, 60 Hz]` (deduplicado si el perfil ya es de 60 Hz).
+  4. `Display.getSupportedRefreshRates()` → `[60, fps]` (API 31+, invocado por reflexión).
+  5. `Display.getMetrics()` y `getRealMetrics()` → `xdpi = ydpi = display.ppi` (densidad física real del panel).
+  6. **Eliminado** el hook global de `Mode.getRefreshRate()`: los modos sintéticos ya llevan su tasa correcta y un hook global pisaría el modo de 60 Hz.
+  7. Nuevo campo `display.ppi` en las **17 plantillas** (`templates/**/*.json`), distinto del `dpi` lógico (ej. A54: 450 vs 403; gale: 260 vs 260).
+  8. **Por qué solo apps:** `system_server` y SurfaceFlinger conservan los valores reales porque de ellos depende la composición (los binarios HAL/redroid no existen en otra resolución) y así `dumpsys`, `.Settings`, ADB y `scrcpy` siguen siendo coherentes para operación y monitoreo; ninguna app cliente ejecuta código dentro de `system_server`, por lo que el spoof allí no aporta evasión.
+* **Solución (despliegue):**
+  1. `apply-props.sh`: si el md5 del APK instalado difiere de `/system/etc/proteomesh/FakeWifiPixel.apk`, lo instala (`pm install -r -d`, con fallback `uninstall + install`), re-registra su path real en `modules_config.db` (`mid 39`) + `manage-spoof auto`, y deja la bandera `.proteomesh_module_updated`. **Nunca** reinicia `lspd`.
+  2. `instance_manager.py`: `wait_boot()` espera `sys.boot_completed=1` **y** el marcador `.proteomesh_boot_done` (fin real de `apply-props.sh`); si existe `.proteomesh_module_updated`, hace **un único** `docker restart` y vuelve a esperar el boot completo, momento en que `lspd` precarga el APK nuevo desde la DB ya actualizada.
+  3. Corrección de carrera: `sys.boot_completed=1` se publica antes de que `apply-props.sh` limpie/setee sus marcadores; el gestor borra ambos marcadores tras conectar ADB y tras el reinicio para eliminar falsos positivos de arranques anteriores.
+* **Herramienta de Verificación (`.probe/`, fuera del control de versiones):** APK sonda `com.proteomesh.displayprobe` (targetSdk 29) que registra en logcat (`DisplayProbe`) exactamente lo que observa una app real. Se compila con `bash .probe/build_probe.sh` (aapt2 `8.13.2-14304508` de `dl.google.com`, r8 `8.2.42`, `android.jar` de android-30; targetSdk 29 porque el host no dispone de `apksigner` y `jarsigner` no satisface la firma v2 + `resources.arsc` alineado que exige targetSdk 30).
+* **Resultados Verificados (aplicación real vs sistema):**
+
+| Perfil (instancia) | Lo que ve la app (sonda) | `wm size` / sistema |
+|---|---|---|
+| Galaxy A54 (Exynos s5e8835) | `1080x2340@120`, modos `[120, 60]`, rates `[60, 120]`, xdpi/ydpi **403** | `Physical 720x1280` + `Override 1080x2340` |
+| Redmi 13C (`gale`, MT6769Z) | `720x1600@90`, modos `[90, 60]`, rates `[60, 90]`, xdpi **260** | `Physical 720x1280` + `Override 720x1600` |
+| Galaxy S21 (Exynos 2100) | `1080x2400@120`, modos `[120, 60]`, rates `[60, 120]`, xdpi **421** | `Physical 720x1280` + `Override 1080x2400` |
+| Moto G54 (`cancunf`, MT6855) | `1080x2400@120`, modos `[120, 60]`, rates `[60, 120]`, xdpi **405** | `Physical 720x1280` + `Override 1080x2400` |
+| Redmi Note 12 (`tapas`, SM6225) | `1080x2400@120`, modos `[120, 60]`, rates `[60, 120]`, xdpi **395** | `Physical 720x1280` + `Override 1080x2400` |
+
+* **Nota sobre `scrcpy` / `screencap`:** capturan el framebuffer crudo (`720x1280@30`) porque leen la capa del compositor desde el host vía ADB. No es una fuga accesible para una app cliente y es precisamente el mecanismo que permite monitorear decenas de instancias con bajo ancho de banda; la coherencia antifraude queda cubierta en **todas** las APIs de `android.view.Display` consultables desde una aplicación.
+* **Nota operativa:** el alta de una app en el scope de LSPosed (p. ej. la sonda) en caliente **no** surte efecto hasta reiniciar el contenedor: el scope se cachea al arranque del daemon.
+
+### 25. Operación Multi-SoC: Creación y Verificación de Instancias por Modelo
+* **Objetivo:** Validar que las plantillas cargan con fidelidad sus características en instancias nuevas (clonadas de `data-clean/`), cubriendo las tres familias de silicio: Samsung Exynos, MediaTek y Qualcomm.
+* **Creación masiva (una instancia por modelo, saltando existentes):**
+  ```bash
+  PORT=5590
+  for t in templates/google/*.json templates/motorola/*.json templates/samsung/*.json templates/xiaomi/*.json; do
+    n="v-$(basename "$t" .json)"
+    [ -d "instances/$n" ] && continue
+    python3 tools/instance_manager.py create --name "$n" --template "$t" --carrier ar_personal --port $PORT
+    PORT=$((PORT+1))
+  done
+  ```
+  * Cada instancia clona la base limpia (~1.2 GB de disco) y congela su `profile.json` con identidad única (IMEI con Luhn, serial, MACs OUI, SSID/BSSID del router simulado).
+  * **Advertencia:** re-ejecutar `create` sobre un nombre existente **regenera la identidad y sobrescribe `profile.json`**; el `continue` del loop protege contra esto.
+  * **Advertencia de recursos:** en hosts de 16 GB no arrancar las 17 a la vez (0.4–1.8 GB RAM por instancia en caliente; 0.16–0.4 GB en reposo prolongado). Arrancar de a 1–2 o en lotes.
+* **Primer arranque de un clon:** `apply-props.sh` detecta el md5 del módulo viejo horneado en `data-clean/`, instala el nuevo y el gestor reinicia automáticamente una vez (boot1 → boot2). Duración aproximada: 2x un arranque normal. Es el pipeline del desafío #24 funcionando.
+* **Verificación de características (CLI en cada instancia):** identidad (`getprop`), RAM (`/proc/meminfo`, enmascarado a nivel sistema), pantalla lógica (`wm size`/`wm density` → `Override` del perfil sobre `Physical 720x1280`), HAL gráfico dinámico (`fake_getprop.sh ro.hardware.hwcomposer/gralloc`) y red (`dumpsys wifi` con SSID/BSSID/MAC únicos).
+* **Verificación multi-SoC ejecutada en esta sesión (3 clones nuevos, 3 familias):**
+
+| Instancia | Puerto | Modelo / SoC | Props | RAM | Display lógico | HAL (hwc/gralloc) | SSID | Sonda |
+|---|---|---|---|---|---|---|---|---|
+| `v-samsung_s21` | 5601 | SM-G991B / Exynos 2100 | `samsung` `exynos2100` | 8 GB | `1080x2400 @421` | `exynos2100` / `mali` | Personal-CD35 | `1080x2400@120` @421ppi |
+| `v-cancunf` | 5592 | XT2343-1 / MT6855 (D7020) | `motorola` `mt6855` | 8 GB | `1080x2400 @405` | `mtk` / `mali` | Fibertel-AF1C | `1080x2400@120` @405ppi |
+| `v-tapas` | 5606 | 23028RA60L / SM6225 (SD685) | `Xiaomi` `bengal` | 8 GB | `1080x2400 @395` | `qcom` / `qcom` | Claro-BFA4 | `1080x2400@120` @395ppi |
+
+* **Nota sobre almacenamiento:** `df` ejecutado por ADB shell muestra el disco del **host** (447 GB) porque el hook `statfs/statvfs` de `libpixel_hw.so` viaja por `LD_PRELOAD` y solo aplica a procesos de aplicaciones (no a `adbd`). El almacenamiento del perfil (128/256 GB) debe verificarse con apps de diagnóstico dentro de la instancia, no por shell.
 
 ---
 

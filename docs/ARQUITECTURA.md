@@ -23,6 +23,7 @@ El sistema opera mediante tres capas coordinadas sin requerir parches en el kern
 │  - android.os.Build & SystemProperties                 │
 │  - android.hardware.camera2 (CameraCharacteristics)    │
 │  - android.hardware.SensorManager (MEMS fidedignos)   │
+│  - android.view.Display (modos, Hz, xdpi/ydpi)         │
 │  - android.net.wifi.WifiManager & WifiInfo             │
 │  - android.telephony.TelephonyManager & Subscriptions  │
 │  - GmsDeviceComplianceResponse (Play Protect Bypass)  │
@@ -109,7 +110,8 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
    * Se clona el volumen `/data` a partir de la imagen dorada `data-clean/`, garantizando permisos root de Magisk y llaves autorizadas de ADB sin rastros de cuentas anteriores.
 3. **Arranque y Normalización (`start`):**
    * **Desacoplamiento de Renderizado:** El contenedor arranca internamente con SurfaceFlinger optimizado a `720x1280 @ 30fps (270 dpi)` para minimizar uso de CPU/GPU software (reducción de 88% en carga de renderizado).
-   * **Métricas Lógicas Reales:** Post-boot, `instance_manager.py` aplica `wm size` y `wm density` con la resolución y DPI nativos del perfil (`1080x2340 @ 440dpi`, etc.), mientras que `FakeWifiHook.java` intercepta `Display.getRefreshRate()` reportando los Hz de fábrica (120 Hz, 90 Hz).
+   * **Métricas Lógicas Reales:** Post-boot, `instance_manager.py` aplica `wm size` y `wm density` con la resolución y DPI lógicos nativos del perfil (`1080x2340 @ 450dpi`, etc.). En paralelo, `FakeWifiHook.java` (sección 9.5, activo solo para procesos de aplicación) intercepta `Display.getRefreshRate()`, `getMode()`, `getSupportedModes()`, `getSupportedRefreshRates()` y `getMetrics()`/`getRealMetrics()` (forzando `xdpi`/`ydpi` al `display.ppi` físico del panel), de modo que ninguna API de pantalla consultable desde una app revele el render optimizado. `system_server` y SurfaceFlinger conservan los valores reales (ADB, `dumpsys` y `scrcpy` siguen viendo `720x1280@30`).
+   * **Despliegue Atómico del Módulo LSPosed:** `apply-props.sh` compara el md5 del APK instalado contra `/system/etc/proteomesh/FakeWifiPixel.apk` y lo actualiza en el arranque (con re-registro en `modules_config.db` vía `manage-spoof`). Como `lspd` cachea el dex del módulo y el scope en memoria (no recarga en caliente, y reiniciar el daemon tarde rompería el sistema), `instance_manager.py` detecta la bandera `.proteomesh_module_updated` y ejecuta un único `docker restart`, esperando el boot con el marcador `.proteomesh_boot_done`; el segundo arranque precarga el APK nuevo desde el inicio.
    * **Poda de Servicios y Límites de Procesos:** Se desactivan 19 paquetes del sistema vinculados a hardware físico inexistente (`pm disable-user --user 0`) y se configuran límites estrictos de procesos en caché (`max_cached_processes=4`).
    * Al bootear, `/system/bin/profile-loader` parsea `profile.json` e inyecta propiedades en microsegundos vía `resetprop`.
    * Se sincroniza automáticamente la zona horaria del sistema con la operadora (`setprop persist.sys.timezone`).

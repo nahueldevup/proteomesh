@@ -31,6 +31,7 @@ Cada plantilla (`templates/<marca>/<modelo>.json`) declara:
 * **Bypass de Certificación de Google Play Protect:** Intercepción a nivel de IPC en `GmsDeviceComplianceResponse` y neutralización de `UncertifiedDeviceActivity`, permitiendo el acceso directo y oficial a la Google Play Store.
 * **Stack de Red Chromium Cronet en Google Search:** Exposición de `libcronet.so` en `/system/etc/public.libraries.txt` para autorizar al linker dinámico de Bionic en Android 13, garantizando funcionamiento impecable del Buscador de Google.
 * **Protección Contra Fugas de Kernel Host:** Corrección de buffer en C en `libpixel_hw.so` y ganchos de framework que ocultan cualquier huella del kernel anfitrión (`cachyos`), reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`).
+* **Coherencia de Pantalla (Física vs Lógica):** El compositor de cada instancia renderiza internamente a `720x1280 @ 30fps` (ahorro ~88% de CPU en rasterizado por software), pero las aplicaciones leen el panel real del perfil: resolución lógica (`wm size`), modos soportados, tasa de refresco y densidades físicas `xdpi/ydpi` (ppi) mediante hooks de `android.view.Display` exclusivos para procesos de aplicación. `system_server` y SurfaceFlinger conservan los valores reales, manteniendo coherentes a ADB, `dumpsys` y `scrcpy`.
 
 ---
 
