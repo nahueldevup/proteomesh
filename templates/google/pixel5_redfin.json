@@ -28,7 +28,10 @@
     "baseband_version": "g7250-00247-230911-B-10825225",
     "build_host": "google.com",
     "sku": "GTT9Q",
-    "color": "just_black"
+    "color": "just_black",
+    "ram_mb": 8192,
+    "storage_gb": 128,
+    "storage_type": "ufs"
   },
   "kernel": {
     "version": "4.19.282-g9e27c0faec01",
@@ -110,8 +113,14 @@
       "orientation": 90,
       "focal_length": 4.38,
       "aperture": 1.73,
-      "sensor_size_mm": [5.64, 4.23],
-      "pixel_array": [4032, 3024]
+      "sensor_size_mm": [
+        5.64,
+        4.23
+      ],
+      "pixel_array": [
+        4032,
+        3024
+      ]
     },
     {
       "id": "1",
@@ -119,8 +128,14 @@
       "orientation": 270,
       "focal_length": 2.74,
       "aperture": 2.0,
-      "sensor_size_mm": [3.6, 2.7],
-      "pixel_array": [3264, 2448]
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ],
+      "pixel_array": [
+        3264,
+        2448
+      ]
     },
     {
       "id": "2",
@@ -128,8 +143,14 @@
       "orientation": 90,
       "focal_length": 2.22,
       "aperture": 2.2,
-      "sensor_size_mm": [4.6, 3.45],
-      "pixel_array": [4656, 3496]
+      "sensor_size_mm": [
+        4.6,
+        3.45
+      ],
+      "pixel_array": [
+        4656,
+        3496
+      ]
     }
   ],
   "sensors": [
@@ -252,7 +273,7 @@
       "type": 11,
       "string_type": "android.sensor.rotation_vector",
       "max_range": 1.0,
-      "resolution": 0.00001,
+      "resolution": 1e-05,
       "power": 0.88,
       "min_delay": 2500,
       "max_delay": 200000,
@@ -287,5 +308,9 @@
       "fifo_reserved": 100,
       "fifo_max": 100
     }
-  ]
+  ],
+  "network": {
+    "ssid_prefix": "Personal",
+    "bssid_oui": "F4:EC:38"
+  }
 }

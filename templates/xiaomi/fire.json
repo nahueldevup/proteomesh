@@ -28,7 +28,10 @@
     "baseband_version": "MOLY.LR12A.R3.MP.V182.P8",
     "build_host": "build",
     "sku": "23053RN02L",
-    "color": "black"
+    "color": "black",
+    "ram_mb": 8192,
+    "storage_gb": 256,
+    "storage_type": "ufs"
   },
   "kernel": {
     "version": "5.10.149-android12-9-00001-ge5f3ba2132a1",
@@ -204,5 +207,9 @@
       "min_delay": 0,
       "max_delay": 0
     }
-  ]
+  ],
+  "network": {
+    "ssid_prefix": "Fibertel",
+    "bssid_oui": "50:C7:BF"
+  }
 }

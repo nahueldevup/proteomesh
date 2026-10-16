@@ -28,7 +28,10 @@
     "baseband_version": "A245MUBS3BWL1",
     "build_host": "build",
     "sku": "SM-A245M",
-    "color": "black"
+    "color": "black",
+    "ram_mb": 6144,
+    "storage_gb": 128,
+    "storage_type": "ufs"
   },
   "kernel": {
     "version": "5.10.0",
@@ -216,5 +219,9 @@
       "min_delay": 0,
       "max_delay": 0
     }
-  ]
+  ],
+  "network": {
+    "ssid_prefix": "Movistar",
+    "bssid_oui": "00:1D:CF"
+  }
 }

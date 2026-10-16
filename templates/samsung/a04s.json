@@ -28,7 +28,10 @@
     "baseband_version": "A047FXXU4CWE4",
     "build_host": "build",
     "sku": "SM-A047M",
-    "color": "black"
+    "color": "black",
+    "ram_mb": 4096,
+    "storage_gb": 128,
+    "storage_type": "emmc"
   },
   "kernel": {
     "version": "5.10.0",
@@ -182,5 +185,9 @@
       "min_delay": 0,
       "max_delay": 0
     }
-  ]
+  ],
+  "network": {
+    "ssid_prefix": "Personal",
+    "bssid_oui": "F4:EC:38"
+  }
 }

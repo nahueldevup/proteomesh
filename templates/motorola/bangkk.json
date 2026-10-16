@@ -28,7 +28,10 @@
     "baseband_version": "M6375_HI433_11.134.01.68R",
     "build_host": "build",
     "sku": "XT2347-1",
-    "color": "blue"
+    "color": "blue",
+    "ram_mb": 8192,
+    "storage_gb": 256,
+    "storage_type": "ufs"
   },
   "kernel": {
     "version": "5.10.149-android12-9-00001-ge5f3ba2132a1",
@@ -201,5 +204,9 @@
       "min_delay": 0,
       "max_delay": 0
     }
-  ]
+  ],
+  "network": {
+    "ssid_prefix": "Fibertel",
+    "bssid_oui": "50:C7:BF"
+  }
 }
