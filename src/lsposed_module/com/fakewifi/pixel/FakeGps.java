@@ -371,18 +371,22 @@ public class FakeGps {
                 }
             });
 
-            // L. GNSS Hardware model & year (Pixel 5 Oficial)
+            // L. GNSS hardware model & year (derivado del perfil activo)
+            final String gnssModel = FakeWifiHook.ProfileConfig.getString("cpu", "gnss_model",
+                    FakeWifiHook.ProfileConfig.getString("cpu", "soc_manufacturer", "Qualcomm")
+                    + " " + FakeWifiHook.ProfileConfig.getString("cpu", "soc_model", "SM7250") + " GNSS");
+            final int gnssYear = FakeWifiHook.ProfileConfig.getInt("device", "gnss_year", 2021);
             try {
                 XposedHelpers.findAndHookMethod(lmClass, "getGnssYearOfHardware", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        param.setResult(2020);
+                        param.setResult(gnssYear);
                     }
                 });
                 XposedHelpers.findAndHookMethod(lmClass, "getGnssHardwareModelName", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
-                        param.setResult("Qualcomm SM7250 GNSS");
+                        param.setResult(gnssModel);
                     }
                 });
             } catch (Throwable ignored) {}
