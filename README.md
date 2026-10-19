@@ -27,7 +27,7 @@ Cada plantilla (`templates/<marca>/<modelo>.json`) declara:
 * **Módem y Banda Base:** Cadenas de firmware de módem reales por plataforma (eliminando por completo valores `unknown`).
 
 ### 3. Evasión Antifraude y Ecosistema de Google
-* **Consistencia de Tienda de Fabricante (Pixelscan 75/100):** Stubs oficiales ultraligeros de 2.8 KB en `stubs/` (`samsung_galaxy_store.apk`, `xiaomi_getapps.apk`, `huawei_appgallery.apk`) combinados con ganchos de `PackageManager` en LSPosed, erradicando advertencias de `Brand Store Missing`.
+* **Consistencia de Tienda de Fabricante (Pixelscan 75/100):** Stubs oficiales ultraligeros (~4.1 KB, con `MainActivity` lanzable, generados por `tools/build_stubs.sh`) en `stubs/` (`samsung_galaxy_store.apk`, `xiaomi_getapps.apk`, `huawei_appgallery.apk`) combinados con ganchos de `PackageManager` en LSPosed, erradicando advertencias de `Brand Store Missing`.
 * **Bypass de Certificación de Google Play Protect:** Intercepción a nivel de IPC en `GmsDeviceComplianceResponse` y neutralización de `UncertifiedDeviceActivity`, permitiendo el acceso directo y oficial a la Google Play Store.
 * **Stack de Red Chromium Cronet en Google Search:** Exposición de `libcronet.so` en `/system/etc/public.libraries.txt` para autorizar al linker dinámico de Bionic en Android 13, garantizando funcionamiento impecable del Buscador de Google.
 * **Protección Contra Fugas de Kernel Host:** Corrección de buffer en C en `libpixel_hw.so` y ganchos de framework que ocultan cualquier huella del kernel anfitrión (`cachyos`), reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`).

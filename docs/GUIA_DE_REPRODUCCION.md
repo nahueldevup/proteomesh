@@ -10,7 +10,7 @@ Esta guía detalla los pasos exactos para compilar, aprovisionar y operar la pla
 * **Docker Engine:** Docker 24+ con soporte de contenedores privilegiados.
 * **Módulos de Kernel Android:**
   * Módulos de Binder activos (`/dev/binder`, `/dev/vndbinder`, `/dev/hwbinder`).
-  * En kernels sin `ashmem` (Linux 5.18+), ProteoMesh utiliza el fallback memfd (`sys.use_memfd=1` / parche en `libcutils.so`).
+  * En kernels sin `ashmem` (Linux 5.18+), ProteoMesh utiliza el fallback memfd (`sys.use_memfd=1` / parche en `libcutils.so`); el shim v3 clasifica también esos memfds (`shared_memory/<guid>`) y sintetiza los sellos `GROW|SHRINK` que exige Chromium 155+ (crbug 498720726). El shim v5.1 aplica además los sellos reales al kernel (semántica cross-proceso para renderers WebView/Chrome) y sintetiza `F_GET_SEALS` implícitamente cuando el kernel responde (éxito = memfd), con sonda mmap de respaldo si el fcntl está bloqueado por seccomp.
 * **Herramientas en Host:**
   * `gcc`, `make` (para compilar `libpixel_hw.so` y `profile-loader`).
   * `openjdk-17` o superior (para compilar el módulo Java de LSPosed).
@@ -46,7 +46,7 @@ El shim incluye un selftest que corre en Linux (sin Android) con `LD_PRELOAD`:
 ```bash
 bash tests/ashmem/run_host_test.sh
 ```
-*Compila el shim con `src/libpixel_hw/build.sh` y valida la API ashmem completa (`open`, sellos `F_ADD_SEALS`/`F_GET_SEALS`, los 10 ioctls `0x7701-0x770a`), la identidad por `readlink` tras `dup`/`F_DUPFD`/`SCM_RIGHTS`, la limpieza de marcas en `dup2` y la política `device.ashmem` (off/on/default). Salida esperada: `RESULT: OK` (el binario generado queda en `build/tests/`).*
+*Compila el shim con `src/libpixel_hw/build.sh` y valida la API ashmem completa (`open`, sellos `F_ADD_SEALS`/`F_GET_SEALS`, los 10 ioctls `0x7701-0x770a`), la identidad por `readlink` tras `dup`/`F_DUPFD`/`SCM_RIGHTS`, la limpieza de marcas en `dup2`, la política `device.ashmem` (off/on/default) y la regresión de renderers (proceso nuevo con shim fresco que recibe el fd ajeno y ve `FUTURE_WRITE|GROW|SHRINK`). Salida esperada: `RESULT: OK` (48/48; el binario generado queda en `build/tests/`).*
 
 ### E. Sonda On-device de Ashmem (`tests/ashmem/device/`)
 Corre como proceso de aplicación real (hijo de zygote → con `libpixel_hw.so` cargado) y registra la semántica de `/dev/ashmem`:
@@ -100,7 +100,7 @@ python3 tools/instance_manager.py create redmi-12-01 xiaomi/fire ar_personal --p
 ```
 
 ### D. Iniciar la Instancia
-Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), conecta ADB, sincroniza la zona horaria de la operadora y asegura el stub de la tienda oficial de la marca:
+Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), conecta ADB, sincroniza la zona horaria de la operadora y asegura el stub de la tienda oficial de la marca (verificando su versión y actualizándolo si corresponde):
 ```bash
 python3 tools/instance_manager.py start mi-a54-01
 ```
@@ -217,3 +217,53 @@ $A shell cat /data/local/tmp/fake_proc/ashmem_present   # -> 0
 ```
 
 **Nota sobre Chrome:** Chrome 155 de Play es hoy un vehículo no válido para verificar ashmem: crashea al arrancar por un problema de plataforma (lib ARM64 + carga RELRO + native bridge de Zygisk) ajeno al shim (ver desafío #27 de la bitácora). Usar la sonda de §2.E como verificación.
+
+### E. Verificación de Geolocalización en Chrome (Fix #30)
+El módulo inyecta ubicación falsa en Chrome x86_64 hookeando `LocationProviderFactory`/`LocationProviderAdapter` del split aislado. Procedimiento con la página de prueba `geo.html`:
+
+```bash
+PORT=5586
+A="adb -s 127.0.0.1:$PORT"
+
+# 1. Servir la página en el host y exponerla al device
+cd /tmp/opencode && python3 -m http.server 8000 &
+$A reverse tcp:8000 tcp:8000
+
+# 2. Relanzar Chrome limpio y abrir la sonda
+$A shell "am force-stop com.android.chrome; logcat -c"
+$A shell "am start -n com.android.chrome/com.google.android.apps.chrome.Main -a android.intent.action.VIEW -d 'http://localhost:8000/geo.html'"
+sleep 10
+
+# 3. Leer la secuencia del módulo
+$A logcat -d | grep FakeGps
+```
+
+Secuencia esperada en logcat (proceso browser, sin `:` en el nombre):
+* `useGmsCoreLocationProvider blocked` → se evita el fused de GMS.
+* `adapter create() impl=cgf` → se usa la implementación Android.
+* `adapter start(highAcc=false)` ×2 + `start(highAcc=true)` ×1.
+* `error 'Cannot generate approximate location.' suprimido`.
+* `chromium hooks skipped (process=com.android.chrome:privileged_process0)` en procesos hijos (el gate de proceso evita el crash nativo del puente JNI).
+
+En pantalla debe aparecer `OK lat=-34.603719 lon=-58.381589 acc=4.6 alt=24.96`. Si el primer request queda en `...pidiendo posicion`, pulsar REINTENTAR (tap ≈ `136 495` en 1080x2340).
+
+Iteración rápida sin rebuild de imagen (los procesos nuevos cargan el dex nuevo; `lspd` lo lee por proceso):
+
+```bash
+bash src/lsposed_module/build_apk.sh
+$A push modules/FakeWifiPixel.apk /data/local/tmp/FakeWifiPixel_new.apk
+$A shell "su -c 'pm install -r -d /data/local/tmp/FakeWifiPixel_new.apk && am force-stop com.android.chrome'"
+```
+
+Para persistir: `DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .` + recrear la instancia (el boot reinstala el módulo por md5).
+
+### F. Auditoría del Scope LSPosed y Stubs de Tienda
+Toda app de usuario debe estar en el scope (las apps fuera de scope ven `Build`/ABIs mixtos del sistema base). El scope se sincroniza solo en cada arranque (`manage-spoof sync` desde `apply-props.sh`); los cambios manuales requieren reinicio del contenedor porque `lspd` cachea el scope en memoria:
+
+```bash
+python3 tools/scope_audit.py              # faltantes, rancias y paquetes sin componentes (los que lspd poda)
+python3 tools/scope_audit.py --apply      # sincroniza el scope (equivale a manage-spoof sync en la instancia)
+python3 tools/scope_audit.py --prune      # quita entradas cuya app ya no está instalada
+```
+
+Los stubs de tienda (`stubs/*.apk`, ~4.1 KB) se reconstruyen con `tools/build_stubs.sh` (requiere JDK; descarga aapt2/r8/android-30.jar a `/tmp/proteomesh_stubs_build/` y firma con `src/lsposed_module/debug.keystore`). **Deben declarar `MainActivity`**: un APK sin componentes es eliminado del scope por `lspd` en cada arranque (`ConfigManager.cacheScopes()` → `obsoletePackages`). Al cambiar la versión de un stub, actualizar `STORE_MAP` en `tools/instance_manager.py`.

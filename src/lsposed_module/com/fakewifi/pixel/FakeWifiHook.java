@@ -871,6 +871,12 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     else if ("sys.usb.config".equals(key)) param.setResult("none");
                     else if ("sys.usb.state".equals(key)) param.setResult("none");
                     else if ("ro.debuggable".equals(key)) param.setResult("0");
+                    else if (isAbiTarget && "ro.dalvik.vm.native.bridge".equals(key)) param.setResult("0");
+                    else if (isAbiTarget && "ro.enable.native.bridge.exec".equals(key)) param.setResult("");
+                    else if (isAbiTarget && "ro.dalvik.vm.isa.arm64".equals(key)) param.setResult("arm64");
+                    else if (isAbiTarget && "ro.dalvik.vm.isa.arm".equals(key)) param.setResult("arm");
+                    else if (isAbiTarget && key != null && key.startsWith("dalvik.vm.isa.x86")) param.setResult("");
+                    else if (isAbiTarget && key != null && key.startsWith("ro.dalvik.vm.isa.x86")) param.setResult("");
                 }
             };
             XposedHelpers.findAndHookMethod(spClass, "get", String.class, propHook);

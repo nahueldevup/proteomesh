@@ -74,10 +74,10 @@ redroid-integrity-lab/
 │       ├── profile.json           # Perfil congelado con identidad única
 │       └── data/                  # Volumen persistente /data clonado de data-clean
 ├── data-clean/                    # Imagen dorada sanitizada base para nuevas instancias
-├── stubs/                         # APKs stub ultraligeros de tiendas de fabricante
-│   ├── samsung_galaxy_store.apk   # com.sec.android.app.samsungapps (2.8 KB)
-│   ├── xiaomi_getapps.apk         # com.xiaomi.mipicks (2.8 KB)
-│   └── huawei_appgallery.apk      # com.huawei.appmarket (2.8 KB)
+├── stubs/                         # APKs stub ultraligeros de tiendas de fabricante (~4.1 KB, con activity)
+│   ├── samsung_galaxy_store.apk   # com.sec.android.app.samsungapps (4.1 KB)
+│   ├── xiaomi_getapps.apk         # com.xiaomi.mipicks (4.1 KB)
+│   └── huawei_appgallery.apk      # com.huawei.appmarket (4.1 KB)
 ├── tools/
 │   └── instance_manager.py        # Orquestador CLI del ciclo de vida de instancias
 ├── src/
@@ -115,7 +115,7 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
    * **Poda de Servicios y Límites de Procesos:** Se desactivan 19 paquetes del sistema vinculados a hardware físico inexistente (`pm disable-user --user 0`) y se configuran límites estrictos de procesos en caché (`max_cached_processes=4`).
    * Al bootear, `/system/bin/profile-loader` parsea `profile.json` e inyecta propiedades en microsegundos vía `resetprop`.
    * Se sincroniza automáticamente la zona horaria del sistema con la operadora (`setprop persist.sys.timezone`).
-   * Se asegura la presencia del stub de la tienda oficial según la marca del dispositivo.
+   * Se asegura la presencia del stub de la tienda oficial según la marca del dispositivo (con verificación de versión por marca) y la sincronización automática del scope de LSPosed (`manage-spoof sync`) para que toda app instalada quede hookeada.
 
 ---
 
@@ -124,7 +124,7 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
 ### A. Consistencia de Tienda de Fabricante (Brand Store Evasion)
 * **Reto:** SDKs antifraude como Pixelscan verifican si un dispositivo Samsung, Xiaomi o Huawei posee su tienda OEM (`com.sec.android.app.samsungapps`, `com.xiaomi.mipicks`, `com.huawei.appmarket`), penalizando como emulador (`Brand Store Missing`) si falta.
 * **Mecanismo:**
-  * Se instalan APKs stub nativos de 2.8 KB (`android:hasCode="false"`). No ejecutan procesos en segundo plano ni consumen memoria, pero constan físicamente en `/data/system/packages.xml`.
+  * Se instalan APKs stub nativos (~4.1 KB) con `MainActivity` lanzable y `classes.dex` mínimas: LSPosed marca como `obsolete package` y elimina del scope a todo paquete sin componentes (`ConfigManager.cacheScopes()`), por lo que el stub debe declarar al menos una activity. Constan físicamente en `/data/system/packages.xml` y la tienda es lanzable como una real (sin ejecutar procesos en segundo plano). Se reconstruyen con `tools/build_stubs.sh`.
   * Se interceptan llamadas Java de `PackageManager.getPackageInfo` y `ApplicationPackageManager`.
   * Se hookea la rutina de comprobación interna `net.pixelscan.check.MainActivity.s` devolviendo `true` para la tienda asociada a la marca activa.
   * **Puntaje verificado:** **75/100** en Pixelscan con cero advertencias de tienda.

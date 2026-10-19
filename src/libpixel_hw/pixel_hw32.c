@@ -55,6 +55,54 @@ static long raw_memfd_create(const char *name, unsigned int flags) {
     return eax;
 }
 
+// readlinkat/ mmap / munmap por syscall raw: la clasificacion de fds ajenos
+// recibidos por binder/SCM_RIGHTS ocurre en dominios (isolated_app) donde
+// readlink(2) puede estar bloqueado por seccomp y libc no es de fiar.
+static long raw_readlinkat(int dirfd, const char *path, char *buf, unsigned long size) {
+    register long eax asm("eax") = 305; // SYS_readlinkat (i386)
+    register long ebx asm("ebx") = (long)dirfd;
+    register long ecx asm("ecx") = (long)path;
+    register long edx asm("edx") = (long)buf;
+    register long esi asm("esi") = (long)size;
+    __asm__ volatile (
+        "int $0x80"
+        : "+r" (eax)
+        : "r" (ebx), "r" (ecx), "r" (edx), "r" (esi)
+        : "memory"
+    );
+    return eax;
+}
+
+static long raw_mmap(int fd, int prot) {
+    register long eax asm("eax") = 192; // SYS_mmap2 (i386)
+    register long ebx asm("ebx") = 0;
+    register long ecx asm("ecx") = 4096;
+    register long edx asm("edx") = (long)prot;
+    register long esi asm("esi") = 1; // MAP_SHARED
+    register long edi asm("edi") = (long)fd;
+    register long ebp asm("ebp") = 0;
+    __asm__ volatile (
+        "int $0x80"
+        : "+r" (eax)
+        : "r" (ebx), "r" (ecx), "r" (edx), "r" (esi), "r" (edi), "r" (ebp)
+        : "memory"
+    );
+    return eax;
+}
+
+static long raw_munmap(void *addr, unsigned long len) {
+    register long eax asm("eax") = 91; // SYS_munmap (i386)
+    register long ebx asm("ebx") = (long)addr;
+    register long ecx asm("ecx") = (long)len;
+    __asm__ volatile (
+        "int $0x80"
+        : "+r" (eax)
+        : "r" (ebx), "r" (ecx)
+        : "memory"
+    );
+    return eax;
+}
+
 static long raw_ftruncate(int fd, unsigned long long length) {
     register long eax asm("eax") = 194; // SYS_ftruncate64 (i386)
     register long ebx asm("ebx") = (long)fd;
@@ -195,6 +243,7 @@ struct utsname {
 
 static char s_uname_rel[65] = "5.10.149-android12-9-00001-ge5f3ba2132a1";
 static char s_uname_ver[65] = "#1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023";
+static char s_uname_machine[65] = "aarch64";
 static int s_uname_loaded = 0;
 
 static void load_fake_uname(void) {
@@ -216,6 +265,15 @@ static void load_fake_uname(void) {
         if (n > 0) {
             while (n > 0 && (s_uname_ver[n-1] == '\n' || s_uname_ver[n-1] == '\r')) n--;
             s_uname_ver[n] = '\0';
+        }
+        raw_close((int)fd);
+    }
+    fd = raw_open("/data/local/tmp/fake_proc/uname_machine", 0);
+    if (fd >= 0) {
+        ssize_t n = raw_read((int)fd, s_uname_machine, sizeof(s_uname_machine) - 1);
+        if (n > 0) {
+            while (n > 0 && (s_uname_machine[n-1] == '\n' || s_uname_machine[n-1] == '\r')) n--;
+            s_uname_machine[n] = '\0';
         }
         raw_close((int)fd);
     }
@@ -243,6 +301,10 @@ int uname(struct utsname *buf) {
             buf->version[i] = s_uname_ver[i];
         }
         buf->version[i] = '\0';
+        for (i = 0; i < sizeof(buf->machine) - 1 && s_uname_machine[i]; i++) {
+            buf->machine[i] = s_uname_machine[i];
+        }
+        buf->machine[i] = '\0';
     }
     return (int)ret;
 }
@@ -518,12 +580,49 @@ struct ifaddrs_stub32 {
     void                  *ifa_data;
 };
 
+static const char s_fake_ifname[] = "wlan0";
+static unsigned char s_fake_mac[6];
+static int s_fake_mac_ok = 0;
+static int s_fake_mac_loaded = 0;
+
+static void load_fake_mac(void) {
+    if (s_fake_mac_loaded) return;
+    s_fake_mac_loaded = 1;
+    long fd = raw_open("/data/local/tmp/fake_proc/mac_wlan0", 0);
+    if (fd < 0) return;
+    char b[64];
+    ssize_t n = raw_read((int)fd, b, sizeof(b) - 1);
+    raw_close((int)fd);
+    if (n <= 0) return;
+    b[n] = '\0';
+    int vals[6];
+    int vi = 0, hi = -1;
+    for (ssize_t i = 0; i < n && vi < 6; i++) {
+        char c = b[i];
+        int d = -1;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        if (d >= 0) {
+            if (hi < 0) hi = d;
+            else { vals[vi++] = (hi << 4) | d; hi = -1; }
+        } else {
+            hi = -1;
+        }
+    }
+    if (vi == 6) {
+        for (int i = 0; i < 6; i++) s_fake_mac[i] = (unsigned char)vals[i];
+        s_fake_mac_ok = 1;
+    }
+}
+
 int getifaddrs(struct ifaddrs_stub32 **ifap) {
     static int (*real_fn)(struct ifaddrs_stub32 **) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("getifaddrs");
     int res = real_fn ? real_fn(ifap) : -1;
     if (res == 0 && ifap && *ifap) {
         if (my_getuid() >= 10000) {
+            load_fake_mac();
             struct ifaddrs_stub32 *cur = *ifap;
             while (cur) {
                 if (cur->ifa_name &&
@@ -532,14 +631,49 @@ int getifaddrs(struct ifaddrs_stub32 **ifap) {
                     cur->ifa_name[2] == 'h' &&
                     cur->ifa_name[3] == '0' &&
                     cur->ifa_name[4] == '\0') {
-                    cur->ifa_name[0] = 'w';
-                    cur->ifa_name[1] = 'l';
-                    cur->ifa_name[2] = 'a';
-                    cur->ifa_name[3] = 'n';
+                    cur->ifa_name = (char *)s_fake_ifname;
+                    if (s_fake_mac_ok && cur->ifa_addr && ((unsigned char *)cur->ifa_addr)[0] == 17) {
+                        unsigned char *sa = (unsigned char *)cur->ifa_addr;
+                        sa[11] = 6;
+                        for (int i = 0; i < 6; i++) sa[12 + i] = s_fake_mac[i];
+                    }
                 }
                 cur = cur->ifa_next;
             }
         }
+    }
+    return res;
+}
+
+// 5c. if_nametoindex: el kernel no tiene wlan0; para apps se responde con el
+// índice de eth0 (si no, libcore.NetworkInterface.getAll() descarta la entrada
+// renombrada por el hook de getifaddrs y la wlan desaparece del listado Java).
+unsigned int if_nametoindex(const char *ifname) {
+    static unsigned int (*real_fn)(const char *) = (void *)0;
+    if (!real_fn) real_fn = (unsigned int (*)(const char *))dlsym_next("if_nametoindex");
+    if (!real_fn) return 0;
+    if (ifname && my_getuid() >= 10000 &&
+        ifname[0] == 'w' && ifname[1] == 'l' && ifname[2] == 'a' &&
+        ifname[3] == 'n' && ifname[4] == '0' && ifname[5] == '\0') {
+        unsigned int idx = real_fn("eth0");
+        if (idx != 0) return idx;
+    }
+    return real_fn(ifname);
+}
+
+// 5d. if_indextoname: al formatear direcciones IPv6 link-local (getnameinfo /
+// Inet6Address) el kernel resuelve el scope como "eth0"; en apps se traduce a
+// "wlan0" para no filtrar el nombre real de la interfaz del contenedor.
+char *if_indextoname(unsigned int ifindex, char *ifname) {
+    static char *(*real_fn)(unsigned int, char *) = (void *)0;
+    if (!real_fn) real_fn = (char *(*)(unsigned int, char *))dlsym_next("if_indextoname");
+    if (!real_fn) return (char *)0;
+    char *res = real_fn(ifindex, ifname);
+    if (res && ifname && my_getuid() >= 10000 &&
+        ifname[0] == 'e' && ifname[1] == 't' && ifname[2] == 'h' &&
+        ifname[3] == '0' && ifname[4] == '\0') {
+        ifname[0] = 'w'; ifname[1] = 'l'; ifname[2] = 'a';
+        ifname[3] = 'n'; ifname[4] = '0'; ifname[5] = '\0';
     }
     return res;
 }
@@ -664,6 +798,11 @@ static void load_fake_hal(void) {
     }
 }
 
+// Fix B5c: la familia abilist se fakea solo a apps (uid>=10000). Servirla al
+// zygote (B5b) hacia que Build cachee SUPPORTED_ABIS=ARM y PackageManager
+// (hijo del zygote) rechazara escanear APKs con libs x86 (error -113:
+// NetworkStack, ExtServices, Play, GMS) -> system_server fatal en loop y la
+// red del contenedor nunca se configuraba (netd sin reglas/addr).
 static const char *get_fake_prop(const char *name) {
     if (!name) return (void *)0;
     if (my_getuid() < 10000) return (void *)0;
@@ -678,6 +817,18 @@ static const char *get_fake_prop(const char *name) {
     if (str_eq(name, "ro.product.cpu.abilist")) return "arm64-v8a,armeabi-v7a,armeabi";
     if (str_eq(name, "ro.product.cpu.abilist64")) return "arm64-v8a";
     if (str_eq(name, "ro.product.cpu.abilist32")) return "armeabi-v7a,armeabi";
+    if (str_eq(name, "ro.dalvik.vm.native.bridge")) return "0";
+    if (str_eq(name, "ro.enable.native.bridge.exec")) return "";
+    if (str_eq(name, "ro.dalvik.vm.isa.arm64")) return "arm64";
+    if (str_eq(name, "ro.dalvik.vm.isa.arm")) return "arm";
+    if (str_eq(name, "ro.dalvik.vm.isa.x86")) return "";
+    if (str_eq(name, "ro.dalvik.vm.isa.x86_64")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86_64")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86.variant")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86_64.variant")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86.features")) return "";
+    if (str_eq(name, "dalvik.vm.isa.x86_64.features")) return "";
     if (str_eq(name, "ro.build.type")) return "user";
     if (str_eq(name, "ro.build.tags")) return "release-keys";
     if (str_eq(name, "ro.boot.flash.locked")) return "1";
@@ -700,6 +851,109 @@ int __system_property_get(const char *name, char *value) {
     static int (*real_fn)(const char *, char *) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("__system_property_get");
     return real_fn ? real_fn(name, value) : 0;
+}
+
+// 9b. API moderna de propiedades: el framework, `getprop` y android::base no
+// pasan por __system_property_get sino por find/read_callback/foreach; se
+// aplica la misma lista fake para que las apps no dependan del scope LSPosed.
+static int fake_prop_is_absent(const char *name) {
+    if (!name || my_getuid() < 10000) return 0;
+    if (name[0] != 'r' && name[0] != 'd') return 0;
+    return str_eq(name, "ro.enable.native.bridge.exec") ||
+           str_eq(name, "ro.dalvik.vm.isa.x86") ||
+           str_eq(name, "ro.dalvik.vm.isa.x86_64") ||
+           str_eq(name, "dalvik.vm.isa.x86") ||
+           str_eq(name, "dalvik.vm.isa.x86_64") ||
+           str_eq(name, "dalvik.vm.isa.x86.variant") ||
+           str_eq(name, "dalvik.vm.isa.x86_64.variant") ||
+           str_eq(name, "dalvik.vm.isa.x86.features") ||
+           str_eq(name, "dalvik.vm.isa.x86_64.features");
+}
+
+const void *__system_property_find(const char *name) {
+    static const void *(*real_fn)(const char *) = (void *)0;
+    if (!real_fn) real_fn = (const void *(*)(const char *))dlsym_next("__system_property_find");
+    if (!real_fn) return (const void *)0;
+    if (fake_prop_is_absent(name)) return (const void *)0;
+    return real_fn(name);
+}
+
+struct prop_cb_ctx {
+    void (*callback)(void *, const char *, const char *, unsigned int);
+    void *cookie;
+};
+
+static void prop_cb_wrap(void *cookie, const char *name, const char *value, unsigned int serial) {
+    struct prop_cb_ctx *ctx = (struct prop_cb_ctx *)cookie;
+    const char *fake = get_fake_prop(name);
+    ctx->callback(ctx->cookie, name, fake ? fake : value, serial);
+}
+
+void __system_property_read_callback(const void *pi,
+                                     void (*callback)(void *, const char *, const char *, unsigned int),
+                                     void *cookie) {
+    static void (*real_fn)(const void *, void (*)(void *, const char *, const char *, unsigned int), void *) = (void *)0;
+    if (!real_fn) real_fn = (void *)dlsym_next("__system_property_read_callback");
+    if (!real_fn) return;
+    if (callback) {
+        struct prop_cb_ctx ctx;
+        ctx.callback = callback;
+        ctx.cookie = cookie;
+        real_fn(pi, prop_cb_wrap, &ctx);
+        return;
+    }
+    real_fn(pi, callback, cookie);
+}
+
+int __system_property_read(const void *pi, char *name, char *value) {
+    static int (*real_fn)(const void *, char *, char *) = (void *)0;
+    if (!real_fn) real_fn = dlsym_next("__system_property_read");
+    if (!real_fn) return 0;
+    char tmpname[96];
+    int len = real_fn(pi, tmpname, value);
+    if (name) {
+        int i = 0;
+        while (tmpname[i] && i < 91) { name[i] = tmpname[i]; i++; }
+        name[i] = '\0';
+    }
+    {
+        const char *fake = get_fake_prop(tmpname);
+        if (fake && value) {
+            int i = 0;
+            while (fake[i] && i < 91) { value[i] = fake[i]; i++; }
+            value[i] = '\0';
+            return i;
+        }
+    }
+    return len;
+}
+
+struct foreach_ctx {
+    void (*propfn)(const void *, void *);
+    void *cookie;
+};
+
+static void foreach_wrap(const void *pi, void *cookie) {
+    struct foreach_ctx *ctx = (struct foreach_ctx *)cookie;
+    char name[96];
+    char value[96];
+    __system_property_read(pi, name, value);
+    if (fake_prop_is_absent(name)) return;
+    ctx->propfn(pi, ctx->cookie);
+}
+
+void __system_property_foreach(void (*propfn)(const void *, void *), void *cookie) {
+    static void (*real_fn)(void (*)(const void *, void *), void *) = (void *)0;
+    if (!real_fn) real_fn = (void *)dlsym_next("__system_property_foreach");
+    if (!real_fn) return;
+    if (propfn && my_getuid() >= 10000) {
+        struct foreach_ctx ctx;
+        ctx.propfn = propfn;
+        ctx.cookie = cookie;
+        real_fn(foreach_wrap, &ctx);
+        return;
+    }
+    real_fn(propfn, cookie);
 }
 
 // 10. Wrappers de Archivos (stat, access, open, fopen)
@@ -839,15 +1093,12 @@ static int fd_is_ashmem(int fd) {
         while (t > 0) linkpath[k++] = num[--t];
     }
     linkpath[k] = '\0';
-    long (*real_readlink)(const char *, char *, unsigned long) =
-        (long (*)(const char *, char *, unsigned long))dlsym_next("readlink");
-    if (!real_readlink) real_readlink = (long (*)(const char *, char *, unsigned long))dlsym_next("readlink");
-    if (!real_readlink) return 0;
     char target[64];
-    long n = real_readlink(linkpath, target, sizeof(target) - 1);
+    long n = raw_readlinkat(-100, linkpath, target, sizeof(target) - 1);
     if (n > 0) {
         target[n] = '\0';
-        if (str_starts_with(target, "/memfd:ashmem")) {
+        if (str_starts_with(target, "/memfd:ashmem") ||
+            str_starts_with(target, "/memfd:shared_memory/")) {
             fd_mark(s_ashmem_fds, fd);
             return 1;
         }
@@ -1114,35 +1365,88 @@ static int fcntl_cmd_has_arg(int cmd) {
            cmd == 1024 || cmd == 1026 || cmd == 1030 || cmd == 1031 || cmd == 1033;
 }
 
-// Sellos de ashmem: se sintetizan y se recuerdan por fd. Nunca se sella de
-// verdad (rompería ASHMEM_SET_SIZE/ftruncate), pero se reportan siempre
-// F_SEAL_GROW|F_SEAL_SHRINK porque IsMemfdFd() de Chromium los exige.
-static int ashmem_fcntl(int fd, int cmd, unsigned long arg) {
-    if (cmd == 1033) { // F_ADD_SEALS: éxito sintético, acumular
-        struct ashmem_state *st = ashmem_state_new(fd);
-        if (st) st->seals |= (int)arg;
+// Sonda de respaldo cuando fcntl(F_GET_SEALS) esta bloqueado: mapping PROT_READ
+// primero descarta fds no mapeables (pipes/sockets devuelven EACCES/ENODEV
+// segun kernel); mapping PROT_READ|PROT_WRITE fallido con EPERM/EACCES indica
+// sello FUTURE_WRITE/WRITE (region solo-lectura). Devuelve sellos, o -1 si el
+// fd no es una region de memoria.
+static int seals_probe(int fd) {
+    long a = raw_mmap(fd, 1);
+    if (a < 0) return -1;
+    raw_munmap((void *)a, 4096);
+    long b = raw_mmap(fd, 3);
+    if (b >= 0) {
+        raw_munmap((void *)b, 4096);
         return 0;
     }
-    if (cmd == 1034) { // F_GET_SEALS
-        struct ashmem_state *st = ashmem_state_get(fd);
-        return 0x0006 | (st ? st->seals : 0);
+    if (b == -1 || b == -13) return 0x0010;
+    return 0;
+}
+
+// Sellos de ashmem: para memfds sellables (los "shared_memory/<guid>" del
+// libcutils parcheado) el sello se aplica REAL al kernel, imprescindible para
+// la semántica cross-proceso (renderizadores WebView/Chrome leen el fd por
+// SCM_RIGHTS). F_GET_SEALS reporta sellos reales más GROW|SHRINK sintéticos
+// porque IsMemfdFd() de Chromium 155 los exige. Los memfd propios de
+// /dev/ashmem no son sellables: ahí se mantiene el estado sintético por fd.
+static int ashmem_fcntl(int fd, int cmd, unsigned long arg) {
+    if (cmd == 1033) { // F_ADD_SEALS: aplicar al kernel si es posible + acumular
+        struct ashmem_state *st = ashmem_state_new(fd);
+        if (st) st->seals |= (int)arg;
+        static int (*real_fn)(int, int, ...) = (void *)0;
+        if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+        if (real_fn) real_fn(fd, 1033, arg);
+        return 0;
+    }
+    if (cmd == 1034) { // F_GET_SEALS: sellos reales | GROW|SHRINK
+        int seals = -1;
+        static int (*real_fn)(int, int, ...) = (void *)0;
+        if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+        if (real_fn) seals = real_fn(fd, 1034);
+        if (seals < 0) {
+            struct ashmem_state *st = ashmem_state_get(fd);
+            seals = st ? st->seals : 0;
+            if (seals == 0) {
+                int p = seals_probe(fd);
+                if (p > 0) seals = p;
+            }
+        }
+        return 0x0006 | seals;
     }
     return -2; // no es un comando ashmem
 }
 
 int fcntl(int fd, int cmd, ...) {
-    if (cmd == 1033 || cmd == 1034) {
-        if (fd_is_ashmem(fd)) {
-            __builtin_va_list args;
-            __builtin_va_start(args, cmd);
-            unsigned long arg = __builtin_va_arg(args, unsigned long);
-            __builtin_va_end(args);
-            return ashmem_fcntl(fd, cmd, arg);
-        }
-    }
     static int (*real_fn)(int, int, ...) = (void *)0;
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+    if (cmd == 1034 && fd_is_ashmem(fd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return ashmem_fcntl(fd, cmd, arg);
+    }
     if (!real_fn) return -1;
+    if (cmd == 1034) {
+        // F_GET_SEALS exitoso implica memfd: un fd recien recibido por
+        // binder/SCM_RIGHTS (renderizador) puede no clasificarse aqui porque
+        // readlink esta bloqueado en isolated_app; GROW|SHRINK se sintetizan
+        // igualmente porque IsMemfdFd() de Chromium 155 los exige.
+        int real = real_fn(fd, 1034);
+        if (real >= 0) return 0x0006 | real;
+        if (real == -1) {
+            int p = seals_probe(fd);
+            if (p >= 0) return 0x0006 | p;
+        }
+        return real;
+    }
+    if (cmd == 1033 && fd_is_ashmem(fd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return ashmem_fcntl(fd, cmd, arg);
+    }
     if (fcntl_cmd_has_arg(cmd)) {
         __builtin_va_list args;
         __builtin_va_start(args, cmd);
@@ -1154,19 +1458,33 @@ int fcntl(int fd, int cmd, ...) {
 }
 
 int fcntl64(int fd, int cmd, ...) {
-    if (cmd == 1033 || cmd == 1034) {
-        if (fd_is_ashmem(fd)) {
-            __builtin_va_list args;
-            __builtin_va_start(args, cmd);
-            unsigned long arg = __builtin_va_arg(args, unsigned long);
-            __builtin_va_end(args);
-            return ashmem_fcntl(fd, cmd, arg);
-        }
-    }
     static int (*real_fn)(int, int, ...) = (void *)0;
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl64");
     if (!real_fn) real_fn = (int (*)(int, int, ...))dlsym_next("fcntl");
+    if (cmd == 1034 && fd_is_ashmem(fd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return ashmem_fcntl(fd, cmd, arg);
+    }
     if (!real_fn) return -1;
+    if (cmd == 1034) {
+        int real = real_fn(fd, 1034);
+        if (real >= 0) return 0x0006 | real;
+        if (real == -1) {
+            int p = seals_probe(fd);
+            if (p >= 0) return 0x0006 | p;
+        }
+        return real;
+    }
+    if (cmd == 1033 && fd_is_ashmem(fd)) {
+        __builtin_va_list args;
+        __builtin_va_start(args, cmd);
+        unsigned long arg = __builtin_va_arg(args, unsigned long);
+        __builtin_va_end(args);
+        return ashmem_fcntl(fd, cmd, arg);
+    }
     if (fcntl_cmd_has_arg(cmd)) {
         __builtin_va_list args;
         __builtin_va_start(args, cmd);
@@ -1276,6 +1594,28 @@ int ioctl(int fd, unsigned long request, ...) {
     __builtin_va_start(args, request);
     void *arg = __builtin_va_arg(args, void *);
     __builtin_va_end(args);
+    // ioctls de red por nombre en apps: el kernel no tiene wlan0, así que se
+    // consulta eth0 con el mismo ifreq, se restaura el nombre y, para
+    // SIOCGIFHWADDR, se inyecta la MAC del perfil (wlan0 coherente).
+    if (arg && request >= 0x8913 && request <= 0x8949 && my_getuid() >= 10000) {
+        char *ifr = (char *)arg;
+        if (ifr[0] == 'w' && ifr[1] == 'l' && ifr[2] == 'a' &&
+            ifr[3] == 'n' && ifr[4] == '0' && ifr[5] == '\0') {
+            ifr[0] = 'e'; ifr[1] = 't'; ifr[2] = 'h';
+            ifr[3] = '0'; ifr[4] = '\0';
+            int ret = real_fn(fd, request, arg);
+            if (request == 0x8927 && ret == 0) {
+                load_fake_mac();
+                if (s_fake_mac_ok) {
+                    unsigned char *sa = (unsigned char *)arg + 18;
+                    for (int i = 0; i < 6; i++) sa[i] = s_fake_mac[i];
+                }
+            }
+            ifr[0] = 'w'; ifr[1] = 'l'; ifr[2] = 'a';
+            ifr[3] = 'n'; ifr[4] = '0'; ifr[5] = '\0';
+            return ret;
+        }
+    }
     return real_fn(fd, request, arg);
 }
 

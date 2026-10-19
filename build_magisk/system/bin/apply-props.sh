@@ -8,9 +8,22 @@
 # Banderas de arranque (consumidas por tools/instance_manager.py):
 #   .proteomesh_module_updated → el APK LSPosed cambió en este arranque y hace
 #   falta reiniciar una vez para que lspd lo precargue desde el inicio.
+#   .proteomesh_scope_updated → apps nuevas entraron al scope en este arranque
+#   (manage-spoof sync) y hace falta el mismo reinicio por el cacheo de lspd.
 #   .proteomesh_boot_done → este script terminó (señal de "sistema listo").
 rm -f /data/local/tmp/.proteomesh_boot_done 2>/dev/null || true
 rm -f /data/local/tmp/.proteomesh_module_updated 2>/dev/null || true
+rm -f /data/local/tmp/.proteomesh_scope_updated 2>/dev/null || true
+
+# Diagnóstico de scope (B6): registra el estado de la tabla scope en puntos
+# clave del arranque para detectar quién poda filas.
+dump_scope() {
+    [ -f /data/adb/lspd/config/modules_config.db ] || return 0
+    sqlite3 -cmd ".timeout 5000" /data/adb/lspd/config/modules_config.db \
+        "SELECT '$1 total='||COUNT(*)||' samsung='||(SELECT COUNT(*) FROM scope WHERE mid=39 AND app_pkg_name='com.sec.android.app.samsungapps')||' lspd='||(SELECT COUNT(*) FROM scope WHERE mid=39 AND app_pkg_name='org.lsposed.manager') FROM scope WHERE mid=39;" \
+        >>/data/local/tmp/proteomesh_scope.log 2>&1 || true
+}
+dump_scope "pre-apply"
 
 # ==============================================================================
 
@@ -278,7 +291,11 @@ if [ -x /sbin/magisk ]; then
         REAL_APK=$(pm path eu.chylek.adam.fakewifi 2>/dev/null | cut -d: -f2)
         if [ -n "$REAL_APK" ]; then
             sqlite3 /data/adb/lspd/config/modules_config.db "INSERT OR REPLACE INTO modules (mid, module_pkg_name, apk_path, enabled) VALUES (39, 'eu.chylek.adam.fakewifi', '$REAL_APK', 1);" 2>/dev/null || true
-            manage-spoof auto >/dev/null 2>&1 || true
+            dump_scope "pre-sync"
+            # B6: sincroniza el scope en cada arranque (todas las apps de usuario
+            # + sistema curado). Si agregó apps, deja .proteomesh_scope_updated.
+            # Log en /data/local/tmp para diagnóstico del arranque.
+            manage-spoof sync >>/data/local/tmp/proteomesh_scope.log 2>&1 || true
         fi
     fi
 

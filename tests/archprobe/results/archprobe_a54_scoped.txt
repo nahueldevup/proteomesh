@@ -1,0 +1,123 @@
+PROTOMESH ARCH PROBE v1
+pkg=com.proteomesh.archprobe uid=10110 targetSdk=27
+
+===== JAVA / System.getProperty =====
+os.arch: aarch64
+os.version: 5.10.149-android12-9-00001-ge5f3ba2132a1
+os.name: Linux
+java.vm.name: Dalvik
+java.vendor: The Android Project
+
+===== JAVA / Build =====
+Build.MODEL: SM-A546M
+Build.MANUFACTURER: samsung
+Build.BRAND: samsung
+Build.DEVICE: a54x
+Build.PRODUCT: a54xnsxx
+Build.BOARD: s5e8835
+Build.HARDWARE: exynos1380
+Build.FINGERPRINT: samsung/a54xnsxx/a54x:13/TP1A.220624.014/A546EXXU5AWHC:user/release-keys
+Build.TYPE: user
+Build.TAGS: release-keys
+Build.SUPPORTED_ABIS: arm64-v8a,armeabi-v7a,armeabi
+Build.SUPPORTED_64_BIT_ABIS: arm64-v8a
+Build.CPU_ABI: arm64-v8a
+Build.CPU_ABI2: 
+Build.VERSION.RELEASE: 13
+Build.VERSION.SECURITY_PATCH: 2023-08-01
+
+===== LIBC / Os.uname() (mismo proceso) =====
+sysname: Linux
+nodename: localhost
+release: 5.10.149-android12-9-00001-ge5f3ba2132a1
+version: #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023
+machine  <-- clave: x86_64
+
+===== SUBPROCESO / exec uname -a =====
+uname -a: Linux localhost 5.10.149-android12-9-00001-ge5f3ba2132a1 #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023 x86_64 Toybox
+getprop vm.native.bridge: libzygisk.solibnb.so
+getprop cpu.abi: arm64-v8a
+getprop build.type: user
+
+===== PROPS via SystemProperties.get (proceso propio) =====
+ro.product.cpu.abi: arm64-v8a
+ro.product.cpu.abilist: arm64-v8a,armeabi-v7a,armeabi
+ro.product.cpu.abilist64: arm64-v8a
+ro.dalvik.vm.native.bridge: libzygisk.solibnb.so
+ro.enable.native.bridge.exec: 1
+ro.dalvik.vm.isa.arm64: x86_64
+ro.dalvik.vm.isa.arm: x86
+ro.build.type: user
+ro.build.tags: release-keys
+ro.debuggable: 0
+ro.secure: 1
+ro.boot.verifiedbootstate: green
+ro.boot.flash.locked: 1
+ro.boot.veritymode: enforcing
+ro.product.model: SM-A546M
+ro.build.fingerprint: samsung/a54xnsxx/a54x:13/TP1A.220624.014/A546EXXU5AWHC:user/release-keys
+ro.soc.model: s5e8835
+ro.build.date: Mon May 27 13:32:14 UTC 2024
+ro.build.version.security_patch: 2023-08-01
+ro.hardware: exynos1380
+ro.board.platform: s5e8835
+ro.boot.hardware: exynos1380
+
+===== /proc =====
+/proc/version: Linux version 5.10.0
+cpuinfo: procesadores: 8
+cpuinfo: CPU implementer	: 0x41
+cpuinfo: tiene 'flags' (x86): false
+cpuinfo: 'lm' (x86_64): false
+cpuinfo: 'avx/sse' (x86): false
+cpuinfo: 'asimd/fp' (arm64): true
+status: TracerPid:	0
+status: Seccomp:	2
+status: Seccomp_filters:	1
+
+===== /proc/self/maps scan =====
+maps contiene 'libndk_translation': true
+maps contiene 'houdini': false
+maps contiene 'native_bridge': false
+maps contiene 'libpixel_hw': true
+maps contiene 'lsposed/magisk': false
+maps contiene 'zygisk': false
+maps contiene 'riru': false
+maps contiene 'x86_64 en rutas': true
+maps contiene 'arm64 en rutas': false
+maps contiene 'linker64': true
+maps contiene 'linker (32)': true
+maps: primeras 3 lineas: 12c00000-32c00000 rw-p 00000000 00:00 0                                  [anon:dalvik-main space (region space)]
+408f6000-408fb000 rw-p 00000000 00:00 0                                  [anon:dalvik-large object space allocation]
+
+===== /proc/self/auxv =====
+auxv (hex, primeros 32B): 210000000000000000fdfd6d3a7700003300000000000000300d000000000000
+
+===== NetworkInterface (Java, ruta netlink) =====
+if: lo: up mac=null 127.0.0.1
+/proc/net/route (default gw): Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT                                                       
+eth0	000011AC	00000000	0001	0	0	0	0000FFFF	0	0	0
+/proc/net/wireless: Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+
+===== /sys =====
+/sys/class/net/: eth0
+lo
+/sys/class/net/wlan0/address: (error: FileNotFoundException: /sys/class/net/wlan0/address: open failed: ENOENT (No such file or directory))
+/sys/devices/system/cpu/online: 0-7
+cpufreq cpu0 max: 2000000
+DMI board_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/board_vendor: open failed: ENOENT (No such file or directory))
+DMI product_name: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/product_name: open failed: ENOENT (No such file or directory))
+DMI sys_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/sys_vendor: open failed: ENOENT (No such file or directory))
+
+===== Archivos testigo (no deberian existir en ARM real) =====
+/system/lib64/libndk_translation.so: EXISTE
+/system/lib64/libndk_translation_proxy.so: no
+/system/lib/libndk_translation.so: EXISTE
+/system/lib64/libhoudini.so: no
+/system/lib/libhoudini.so: no
+/system/bin/houdini: no
+/system/bin/ndk_translation: no
+/proc/sys/kernel/osrelease: EXISTE
+
+===== FIN =====

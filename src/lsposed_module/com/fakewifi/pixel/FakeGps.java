@@ -215,6 +215,192 @@ public class FakeGps {
         }
     }
 
+    private static ScheduledFuture<?> sChromeDelivery;
+    // Gate de ciclo de vida: invocar el deliver nativo antes de que Chrome llame
+    // LocationProviderAdapter.start() dispara un CHECK de libchrome (SIGTRAP).
+    private static volatile boolean sChromiumAdapterStarted = false;
+
+    private static void startChromiumFakeDelivery(final Class<?> adapterCls) {
+        stopChromiumFakeDelivery();
+        Method deliverMethod = null;
+        for (Method cand : adapterCls.getDeclaredMethods()) {
+            if (java.lang.reflect.Modifier.isStatic(cand.getModifiers())) {
+                Class<?>[] pt = cand.getParameterTypes();
+                if (pt.length == 2 && pt[0] == Location.class && pt[1] == boolean.class) {
+                    deliverMethod = cand;
+                    break;
+                }
+            }
+        }
+        if (deliverMethod == null) {
+            XposedBridge.log("FakeGps: no static (Location, boolean) deliver method in adapter");
+            return;
+        }
+        final Method deliver = deliverMethod;
+        try {
+            deliver.setAccessible(true);
+        } catch (Throwable ignored) {}
+        sChromeDelivery = sScheduler.scheduleWithFixedDelay(new Runnable() {
+            @Override
+            public void run() {
+                if (!sChromiumAdapterStarted) return;
+                try {
+                    final Location loc = createLocation(LocationManager.GPS_PROVIDER);
+                    Runnable dispatch = new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                deliver.invoke(null, loc, true);
+                            } catch (Throwable t) {
+                                XposedBridge.log("FakeGps: onNewLocationAvailable err: " + t);
+                            }
+                        }
+                    };
+                    Handler h = getMainHandler();
+                    if (h != null) h.post(dispatch);
+                    else dispatch.run();
+                } catch (Throwable t) {
+                    XposedBridge.log("FakeGps: chromium delivery err: " + t);
+                }
+            }
+        }, 100, 1000, TimeUnit.MILLISECONDS);
+        XposedBridge.log("FakeGps: chromium fake delivery started");
+    }
+
+    private static void stopChromiumFakeDelivery() {
+        ScheduledFuture<?> f = sChromeDelivery;
+        if (f != null) {
+            f.cancel(true);
+            sChromeDelivery = null;
+        }
+        XposedBridge.log("FakeGps: chromium fake delivery stopped");
+    }
+
+    private static volatile boolean sChromiumFactoryHooked = false;
+    private static volatile boolean sChromiumAdapterHooked = false;
+
+    private static void installChromiumFactoryHooks(final Class<?> facCls) {
+        if (sChromiumFactoryHooked) return;
+        sChromiumFactoryHooked = true;
+        // 1) Evitar el proveedor fused de GMS Core (appops lo bloquea en este device)
+        try {
+            XposedHelpers.findAndHookMethod(facCls, "useGmsCoreLocationProvider", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    XposedBridge.log("FakeGps: useGmsCoreLocationProvider blocked");
+                    param.setResult(null);
+                }
+            });
+            XposedBridge.log("FakeGps: factory hook installed");
+        } catch (Throwable t) {
+            XposedBridge.log("FakeGps: hook useGmsCore failed: " + t);
+        }
+        // 2) Forzar flag b=false y limpiar impl cacheada (por si native llamó antes)
+        try {
+            XposedHelpers.setStaticBooleanField(facCls, "b", false);
+            XposedBridge.log("FakeGps: factory flag b forced false");
+        } catch (Throwable t) {
+            XposedBridge.log("FakeGps: set flag b failed: " + t);
+        }
+        try {
+            XposedHelpers.setStaticObjectField(facCls, "a", null);
+        } catch (Throwable t) {
+            XposedBridge.log("FakeGps: clear impl cache failed: " + t);
+        }
+    }
+
+    private static String getChromiumProcessName() {
+        try {
+            Object pn = Class.forName("android.app.ActivityThread")
+                    .getMethod("currentProcessName").invoke(null);
+            if (pn instanceof String) return (String) pn;
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static ClassLoader getChromiumSplitClassLoader() throws Exception {
+        Object app = Class.forName("android.app.ActivityThread")
+                .getMethod("currentApplication").invoke(null);
+        if (!(app instanceof android.content.Context)) return null;
+        android.content.Context ctx = (android.content.Context) app;
+        android.content.Context splitCtx = ctx.createContextForSplit("chrome");
+        if (splitCtx == null) return null;
+        return splitCtx.getClassLoader();
+    }
+
+    private static void logChromiumClasspath(ClassLoader cl) {
+        try {
+            XposedBridge.log("FakeGps: loader=" + cl);
+            Object pathList = XposedHelpers.getObjectField(cl, "pathList");
+            Object[] els = (Object[]) XposedHelpers.getObjectField(pathList, "dexElements");
+            for (Object el : els) {
+                try {
+                    XposedBridge.log("FakeGps: dexEl=" + XposedHelpers.getObjectField(el, "path"));
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("FakeGps: classpath dump failed: " + t);
+        }
+    }
+
+    private static void installChromiumAdapterHooks(final Class<?> adaCls) {
+        if (sChromiumAdapterHooked) return;
+        sChromiumAdapterHooked = true;
+        // Hooks del adapter: la entrega a nativo se arma recién cuando Chrome
+        // llama start() (antes de eso la entrega crashea el proceso).
+        for (final Method m : adaCls.getDeclaredMethods()) {
+            final String mn = m.getName();
+            final Class<?>[] pt = m.getParameterTypes();
+            final boolean isStatic = java.lang.reflect.Modifier.isStatic(m.getModifiers());
+            try {
+                if (isStatic && mn.equals("create") && pt.length == 0) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object res = param.getResult();
+                            String impl = "?";
+                            try {
+                                Object implObj = XposedHelpers.getObjectField(res, "a");
+                                impl = implObj == null ? "null" : implObj.getClass().getName();
+                            } catch (Throwable ignored) {}
+                            XposedBridge.log("FakeGps: adapter create() impl=" + impl);
+                        }
+                    });
+                } else if (!isStatic && mn.equals("start") && pt.length == 1 && pt[0] == boolean.class) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            sChromiumAdapterStarted = true;
+                            XposedBridge.log("FakeGps: adapter start(highAcc=" + param.args[0] + ")");
+                            startChromiumFakeDelivery(adaCls);
+                        }
+                    });
+                } else if (!isStatic && mn.equals("stop") && pt.length == 0) {
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            XposedBridge.log("FakeGps: adapter stop() (delivery sigue activa)");
+                        }
+                    });
+                } else if (isStatic && pt.length == 1 && pt[0] == String.class) {
+                    // newErrorAvailable(String): silenciar solo el gate de ubicacion aproximada
+                    XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            String msg = (String) param.args[0];
+                            if (msg != null && msg.contains("approximate location")) {
+                                XposedBridge.log("FakeGps: error '" + msg + "' suprimido");
+                                param.setResult(null);
+                            }
+                        }
+                    });
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("FakeGps: adapter hook err (" + mn + "): " + t);
+            }
+        }
+    }
+
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> locClass = Location.class;
@@ -390,6 +576,114 @@ public class FakeGps {
                     }
                 });
             } catch (Throwable ignored) {}
+
+            // M. requestLocationUpdates (long, float, Criteria, LocationListener) [obsoleto: usado por Chromium]
+            try {
+                XposedHelpers.findAndHookMethod(lmClass, "requestLocationUpdates",
+                        long.class, float.class, Criteria.class, LocationListener.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                long minTime = (Long) param.args[0];
+                                LocationListener listener = (LocationListener) param.args[3];
+                                startLocationUpdates(listener, LocationManager.GPS_PROVIDER, minTime, null);
+                                param.setResult(null);
+                            }
+                        });
+            } catch (Throwable ignored) {}
+
+            // N. requestLocationUpdates (long, float, Criteria, LocationListener, Looper) [obsoleto: usado por Chromium]
+            try {
+                XposedHelpers.findAndHookMethod(lmClass, "requestLocationUpdates",
+                        long.class, float.class, Criteria.class, LocationListener.class, Looper.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                long minTime = (Long) param.args[0];
+                                LocationListener listener = (LocationListener) param.args[3];
+                                Looper looper = (Looper) param.args[4];
+                                Handler handler = looper != null ? new Handler(looper) : null;
+                                startLocationUpdates(listener, LocationManager.GPS_PROVIDER, minTime, handler);
+                                param.setResult(null);
+                            }
+                        });
+            } catch (Throwable ignored) {}
+
+            // O. requestLocationUpdates (Criteria, long, float, LocationListener)
+            try {
+                XposedHelpers.findAndHookMethod(lmClass, "requestLocationUpdates",
+                        Criteria.class, long.class, float.class, LocationListener.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                long minTime = (Long) param.args[1];
+                                LocationListener listener = (LocationListener) param.args[3];
+                                startLocationUpdates(listener, LocationManager.GPS_PROVIDER, minTime, null);
+                                param.setResult(null);
+                            }
+                        });
+            } catch (Throwable ignored) {}
+
+            // P. requestLocationUpdates (Criteria, long, float, LocationListener, Looper)
+            try {
+                XposedHelpers.findAndHookMethod(lmClass, "requestLocationUpdates",
+                        Criteria.class, long.class, float.class, LocationListener.class, Looper.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                long minTime = (Long) param.args[1];
+                                LocationListener listener = (LocationListener) param.args[3];
+                                Looper looper = (Looper) param.args[4];
+                                Handler handler = looper != null ? new Handler(looper) : null;
+                                startLocationUpdates(listener, LocationManager.GPS_PROVIDER, minTime, handler);
+                                param.setResult(null);
+                            }
+                        });
+            } catch (Throwable ignored) {}
+
+            // Q. Chromium (Chrome): geolocalización. El split con las clases se carga de forma
+            //    no visible para Class.forName: enganchamos ClassLoader.loadClass y montamos los
+            //    hooks en el momento exacto en que las clases se cargan (también vía JNI FindClass).
+            if ("com.android.chrome".equals(lpparam.packageName)) {
+                Thread retry = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String pn = getChromiumProcessName();
+                        if (pn == null || pn.contains(":")) {
+                            XposedBridge.log("FakeGps: chromium hooks skipped (process=" + pn + ")");
+                            return;
+                        }
+                        for (int i = 0; i < 400; i++) {
+                            try {
+                                ClassLoader splitCl = getChromiumSplitClassLoader();
+                                if (splitCl != null) {
+                                    Class<?> facCls = Class.forName(
+                                            "org.chromium.device.geolocation.LocationProviderFactory",
+                                            false, splitCl);
+                                    installChromiumFactoryHooks(facCls);
+                                    try {
+                                        Class<?> adaCls = Class.forName(
+                                                "org.chromium.device.geolocation.LocationProviderAdapter",
+                                                false, splitCl);
+                                        installChromiumAdapterHooks(adaCls);
+                                    } catch (Throwable ignored) {}
+                                    XposedBridge.log("FakeGps: chromium geo hooks via split loader (retry " + i + ")");
+                                    return;
+                                }
+                            } catch (Throwable ignored) {}
+                            if (i == 2) logChromiumClasspath(lpparam.classLoader);
+                            try {
+                                Thread.sleep(50);
+                            } catch (InterruptedException ie) {
+                                return;
+                            }
+                        }
+                        XposedBridge.log("FakeGps: chromium split classloader never available");
+                    }
+                }, "FakeGpsGeoRetry");
+                retry.setDaemon(true);
+                retry.start();
+            }
 
         } catch (Throwable t) {
             XposedBridge.log("FakeWifiPixel: FakeGps hook error: " + t);

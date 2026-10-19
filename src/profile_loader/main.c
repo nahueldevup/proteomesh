@@ -17,14 +17,45 @@ static const char *get_resetprop_bin(void) {
     return "/data/adb/magisk/magisk resetprop";
 }
 
+static FILE *g_batch_fp = NULL;
+static char g_batch_path[256];
+static int g_batch_lines = 0;
+
+static void flush_batch(void) {
+    if (!g_batch_fp) return;
+    fclose(g_batch_fp);
+    g_batch_fp = NULL;
+    if (g_batch_lines > 0) {
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), "%s -n -f \"%s\" >/dev/null 2>&1", get_resetprop_bin(), g_batch_path);
+        system(cmd);
+        unlink(g_batch_path);
+    }
+    g_batch_lines = 0;
+}
+
+static void begin_batch(void) {
+    mkdir(FAKEDIR, 0755);
+    snprintf(g_batch_path, sizeof(g_batch_path), "%s/.apply_batch.prop", FAKEDIR);
+    g_batch_fp = fopen(g_batch_path, "w");
+    g_batch_lines = 0;
+}
+
 static void set_prop(const char *key, const char *val) {
     if (!key || !val || strlen(key) == 0 || strlen(val) == 0) return;
+    if (g_batch_fp) {
+        if (fprintf(g_batch_fp, "%s=%s\n", key, val) >= 0) {
+            g_batch_lines++;
+            return;
+        }
+    }
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "%s -n \"%s\" \"%s\" 2>/dev/null", get_resetprop_bin(), key, val);
     system(cmd);
 }
 
 static char *get_prop(const char *key, char *out, size_t max_len) {
+    flush_batch();
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "%s \"%s\" 2>/dev/null", get_resetprop_bin(), key);
     FILE *fp = popen(cmd, "r");
@@ -848,6 +879,8 @@ static void apply_build_props(cJSON *json) {
     const char *carrier = json_get_str(tel, "carrier_name", "Personal");
     const char *carrier_prop = strcmp(brand, "samsung") == 0 ? "unknown" : carrier;
     const char *abilist = json_get_str(cpu, "abilist", "arm64-v8a,armeabi-v7a,armeabi");
+    const char *abilist32 = json_get_str(cpu, "abilist32", "armeabi-v7a,armeabi");
+    const char *abilist64 = json_get_str(cpu, "abilist64", "arm64-v8a");
     const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
     const char *soc_model = json_get_str(cpu, "soc_model", "SM7250");
 
@@ -865,8 +898,8 @@ static void apply_build_props(cJSON *json) {
         fprintf(fp, "ro.product.system.model=%s\n", model);
         fprintf(fp, "ro.product.system.name=%s\n", product);
         fprintf(fp, "ro.system.product.cpu.abilist=%s\n", abilist);
-        fprintf(fp, "ro.system.product.cpu.abilist32=x86,armeabi-v7a,armeabi\n");
-        fprintf(fp, "ro.system.product.cpu.abilist64=x86_64,arm64-v8a\n");
+        fprintf(fp, "ro.system.product.cpu.abilist32=%s\n", abilist32);
+        fprintf(fp, "ro.system.product.cpu.abilist64=%s\n", abilist64);
         fprintf(fp, "ro.system.build.date=Tue Sep 12 00:00:00 UTC 2023\n");
         fprintf(fp, "ro.system.build.date.utc=1694476800\n");
         fprintf(fp, "ro.system.build.fingerprint=%s\n", fp_str);
@@ -927,8 +960,8 @@ static void apply_build_props(cJSON *json) {
         fprintf(fp, "ro.soc.manufacturer=%s\n", soc_manuf);
         fprintf(fp, "ro.soc.model=%s\n", soc_model);
         fprintf(fp, "ro.vendor.product.cpu.abilist=%s\n", abilist);
-        fprintf(fp, "ro.vendor.product.cpu.abilist32=x86,armeabi-v7a,armeabi\n");
-        fprintf(fp, "ro.vendor.product.cpu.abilist64=x86_64,arm64-v8a\n");
+        fprintf(fp, "ro.vendor.product.cpu.abilist32=%s\n", abilist32);
+        fprintf(fp, "ro.vendor.product.cpu.abilist64=%s\n", abilist64);
         fprintf(fp, "ro.vendor.build.date=Tue Sep 12 00:00:00 UTC 2023\n");
         fprintf(fp, "ro.vendor.build.date.utc=1694476800\n");
         fprintf(fp, "ro.vendor.build.fingerprint=%s\n", fp_str);
@@ -1018,7 +1051,36 @@ static void apply_build_props(cJSON *json) {
     }
 }
 
+static void apply_arch_extras(cJSON *json) {
+    mkdir(FAKEDIR, 0755);
+    char path[256];
+    cJSON *kernel = cJSON_GetObjectItem(json, "kernel");
+    const char *machine = json_get_str(kernel, "machine", "aarch64");
+    if (!machine || strlen(machine) == 0 || strcmp(machine, "unknown") == 0) machine = "aarch64";
+    snprintf(path, sizeof(path), "%s/uname_machine", FAKEDIR);
+    FILE *fp = fopen(path, "w");
+    if (fp) {
+        fprintf(fp, "%s\n", machine);
+        fclose(fp);
+        chmod(path, 0644);
+    }
+
+    char wmac[64] = {0};
+    get_prop("persist.sys.fake.wifi_mac", wmac, sizeof(wmac));
+    if (strlen(wmac) > 0) {
+        snprintf(path, sizeof(path), "%s/mac_wlan0", FAKEDIR);
+        fp = fopen(path, "w");
+        if (fp) {
+            fprintf(fp, "%s\n", wmac);
+            fclose(fp);
+            chmod(path, 0644);
+        }
+    }
+}
+
 static void apply_props(cJSON *json) {
+    mkdir(FAKEDIR, 0755);
+    begin_batch();
     cJSON *dev = cJSON_GetObjectItem(json, "device");
     cJSON *cpu = cJSON_GetObjectItem(json, "cpu");
     cJSON *gpu = cJSON_GetObjectItem(json, "gpu");
@@ -1137,6 +1199,14 @@ static void apply_props(cJSON *json) {
     set_prop("ro.hardware.chipname", platform);
     set_prop("ro.boot.hardware.platform", platform);
 
+    // ABI: la familia abilist NO se fakea en la zona de propiedades. android.os.Build
+    // la cachea en el zygote, pero tambien la leen procesos x86_64 ajenos al shim
+    // (p. ej. el daemon de LSPosed via app_process) para elegir el directorio de
+    // librerias nativas del APK: elegiria arm64-v8a y el dlopen fallaria
+    // (EM_AARCH64 en x86_64). El valor ARM para las apps lo sirve el shim
+    // (libpixel_hw) con un gate que solo responde en el proceso zygote
+    // (ver bloque 9b de pixel_hw64.c).
+
     // Telephony
     const char *carrier = json_get_str(tel, "carrier_name", "Personal");
     const char *carrier_prop = strcmp(brand, "samsung") == 0 ? "unknown" : carrier;
@@ -1183,7 +1253,9 @@ static void apply_props(cJSON *json) {
     apply_ashmem(dev);
     apply_graphics_hal(json);
     ensure_identity(json);
+    apply_arch_extras(json);
     apply_network_props(json);
+    flush_batch();
 }
 
 static void show_status(cJSON *json) {

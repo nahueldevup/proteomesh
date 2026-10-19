@@ -32,6 +32,14 @@ tests/ashmem/device/classes/
 tests/ashmem/device/dex/
 tests/ashmem/device/tools/
 
+# Sonda archprobe on-device (salidas de build)
+tests/archprobe/device/arch_probe.apk
+tests/archprobe/device/base.apk
+tests/archprobe/device/unsigned.apk
+tests/archprobe/device/classes/
+tests/archprobe/device/dex/
+tests/archprobe/device/tools/
+
 # IDE and OS metadata
 .DS_Store
 Thumbs.db

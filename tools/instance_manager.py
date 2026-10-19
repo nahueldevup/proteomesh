@@ -12,6 +12,7 @@ Funcionalidades:
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -392,6 +393,38 @@ def cmd_create_instance(args):
         cmd_start_instance(args)
 
 
+ADB_CONNECT_TIMEOUT = 90
+
+
+def _run(cmd, timeout=20, **kwargs):
+    """subprocess.run con timeout: evita bloqueos si adb/docker dejan de responder."""
+    try:
+        return subprocess.run(cmd, timeout=timeout, **kwargs)
+    except subprocess.TimeoutExpired:
+        print(f"[!] Timeout ({timeout}s): {' '.join(map(str, cmd[:4]))}...")
+        return subprocess.CompletedProcess(cmd, 124, stdout="", stderr="timeout")
+
+
+def container_ip(inst_name):
+    """IP del contenedor en la red Docker (vacía si no está corriendo)."""
+    r = _run(["docker", "inspect", "-f",
+              "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", inst_name],
+             timeout=10, capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def container_network_ok(inst_name):
+    """Chequeo host→contenedor: detecta la muerte de red (ARP/datapath) que deja adb offline."""
+    ip = container_ip(inst_name)
+    if not ip:
+        return False, "sin IP (contenedor detenido)"
+    r = _run(["ping", "-c", "1", "-W", "2", ip], timeout=5,
+             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if r.returncode != 0:
+        return False, f"{ip} sin respuesta (ARP/datapath roto)"
+    return True, ip
+
+
 def cmd_start_instance(args):
     """Inicia el contenedor Docker para la instancia especificada con todos los parámetros de hardware."""
     inst_name = args.name
@@ -444,18 +477,38 @@ def cmd_start_instance(args):
 
     cid = res.stdout.strip()[:12]
     print(f"[✓] Contenedor {cid} iniciado correctamente.")
+    adb_s = f"127.0.0.1:{port}"
+
+    def connect_adb():
+        """Conecta ADB con reintentos hasta que el transporte figure como 'device'."""
+        subprocess.run(["adb", "disconnect", adb_s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        end = time.time() + ADB_CONNECT_TIMEOUT
+        while time.time() < end:
+            _run(["adb", "connect", adb_s], timeout=10, capture_output=True, text=True)
+            d = _run(["adb", "devices"], timeout=10, capture_output=True, text=True)
+            if any(parts[:2] == [adb_s, "device"] for parts in
+                   (line.split() for line in d.stdout.splitlines())):
+                return True
+            time.sleep(3)
+        return False
+
     print("[*] Conectando ADB...")
-    time.sleep(5)
-    adb_res = subprocess.run(["adb", "connect", f"127.0.0.1:{port}"], capture_output=True, text=True)
-    print(f"[✓] ADB: {adb_res.stdout.strip()}")
+    if not connect_adb():
+        net_ok, net_msg = container_network_ok(inst_name)
+        print(f"[!] ADB no conectó en {ADB_CONNECT_TIMEOUT}s (serial {adb_s}).")
+        print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
+        print(f"[!] Contenedor dejado en marcha para diagnóstico: docker logs {inst_name}")
+        return
+    print(f"[✓] ADB conectado: {adb_s}")
 
     # Limpiar marcadores del arranque anterior: sys.boot_completed se pone a 1
     # antes de que apply-props.sh empiece, y las banderas viejas causarían
     # falsos positivos en wait_boot()/detección del módulo actualizado.
-    subprocess.run(["adb", "-s", f"127.0.0.1:{port}", "shell", "rm", "-f",
-                    "/data/local/tmp/.proteomesh_boot_done",
-                    "/data/local/tmp/.proteomesh_module_updated"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "rm", "-f",
+          "/data/local/tmp/.proteomesh_boot_done",
+          "/data/local/tmp/.proteomesh_module_updated",
+          "/data/local/tmp/.proteomesh_scope_updated"],
+         timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Configurar zona horaria del operador
     tz = "America/Argentina/Buenos_Aires"
@@ -481,13 +534,16 @@ def cmd_start_instance(args):
         "find /sys/devices/system/cpu -type f -exec chmod 644 {} + 2>/dev/null || true"
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Instalar Brand Store oficial (stub nativo) si aplica al fabricante
+    # Instalar Brand Store oficial (stub nativo) si aplica al fabricante.
+    # Cada stub declara una MainActivity lanzable: sin componentes, LSPosed
+    # marca el paquete "obsolete" (fetchProcesses vacío) y borra su fila de
+    # scope en cada arranque del daemon.
     store_map = {
-        "samsung": ("com.sec.android.app.samsungapps", BASE_DIR / "stubs" / "samsung_galaxy_store.apk"),
-        "xiaomi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
-        "redmi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
-        "poco": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk"),
-        "huawei": ("com.huawei.appmarket", BASE_DIR / "stubs" / "huawei_appgallery.apk")
+        "samsung": ("com.sec.android.app.samsungapps", BASE_DIR / "stubs" / "samsung_galaxy_store.apk", "457001001"),
+        "xiaomi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk", "221001001"),
+        "redmi": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk", "221001001"),
+        "poco": ("com.xiaomi.mipicks", BASE_DIR / "stubs" / "xiaomi_getapps.apk", "221001001"),
+        "huawei": ("com.huawei.appmarket", BASE_DIR / "stubs" / "huawei_appgallery.apk", "130100001")
     }
 
     target_store = None
@@ -497,27 +553,69 @@ def cmd_start_instance(args):
             break
 
     if target_store and target_store[1].exists():
-        pkg_name, apk_path = target_store
-        check_cmd = ["adb", "-s", f"127.0.0.1:{port}", "shell", "pm", "path", pkg_name]
-        check_res = subprocess.run(check_cmd, capture_output=True, text=True)
+        pkg_name, apk_path, expected_vc = target_store
+        need_install = False
+        reason = ""
+        check_res = _run(["adb", "-s", adb_s, "shell", "pm", "path", pkg_name],
+                         timeout=20, capture_output=True, text=True)
         if "package:" not in check_res.stdout:
-            print(f"[*] Instalando tienda oficial del fabricante ({apk_path.name})...")
-            subprocess.run(["adb", "-s", f"127.0.0.1:{port}", "install", "-r", str(apk_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[✓] Tienda del fabricante ({pkg_name}) instalada.")
+            need_install = True
+            reason = "no instalada"
         else:
-            print(f"[✓] Tienda del fabricante verificada ({pkg_name}).")
+            vc_res = _run(["adb", "-s", adb_s, "shell", "dumpsys", "package", pkg_name],
+                          timeout=20, capture_output=True, text=True)
+            m = re.search(r"versionCode=(\d+)", vc_res.stdout)
+            if not m or m.group(1) != expected_vc:
+                need_install = True
+                reason = f"versión obsoleta ({m.group(1) if m else '?'} != {expected_vc})"
+        if need_install:
+            print(f"[*] Instalando tienda oficial del fabricante ({apk_path.name}; {reason})...")
+            installed = False
+            last_out = ""
+            for attempt in range(2):
+                inst_res = _run(["adb", "-s", adb_s, "install", "-r", str(apk_path)],
+                                timeout=180, capture_output=True, text=True)
+                last_out = (inst_res.stdout or "") + (inst_res.stderr or "")
+                if inst_res.returncode == 0 and "Success" in last_out:
+                    installed = True
+                    break
+                if "signatures do not match" in last_out or "UPDATE_INCOMPATIBLE" in last_out:
+                    break
+                if attempt == 0:
+                    time.sleep(15)
+            if not installed and ("signatures do not match" in last_out or "UPDATE_INCOMPATIBLE" in last_out):
+                print(f"[*] Firma distinta (stub actualizado): reinstalando limpio {pkg_name}...")
+                _run(["adb", "-s", adb_s, "uninstall", pkg_name],
+                     timeout=120, capture_output=True, text=True)
+                inst_res = _run(["adb", "-s", adb_s, "install", str(apk_path)],
+                                timeout=180, capture_output=True, text=True)
+                out = (inst_res.stdout or "") + (inst_res.stderr or "")
+                installed = inst_res.returncode == 0 and "Success" in out
+            if installed:
+                print(f"[✓] Tienda del fabricante ({pkg_name}) instalada (v{expected_vc}).")
+            else:
+                print(f"[!] No se pudo instalar la tienda {pkg_name}; se continúa.")
+        else:
+            print(f"[✓] Tienda del fabricante verificada ({pkg_name}, v{expected_vc}).")
 
     # ── Optimización post-boot ───────────────────────────────────────────────
-    adb_s = f"127.0.0.1:{port}"
 
     def wait_boot():
-        """Espera sys.boot_completed=1 y a que apply-props.sh termine (marcador)."""
+        """Espera boot_completed=1 y el marcador de apply-props.sh vía docker exec.
+
+        No depende de ADB/red: si el datapath del contenedor muere, adb queda
+        offline pero el estado de arranque sigue siendo legible por docker exec.
+        """
         for _ in range(150):
-            r = subprocess.run(["adb", "-s", adb_s, "shell", "getprop", "sys.boot_completed"],
-                               capture_output=True, text=True)
+            run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
+                             timeout=10, capture_output=True, text=True)
+            if run_state.stdout.strip() != "true":
+                return False
+            r = _run(["docker", "exec", inst_name, "getprop", "sys.boot_completed"],
+                     timeout=10, capture_output=True, text=True)
             if r.stdout.strip() == "1":
-                m = subprocess.run(["adb", "-s", adb_s, "shell", "ls", "/data/local/tmp/.proteomesh_boot_done"],
-                                   capture_output=True, text=True)
+                m = _run(["docker", "exec", inst_name, "ls", "/data/local/tmp/.proteomesh_boot_done"],
+                         timeout=10, capture_output=True, text=True)
                 if ".proteomesh_boot_done" in m.stdout:
                     return True
             time.sleep(2)
@@ -527,18 +625,18 @@ def cmd_start_instance(args):
         # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
         #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
         #    renderice internamente a 720x1280@30fps.
-        subprocess.run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
 
         # 2. Desactivar paquetes inútiles en CloudPhone para liberar RAM y servicios.
         disabled_count = 0
         for pkg in DISABLE_PACKAGES:
-            res_d = subprocess.run(
+            res_d = _run(
                 ["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
-                capture_output=True, text=True
+                timeout=20, capture_output=True, text=True
             )
             if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
                 disabled_count += 1
@@ -546,37 +644,67 @@ def cmd_start_instance(args):
 
         # 3. Limitar procesos background para reducir footprint de RAM.
         for setting_cmd, value in BG_PROCESS_SETTINGS.items():
-            subprocess.run(
+            _run(
                 ["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
         print("[✓] Límites de procesos background configurados (max_cached=4)")
 
     if not wait_boot():
-        print("[!] Aviso: timeout esperando el arranque completo del sistema.")
+        net_ok, net_msg = container_network_ok(inst_name)
+        print("[!] ERROR: timeout esperando fin de arranque (sys.boot_completed=1 y marcador apply-props).")
+        print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
+        print(f"[!] Contenedor dejado en marcha para diagnóstico: docker logs {inst_name}")
+        return
     post_boot()
 
-    # 4. Módulo LSPosed actualizado durante este arranque: lspd no recarga APKs
-    #    en caliente (reiniciarlo tarde forzaría un reinicio parcial). Se
-    #    reinicia el contenedor una vez; en el siguiente arranque lspd precarga
-    #    el APK nuevo desde la DB ya actualizada por apply-props.sh.
-    m = subprocess.run(["adb", "-s", adb_s, "shell", "ls", "/data/local/tmp/.proteomesh_module_updated"],
-                       capture_output=True, text=True)
-    if ".proteomesh_module_updated" in m.stdout:
-        print("[*] Módulo LSPosed actualizado en este arranque: reiniciando para cargarlo...")
-        subprocess.run(["adb", "-s", adb_s, "shell", "rm", "-f", "/data/local/tmp/.proteomesh_module_updated"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["docker", "restart", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(5)
-        subprocess.run(["adb", "connect", f"127.0.0.1:{port}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["adb", "-s", adb_s, "shell", "rm", "-f",
-                        "/data/local/tmp/.proteomesh_boot_done",
-                        "/data/local/tmp/.proteomesh_module_updated"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # 4. Módulo LSPosed o scope actualizados durante este arranque: lspd no
+    #    recarga APKs ni scope en caliente (reiniciarlo tarde forzaría un
+    #    reinicio parcial). Se reinicia el contenedor (máx. 2 veces, por si el
+    #    sync de scope captura apps nuevas en dos oleadas, p.ej. la tienda del
+    #    fabricante instalada durante el primer arranque); lspd precarga todo
+    #    en el arranque siguiente desde la DB ya actualizada por
+    #    apply-props.sh/manage-spoof.
+    for _ in range(2):
+        m = _run(["adb", "-s", adb_s, "shell", "ls",
+                  "/data/local/tmp/.proteomesh_module_updated",
+                  "/data/local/tmp/.proteomesh_scope_updated"],
+                 timeout=20, capture_output=True, text=True)
+        if (".proteomesh_module_updated" not in m.stdout
+                and ".proteomesh_scope_updated" not in m.stdout):
+            break
+        print("[*] Módulo/scope LSPosed actualizados en este arranque: reiniciando para cargarlos...")
+        _run(["adb", "-s", adb_s, "shell", "rm", "-f",
+              "/data/local/tmp/.proteomesh_module_updated",
+              "/data/local/tmp/.proteomesh_scope_updated"],
+             timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run(["docker", "restart", inst_name], timeout=30,
+             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not connect_adb():
+            net_ok, net_msg = container_network_ok(inst_name)
+            print(f"[!] ADB no reconectó tras el reinicio del módulo/scope (serial {adb_s}).")
+            print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
+            print(f"[!] Contenedor dejado en marcha para diagnóstico: docker logs {inst_name}")
+            return
+        _run(["adb", "-s", adb_s, "shell", "rm", "-f",
+              "/data/local/tmp/.proteomesh_boot_done",
+              "/data/local/tmp/.proteomesh_module_updated",
+              "/data/local/tmp/.proteomesh_scope_updated"],
+             timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if not wait_boot():
-            print("[!] Aviso: timeout esperando el segundo arranque.")
+            net_ok, net_msg = container_network_ok(inst_name)
+            print("[!] ERROR: timeout esperando el segundo arranque.")
+            print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
+            print(f"[!] Contenedor dejado en marcha para diagnóstico: docker logs {inst_name}")
+            return
         post_boot()
-        print("[✓] Módulo LSPosed recargado desde el arranque.")
+        print("[✓] Módulo/scope LSPosed recargados desde el arranque.")
+
+    net_ok, net_msg = container_network_ok(inst_name)
+    if net_ok:
+        print(f"[✓] Red host→contenedor OK ({net_msg})")
+    else:
+        print(f"[!] Red host→contenedor: FALLA — {net_msg} (adb puede caer a offline en minutos)")
 
     print(f"\nPara ver la pantalla ejecuta:")
     print(f"  scrcpy -s 127.0.0.1:{port}\n")

@@ -17,6 +17,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -31,6 +32,15 @@
 #endif
 #ifndef F_SEAL_GROW
 #define F_SEAL_GROW 0x0004
+#endif
+#ifndef F_SEAL_FUTURE_WRITE
+#define F_SEAL_FUTURE_WRITE 0x0010
+#endif
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002U
 #endif
 
 #define ASHMEM_SET_NAME 0x7701
@@ -247,7 +257,157 @@ static void test_policy(void) {
     rmdir(dir);
 }
 
-int main(void) {
+// Regresión: los memfds del libcutils parcheado del proyecto se llaman
+// "shared_memory/<guid>", no llevan sellos GROW|SHRINK reales y aun así deben
+// satisfacer IsMemfdFd() de Chromium 155 (que exige esos sellos, crbug 498720726).
+static void test_foreign_memfd(void) {
+    int fd = (int)syscall(SYS_memfd_create,
+                          "shared_memory/E3EF711897774EB2512A096E3E0A9F47",
+                          MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    check(fd >= 0, "memfd shared_memory creado");
+    if (fd < 0) return;
+
+    errno = 0;
+    int seals = fcntl(fd, F_GET_SEALS);
+    check(seals >= 0 &&
+              (seals & (F_SEAL_GROW | F_SEAL_SHRINK)) == (F_SEAL_GROW | F_SEAL_SHRINK),
+          "shared_memory: F_GET_SEALS sintetiza GROW|SHRINK (IsMemfdFd)");
+
+    check(fcntl(fd, F_ADD_SEALS, F_SEAL_FUTURE_WRITE) == 0,
+          "shared_memory: F_ADD_SEALS(FUTURE_WRITE) sintético");
+    seals = fcntl(fd, F_GET_SEALS);
+    check((seals & F_SEAL_FUTURE_WRITE) != 0,
+          "shared_memory: F_GET_SEALS refleja FUTURE_WRITE");
+
+    if (ftruncate(fd, 4096) == 0) {
+        check(ioctl(fd, ASHMEM_GET_SIZE) == 4096,
+              "shared_memory: ASHMEM_GET_SIZE real vía lseek");
+    } else {
+        check(0, "shared_memory: ftruncate de preparación");
+    }
+    close(fd);
+
+    int ctrl = (int)syscall(SYS_memfd_create, "region_cualquiera",
+                            MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    check(ctrl >= 0, "memfd de control creado");
+    if (ctrl >= 0) {
+        errno = 0;
+        check(fcntl(ctrl, F_GET_SEALS) == (F_SEAL_GROW | F_SEAL_SHRINK),
+              "control: memfd sin nombre ashmem recibe GROW|SHRINK (v5.1)");
+        check(syscall(SYS_fcntl, ctrl, F_ADD_SEALS, F_SEAL_FUTURE_WRITE) == 0,
+              "control: sello real aplicado al kernel via syscall crudo");
+        seals = fcntl(ctrl, F_GET_SEALS);
+        check((seals & F_SEAL_FUTURE_WRITE) != 0 &&
+                  (seals & (F_SEAL_GROW | F_SEAL_SHRINK)) ==
+                      (F_SEAL_GROW | F_SEAL_SHRINK),
+              "control: sello real + GROW|SHRINK sintetico coexisten");
+        close(ctrl);
+    }
+}
+
+// Regresión v3: si F_ADD_SEALS se queda sintético, un proceso DISTINTO que
+// recibe el fd (renderizador WebView/Chrome) no ve FUTURE_WRITE y Chromium
+// aborta (SIGTRAP) al validar regiones read-only. El hijo se re-ejecuta (el
+// shim sanea LD_PRELOAD, así que corre sin shim) y lee el sello REAL del
+// kernel con syscall crudo: exactamente la verdad global que necesita el
+// renderizador, sobre la que el shim añade GROW|SHRINK sintéticos.
+static int child_seals_check(void) {
+    const char *s = getenv("PIXEL_HW_CHILD_FD");
+    if (!s) return 2;
+    long seals = syscall(SYS_fcntl, atoi(s), F_GET_SEALS);
+    if (seals < 0) return 3;
+    if ((seals & F_SEAL_FUTURE_WRITE) == 0) return 5;
+    return 0;
+}
+
+// Simulacion exacta del renderizador: proceso nuevo con el shim recien
+// cargado (bitmap vacio) que recibe el fd por herencia; su fcntl() interpuesto
+// debe ver FUTURE_WRITE real mas GROW|SHRINK sinteticos (IsMemfdFd).
+static int child_seals_shim_check(void) {
+    const char *s = getenv("PIXEL_HW_CHILD_FD");
+    if (!s) return 2;
+    int seals = fcntl(atoi(s), F_GET_SEALS);
+    if (seals < 0) return 3;
+    if ((seals & F_SEAL_FUTURE_WRITE) == 0) return 5;
+    if ((seals & (F_SEAL_GROW | F_SEAL_SHRINK)) !=
+        (F_SEAL_GROW | F_SEAL_SHRINK))
+        return 6;
+    return 0;
+}
+
+static int find_shim_path(char *out, size_t n) {
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f) return 0;
+    char line[512];
+    int ok = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, "libpixel_hw")) {
+            char *sp = strchr(line, '/');
+            if (sp) {
+                char *nl = strchr(sp, '\n');
+                if (nl) *nl = '\0';
+                snprintf(out, n, "%s", sp);
+                ok = 1;
+                break;
+            }
+        }
+    }
+    fclose(f);
+    return ok;
+}
+
+static void test_seals_cross_process(void) {
+    int fd = (int)syscall(SYS_memfd_create,
+                          "shared_memory/CROSS00000000000000000000000000",
+                          MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    check(fd >= 0, "cross: memfd shared_memory creado");
+    if (fd < 0) return;
+
+    check(fcntl(fd, F_ADD_SEALS, F_SEAL_FUTURE_WRITE) == 0,
+          "cross: F_ADD_SEALS(FUTURE_WRITE) ret=0");
+
+    int fl = fcntl(fd, F_GETFD);
+    if (fl >= 0) fcntl(fd, F_SETFD, fl & ~FD_CLOEXEC);
+    char fdbuf[16];
+    snprintf(fdbuf, sizeof(fdbuf), "%d", fd);
+    pid_t pid = fork();
+    if (pid == 0) {
+        setenv("PIXEL_HW_CHILD_FD", fdbuf, 1);
+        execl("/proc/self/exe", "ashmem_selftest", "--child-seals", (char *)0);
+        _exit(127);
+    }
+    int st = 0;
+    if (pid > 0) waitpid(pid, &st, 0);
+    check(pid > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0,
+          "cross: proceso nuevo (sin shim) ve FUTURE_WRITE real en el kernel");
+
+    char shim[512];
+    if (find_shim_path(shim, sizeof(shim))) {
+        pid_t pid2 = fork();
+        if (pid2 == 0) {
+            setenv("PIXEL_HW_CHILD_FD", fdbuf, 1);
+            setenv("LD_PRELOAD", shim, 1);
+            execl("/proc/self/exe", "ashmem_selftest", "--child-seals-shim",
+                  (char *)0);
+            _exit(127);
+        }
+        int st2 = 0;
+        if (pid2 > 0) waitpid(pid2, &st2, 0);
+        check(pid2 > 0 && WIFEXITED(st2) && WEXITSTATUS(st2) == 0,
+              "cross: renderer simulado (shim fresco) ve FUTURE_WRITE|GROW|SHRINK");
+    } else {
+        check(0, "cross: ruta del shim no encontrada en /proc/self/maps");
+    }
+    close(fd);
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--child-seals") == 0) {
+        return child_seals_check();
+    }
+    if (argc > 1 && strcmp(argv[1], "--child-seals-shim") == 0) {
+        return child_seals_shim_check();
+    }
     printf("== ProteoMesh ashmem selftest (shim via LD_PRELOAD) ==\n");
     int fd = test_basic();
     if (fd >= 0) {
@@ -257,6 +417,8 @@ int main(void) {
         close(fd);
     }
     test_policy();
+    test_foreign_memfd();
+    test_seals_cross_process();
     if (g_fails == 0) {
         printf("RESULT: OK\n");
         return 0;
