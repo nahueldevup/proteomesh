@@ -106,6 +106,10 @@ public class ArchProbe extends Activity {
         return sb.toString();
     }
 
+    String intToIp(int v) {
+        return (v & 0xff) + "." + ((v >> 8) & 0xff) + "." + ((v >> 16) & 0xff) + "." + ((v >> 24) & 0xff);
+    }
+
     String fileExists(String path) {
         try {
             File f = new File(path);
@@ -325,6 +329,28 @@ public class ArchProbe extends Activity {
         }
         line("/proc/net/route (default gw)", readText("/proc/net/route", 4096).trim());
         line("/proc/net/wireless", readText("/proc/net/wireless", 512).trim());
+
+        section("WifiManager/WifiInfo (Java, red ficticia)");
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    getSystemService(android.content.Context.WIFI_SERVICE);
+            android.net.DhcpInfo dhcp = wm.getDhcpInfo();
+            if (dhcp != null) {
+                line("DhcpInfo", "ip=" + intToIp(dhcp.ipAddress) + " gw=" + intToIp(dhcp.gateway) +
+                        " mask=" + intToIp(dhcp.netmask) + " dns1=" + intToIp(dhcp.dns1) +
+                        " dns2=" + intToIp(dhcp.dns2) + " server=" + intToIp(dhcp.serverAddress));
+            } else {
+                line("DhcpInfo", "null");
+            }
+            android.net.wifi.WifiInfo wi = wm.getConnectionInfo();
+            if (wi != null) {
+                line("WifiInfo", "ip=" + intToIp(wi.getIpAddress()) + " mac=" + wi.getMacAddress());
+            } else {
+                line("WifiInfo", "null");
+            }
+        } catch (Throwable t) {
+            line("WifiManager/WifiInfo", "(error: " + t + ")");
+        }
 
         section("/sys");
         line("/sys/class/net/", exec("/system/bin/ls", "/sys/class/net"));

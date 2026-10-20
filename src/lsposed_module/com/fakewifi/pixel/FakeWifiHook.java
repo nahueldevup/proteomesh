@@ -166,6 +166,33 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return getProp("persist.sys.fake.wifi_mac", "ce:5c:0d:36:77:87");
         }
 
+        public static int getFakeIpHost() {
+            String mac = getWifiMac();
+            int sum = 0, n = 0, hi = -1;
+            for (int i = 0; i < mac.length() && n < 6; i++) {
+                int d = Character.digit(mac.charAt(i), 16);
+                if (d >= 0) {
+                    if (hi < 0) hi = d;
+                    else { sum += (hi << 4) | d; n++; hi = -1; }
+                } else {
+                    hi = -1;
+                }
+            }
+            return 2 + (sum % 200);
+        }
+
+        public static int getFakeIp() {
+            return (getFakeIpHost() << 24) | 0x0001A8C0;
+        }
+
+        public static int getFakeGateway() {
+            return 0x0101A8C0;
+        }
+
+        public static String getFakeIpString() {
+            return "192.168.1." + getFakeIpHost();
+        }
+
         public static String getWifiSsid() {
             String v = getProp("persist.sys.fake.wifi_ssid", null);
             if (v == null || v.isEmpty()) v = ProfileConfig.getString("generated_identity", "wifi_ssid", null);
@@ -1104,6 +1131,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 }
             });
 
+            try {
+                XposedHelpers.findAndHookMethod(WifiInfo.class, "getIpAddress", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        param.setResult(IdentityManager.getFakeIp());
+                    }
+                });
+            } catch (Throwable ignored) {}
+
             XposedHelpers.findAndHookMethod(WifiInfo.class, "getRssi", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
@@ -1163,6 +1199,9 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         XposedHelpers.setObjectField(info, "mBSSID", IdentityManager.getWifiBssid());
                         XposedHelpers.setObjectField(info, "mMacAddress", IdentityManager.getWifiMac());
                         XposedHelpers.setObjectField(info, "mSupplicantState", SupplicantState.COMPLETED);
+                        try {
+                            XposedHelpers.setIntField(info, "mIpAddress", IdentityManager.getFakeIp());
+                        } catch (Throwable ignored) {}
                         param.setResult(info);
                     } catch (Throwable t) {
                         XposedBridge.log("FakeWifiPixel: Error mocking WifiInfo: " + t);
@@ -1196,13 +1235,15 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
                         android.net.DhcpInfo dhcp = new android.net.DhcpInfo();
-                        dhcp.ipAddress = 0x020012ac; // 172.18.0.2
-                        dhcp.gateway = 0x010012ac;   // 172.18.0.1
-                        dhcp.netmask = 0x0000ffff;   // 255.255.0.0
-                        dhcp.dns1 = 0x08080808;      // 8.8.8.8
-                        dhcp.dns2 = 0x04040808;      // 8.8.4.4
-                        dhcp.serverAddress = 0x010012ac;
+                        dhcp.ipAddress = IdentityManager.getFakeIp();
+                        dhcp.gateway = IdentityManager.getFakeGateway();
+                        dhcp.netmask = 0x00ffffff;   // 255.255.255.0
+                        dhcp.dns1 = 0x0101A8C0;      // 192.168.1.1
+                        dhcp.dns2 = 0x08080808;      // 8.8.8.8
+                        dhcp.serverAddress = IdentityManager.getFakeGateway();
                         dhcp.leaseDuration = 86400;
+                        XposedBridge.log("FakeWifiPixel: DhcpInfo LAN ficticia " +
+                                IdentityManager.getFakeIpString() + " gw 192.168.1.1");
                         param.setResult(dhcp);
                     } catch (Throwable ignored) {}
                 }

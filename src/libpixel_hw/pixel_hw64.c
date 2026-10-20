@@ -138,6 +138,14 @@ static unsigned char s_dev_fds[FD_TABLE_SIZE];
 static unsigned char s_route_fds[FD_TABLE_SIZE];
 static unsigned char s_arp_fds[FD_TABLE_SIZE];
 
+static unsigned char s_fake_ipv4[4];
+static unsigned char s_router_mac[6];
+static int s_fake_net_ok = 0;
+
+#define FAKE_NET_A 192
+#define FAKE_NET_B 168
+#define FAKE_NET_C 1
+
 static int fd_in_range(int fd) {
     return fd >= 0 && fd < FD_TABLE_SIZE;
 }
@@ -162,6 +170,45 @@ static int str_contains(const char *hay, const char *needle) {
     return 0;
 }
 
+static void load_fake_mac(void);
+
+static int hex_val(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static char hex_chr(int v) {
+    return (char)(v < 10 ? '0' + v : 'a' + (v - 10));
+}
+
+// /proc/net/tcp: remapea direcciones locales/remotas de la subred Docker
+// 172.17.0.0/16 (hex little-endian YY0011AC) a la LAN ficticia 192.168.1.0/24.
+// El gateway (.1) va a 192.168.1.1; el resto a la IP derivada de la MAC del
+// perfil (asi la IP propia coincide con getifaddrs y DhcpInfo). Solo toca los
+// 8 hex previos a cada ':' (nunca puertos).
+static ssize_t remap_tcp_addrs(char *s, ssize_t len) {
+    load_fake_mac();
+    for (ssize_t k = 8; k < len; k++) {
+        if (s[k] != ':') continue;
+        int ok = 1;
+        for (ssize_t j = k - 8; j < k; j++) {
+            if (hex_val(s[j]) < 0) { ok = 0; break; }
+        }
+        if (!ok) continue;
+        if (s[k-4] == '1' && s[k-3] == '1' &&
+            (s[k-2] == 'A' || s[k-2] == 'a') &&
+            (s[k-1] == 'C' || s[k-1] == 'c')) {
+            int y = (hex_val(s[k-8]) << 4) | hex_val(s[k-7]);
+            int host = (y == 1 || !s_fake_net_ok) ? y : s_fake_ipv4[3];
+            s[k-8]=hex_chr(host >> 4); s[k-7]=hex_chr(host & 0xF);
+            s[k-6]='0'; s[k-5]='1'; s[k-4]='A'; s[k-3]='8'; s[k-2]='C'; s[k-1]='0';
+        }
+    }
+    return len;
+}
+
 // --- Módulo B: filtrado en-vuelo de buffers procfs ---
 static ssize_t filter_tcp_buffer(char *buf, ssize_t n) {
     ssize_t out = 0;
@@ -179,11 +226,13 @@ static ssize_t filter_tcp_buffer(char *buf, ssize_t n) {
             }
         }
         if (!drop) {
+            ssize_t ostart = out;
             if (out != start) {
                 for (ssize_t k = start; k < end; k++) buf[out++] = buf[k];
             } else {
                 out = end;
             }
+            remap_tcp_addrs(buf + ostart, out - ostart);
             if (i < n) buf[out++] = buf[i];
         }
         if (i < n) i++;
@@ -201,8 +250,22 @@ static ssize_t filter_dev_buffer(char *buf, ssize_t n) {
     return n;
 }
 
-// /proc/net/route y /proc/net/arp: el kernel del contenedor usa eth0; las
-// apps deben ver wlan0. El gateway/subred Docker queda fuera de este filtro.
+// /proc/net/route y /proc/net/arp: el kernel del contenedor usa eth0 y la
+// subred Docker 172.17.0.0/16. Las apps ven wlan0 en una LAN privada ficticia
+// 192.168.1.0/24 (IP derivada de la MAC del perfil, coherente con DhcpInfo).
+static void replace_fixed(char *buf, ssize_t n, const char *from, const char *to) {
+    for (ssize_t i = 0; i + 8 <= n; i++) {
+        int match = 1;
+        for (int k = 0; k < 8; k++) {
+            if (buf[i + k] != from[k]) { match = 0; break; }
+        }
+        if (match) {
+            for (int k = 0; k < 8; k++) buf[i + k] = to[k];
+            i += 7;
+        }
+    }
+}
+
 static ssize_t filter_route_buffer(char *buf, ssize_t n, size_t cap) {
     ssize_t i = 0;
     while (i + 4 <= n) {
@@ -222,10 +285,14 @@ static ssize_t filter_route_buffer(char *buf, ssize_t n, size_t cap) {
         }
         i++;
     }
+    replace_fixed(buf, n, "000011AC", "0001A8C0");
+    replace_fixed(buf, n, "010011AC", "0101A8C0");
+    replace_fixed(buf, n, "0000FFFF", "00FFFFFF");
     return n;
 }
 
-static ssize_t filter_arp_buffer(char *buf, ssize_t n) {
+static ssize_t filter_arp_buffer(char *buf, ssize_t n, size_t cap) {
+    load_fake_mac();
     for (ssize_t i = 0; i + 5 <= n; i++) {
         if (buf[i] == ' ' && buf[i+1] == 'e' && buf[i+2] == 't' &&
             buf[i+3] == 'h' && buf[i+4] == '0' &&
@@ -233,6 +300,63 @@ static ssize_t filter_arp_buffer(char *buf, ssize_t n) {
             buf[i] = 'w'; buf[i+1] = 'l'; buf[i+2] = 'a'; buf[i+3] = 'n'; buf[i+4] = '0';
             i += 4;
         }
+    }
+    ssize_t ls = 0;
+    while (ls < n) {
+        ssize_t le = ls;
+        while (le < n && buf[le] != '\n') le++;
+        int is_fake = 0;
+        int oct = -1;
+        if (le - ls >= 10 &&
+            buf[ls] == '1' && buf[ls+1] == '7' && buf[ls+2] == '2' && buf[ls+3] == '.' &&
+            buf[ls+4] == '1' && buf[ls+5] == '7' && buf[ls+6] == '.' &&
+            buf[ls+7] == '0' && buf[ls+8] == '.') {
+            ssize_t ds = ls + 9, d = 0;
+            while (ds + d < le && d < 3 && buf[ds+d] >= '0' && buf[ds+d] <= '9') d++;
+            if (d >= 1 && (size_t)(n + 1) <= cap) {
+                oct = 0;
+                for (ssize_t k = 0; k < d; k++) oct = oct * 10 + (buf[ds+k] - '0');
+                for (ssize_t j = n; j > ds; j--) buf[j] = buf[j - 1];
+                buf[ls]='1'; buf[ls+1]='9'; buf[ls+2]='2'; buf[ls+3]='.';
+                buf[ls+4]='1'; buf[ls+5]='6'; buf[ls+6]='8'; buf[ls+7]='.';
+                buf[ls+8]='1'; buf[ls+9]='.';
+                n++;
+                le++;
+                is_fake = 1;
+            }
+        } else if (le - ls >= 10 &&
+                   buf[ls] == '1' && buf[ls+1] == '9' && buf[ls+2] == '2' && buf[ls+3] == '.' &&
+                   buf[ls+4] == '1' && buf[ls+5] == '6' && buf[ls+6] == '8' && buf[ls+7] == '.' &&
+                   buf[ls+8] == '1' && buf[ls+9] == '.') {
+            ssize_t ds = ls + 9, d = 0;
+            while (ds + d < le && d < 3 && buf[ds+d] >= '0' && buf[ds+d] <= '9') d++;
+            if (d >= 1) {
+                oct = 0;
+                for (ssize_t k = 0; k < d; k++) oct = oct * 10 + (buf[ds+k] - '0');
+                is_fake = 1;
+            }
+        }
+        if (is_fake && oct == 1 && s_fake_net_ok) {
+            for (ssize_t p = ls; p + 17 <= le; p++) {
+                int mac_ok = 1;
+                for (int k = 0; k < 17; k++) {
+                    if (k % 3 == 2) {
+                        if (buf[p + k] != ':') { mac_ok = 0; break; }
+                    } else if (hex_val(buf[p + k]) < 0) { mac_ok = 0; break; }
+                }
+                if (mac_ok) {
+                    buf[p]='5'; buf[p+1]='0'; buf[p+2]=':';
+                    buf[p+3]='c'; buf[p+4]='7'; buf[p+5]=':';
+                    buf[p+6]='b'; buf[p+7]='f'; buf[p+8]=':';
+                    buf[p+9]=hex_chr(s_router_mac[3] >> 4); buf[p+10]=hex_chr(s_router_mac[3] & 0xF); buf[p+11]=':';
+                    buf[p+12]=hex_chr(s_router_mac[4] >> 4); buf[p+13]=hex_chr(s_router_mac[4] & 0xF); buf[p+14]=':';
+                    buf[p+15]=hex_chr(s_router_mac[5] >> 4); buf[p+16]=hex_chr(s_router_mac[5] & 0xF);
+                    break;
+                }
+            }
+        }
+        if (le >= n) break;
+        ls = le + 1;
     }
     return n;
 }
@@ -651,6 +775,17 @@ static void load_fake_mac(void) {
     if (vi == 6) {
         for (int i = 0; i < 6; i++) s_fake_mac[i] = (unsigned char)vals[i];
         s_fake_mac_ok = 1;
+        int sum = 0;
+        for (int i = 0; i < 6; i++) sum += s_fake_mac[i];
+        s_fake_ipv4[0] = FAKE_NET_A;
+        s_fake_ipv4[1] = FAKE_NET_B;
+        s_fake_ipv4[2] = FAKE_NET_C;
+        s_fake_ipv4[3] = (unsigned char)(2 + (sum % 200));
+        s_router_mac[0] = 0x50; s_router_mac[1] = 0xC7; s_router_mac[2] = 0xBF;
+        s_router_mac[3] = s_fake_mac[1];
+        s_router_mac[4] = s_fake_mac[3];
+        s_router_mac[5] = s_fake_mac[5];
+        s_fake_net_ok = 1;
     }
 }
 
@@ -674,6 +809,18 @@ int getifaddrs(struct ifaddrs_stub **ifap) {
                         unsigned char *sa = (unsigned char *)cur->ifa_addr;
                         sa[11] = 6;
                         for (int i = 0; i < 6; i++) sa[12 + i] = s_fake_mac[i];
+                    }
+                    if (s_fake_net_ok && cur->ifa_addr && ((unsigned char *)cur->ifa_addr)[0] == 2) {
+                        unsigned char *sa = (unsigned char *)cur->ifa_addr;
+                        sa[4] = FAKE_NET_A; sa[5] = FAKE_NET_B; sa[6] = FAKE_NET_C; sa[7] = s_fake_ipv4[3];
+                        if (cur->ifa_netmask && ((unsigned char *)cur->ifa_netmask)[0] == 2) {
+                            unsigned char *nm = (unsigned char *)cur->ifa_netmask;
+                            nm[4] = 255; nm[5] = 255; nm[6] = 255; nm[7] = 0;
+                        }
+                        if ((cur->ifa_flags & 0x2) && cur->ifa_ifu && ((unsigned char *)cur->ifa_ifu)[0] == 2) {
+                            unsigned char *br = (unsigned char *)cur->ifa_ifu;
+                            br[4] = FAKE_NET_A; br[5] = FAKE_NET_B; br[6] = FAKE_NET_C; br[7] = 255;
+                        }
                     }
                 }
                 cur = cur->ifa_next;
@@ -1677,7 +1824,7 @@ ssize_t read(int fd, void *buf, size_t count) {
         } else if (fd_test(s_route_fds, fd)) {
             ret = filter_route_buffer((char *)buf, ret, count);
         } else if (fd_test(s_arp_fds, fd)) {
-            ret = filter_arp_buffer((char *)buf, ret);
+            ret = filter_arp_buffer((char *)buf, ret, count);
         }
     }
     return ret;
@@ -1701,7 +1848,7 @@ ssize_t __read_chk(int fd, void *buf, size_t count, size_t buflen) {
         } else if (fd_test(s_route_fds, fd)) {
             ret = filter_route_buffer((char *)buf, ret, count);
         } else if (fd_test(s_arp_fds, fd)) {
-            ret = filter_arp_buffer((char *)buf, ret);
+            ret = filter_arp_buffer((char *)buf, ret, count);
         }
     }
     return ret;
