@@ -555,6 +555,17 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 45. Saneamiento de `/proc/self/maps` vía snapshot en memfd (cierre de C7)
+
+* **Cambio (shim C, 64/32 bits):** al abrir una app (uid ≥ 10000) `/proc/self/maps` o `/proc/<pid-propio>/maps` (`open`/`open64`/`openat`/`openat64`), el shim lee el contenido real completo, lo sanea en memoria y devuelve un **memfd** con el resultado (posicionado en 0), cerrando el fd original. El `FD_CLOEXEC` original se preserva vía `fcntl(F_GETFD/F_SETFD)`. Fallbacks seguros (fd original intacto y reposicionado) si: el archivo supera 1 MB, el memfd falla o la escritura queda corta.
+* **Reglas de saneamiento:** se eliminan las líneas que contienen `ndk_translation` (native bridge, incluye `libndk_translation_proxy`) y `pixel_hw` (el propio shim); en el resto se reescribe `x86_64`→`arm64` y `x86`→`arm` (rutas `/system/framework/x86_64/…`, `/system/framework/oat/x86_64/…`, `/data/.../oat/x86_64/…`). Direcciones, permisos y offsets quedan intactos. `linker64` no requiere rename: su ruta (`/apex/com.android.runtime/bin/linker64`) es idéntica en un ARM64 real; el flag `linker (32)` de la sonda es un falso positivo por substring de `/linker64` (no hay `/system/bin/linker` real mapeado: verificado 0 ocurrencias).
+* **Verificación en caliente (v-gale, uid 10123 + `LD_PRELOAD`):** con el shim cargado (cuyas propias líneas `nettest/libpixel_hw_new.so` aparecen sin filtrar en uid 1000), el `maps` servido no contiene `pixel_hw` ni líneas del shim; contenido coherente (termina en `[stack]`/`[vsyscall]`, `linker64`/`libc.so`/`toybox` presentes); sin crash. Regresión `tests/ashmem`: `RESULT: OK`.
+* **Verificación en dispositivo (post-restart, imagen nueva):** shim `d38042f316b8839ed57bd5bf4f133589` (64) / `9eb9e3ac136f27998def9d0e257e457a` (32) en ambas instancias. Sonda `archprobe` (scoped) en verify-a54 y sin scope en v-gale: `libndk_translation=false`, `libpixel_hw=false`, `x86_64 en rutas=false`, `arm64 en rutas=true`; evidencia `tests/archprobe/results/archprobe_a54_c7.txt` (crudo `.log`, gitignored). Play Store (2 procesos) y resto de apps funcionando tras el cambio.
+* **Hallazgo colateral importante — gap de 32 bits:** `init.zygote64_32.rc` solo hace `setenv LD_PRELOAD /system/lib64/libpixel_hw.so` para el **zygote64**; el `zygote_secondary` (`app_process32`) **no preloada el shim**, por lo que los procesos de app de 32 bits (p. ej. el proveedor WebView x86) quedan **sin ningún filtro** (maps, procfs de red, props, ashmem). Fix propuesto (pendiente de aprobación): agregar `setenv LD_PRELOAD /system/lib/libpixel_hw.so` a `zygote_secondary` y validar con una app 32-bit (`pm install --abi x86` de la sonda) + regresión.
+* **Residual:** `/proc/self/smaps` no se sanea (mismo bridge/shim visibles en bloques `Name:`/pathname); `/sys/class/net` (sysfs) sigue real; `linker64` no es un tell por ruta. Los tres quedan como follow-ups.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
