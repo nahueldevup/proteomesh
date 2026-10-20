@@ -94,13 +94,21 @@ maps contiene 'arm64 en rutas': false
 maps contiene 'linker64': false
 maps contiene 'linker (32)': true
 maps: primeras 3 lineas: 12c00000-32c00000 rw-p 00000000 00:00 0                                  [anon:dalvik-main space (region space)]
-61022000-61024000 r--p 00000000 00:94 871037                             /system/bin/app_process32
+5f94e000-5f950000 r--p 00000000 00:94 871037                             /system/bin/app_process32
+
+===== /proc/self/smaps scan =====
+smaps contiene 'libndk_translation': false
+smaps contiene 'native_bridge': false
+smaps contiene 'libpixel_hw': false
+smaps contiene 'zygisk': false
+smaps contiene 'x86_64 en rutas': false
+smaps: lineas: 55354
 
 ===== /proc/self/auxv =====
-auxv (hex, primeros 32B): 20000000fdfd4cfd2100000000fd4cfd33000000300d000010000000fdfdfd17
+auxv (hex, primeros 32B): 20000000fd72fdfd210000000050fdfd33000000300d000010000000fdfdfd17
 
 ===== NetworkInterface (Java, ruta netlink) =====
-if: wlan0: up mac=02:00:00:00:00:00 fe80::48bb:8095:bcc0:c383%wlan0 192.168.1.154
+if: wlan0: up mac=b0:79:94:1f:35:17 fe80::48bb:8095:bcc0:c383%wlan0 192.168.1.154
 if: lo: up mac=null 127.0.0.1
 
 ===== libcore.io.Libcore.os.getifaddrs (reflexion) =====
@@ -115,9 +123,10 @@ DhcpInfo: ip=192.168.1.154 gw=192.168.1.1 mask=255.255.255.0 dns1=192.168.1.1 dn
 WifiInfo: ip=192.168.1.154 mac=b0:79:94:1f:35:17
 
 ===== /sys =====
-/sys/class/net/: eth0
-lo
-/sys/class/net/wlan0/address: (error: FileNotFoundException: /sys/class/net/wlan0/address: open failed: ENOENT (No such file or directory))
+/sys/class/net/: lo
+wlan0
+/sys/class/net/wlan0/address: b0:79:94:1f:35:17
+/sys/class/net/eth0/address: (error: FileNotFoundException: /sys/class/net/eth0/address: open failed: ENOENT (No such file or directory))
 /sys/devices/system/cpu/online: 0-7
 cpufreq cpu0 max: 2000000
 DMI board_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/board_vendor: open failed: ENOENT (No such file or directory))

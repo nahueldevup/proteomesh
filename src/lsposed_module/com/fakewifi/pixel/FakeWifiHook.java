@@ -166,6 +166,22 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             return getProp("persist.sys.fake.wifi_mac", "ce:5c:0d:36:77:87");
         }
 
+        public static byte[] getWifiMacBytes() {
+            String mac = getWifiMac();
+            byte[] out = new byte[6];
+            int n = 0, hi = -1;
+            for (int i = 0; i < mac.length() && n < 6; i++) {
+                int d = Character.digit(mac.charAt(i), 16);
+                if (d >= 0) {
+                    if (hi < 0) hi = d;
+                    else { out[n++] = (byte) ((hi << 4) | d); hi = -1; }
+                } else {
+                    hi = -1;
+                }
+            }
+            return n == 6 ? out : null;
+        }
+
         public static int getFakeIpHost() {
             String mac = getWifiMac();
             int sum = 0, n = 0, hi = -1;
@@ -1266,6 +1282,22 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     if ("eth0".equals(name)) {
                         param.setResult("wlan0");
                     }
+                }
+            });
+
+            // MAC cruda de wlan0: libcore devuelve 02:00:00:00:00:00 por la
+            // politica de MAC aleatoria (targetSdk < 30). Se responde con la
+            // MAC del perfil para toda app en scope.
+            XposedHelpers.findAndHookMethod(NetworkInterface.class, "getHardwareAddress", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        NetworkInterface ni = (NetworkInterface) param.thisObject;
+                        if (ni != null && "wlan0".equals(ni.getName())) {
+                            byte[] mac = IdentityManager.getWifiMacBytes();
+                            if (mac != null) param.setResult(mac);
+                        }
+                    } catch (Throwable ignored) {}
                 }
             });
         } catch (Throwable t) {

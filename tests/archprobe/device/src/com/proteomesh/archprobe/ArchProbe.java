@@ -291,6 +291,20 @@ public class ArchProbe extends Activity {
         }
         line("maps: primeras 3 lineas", maps.split("\n", 2)[0] + "\n" + (maps.contains("\n") ? maps.split("\n")[1] : ""));
 
+        section("/proc/self/smaps scan");
+        String smaps = readText("/proc/self/smaps", 2 * 1024 * 1024);
+        String[][] smapsNeedles = {
+            {"libndk_translation", "libndk_translation"},
+            {"native_bridge", "native_bridge"},
+            {"libpixel_hw", "libpixel_hw"},
+            {"zygisk", "zygisk"},
+            {"x86_64 en rutas", "x86_64"},
+        };
+        for (String[] n : smapsNeedles) {
+            line("smaps contiene '" + n[0] + "'", String.valueOf(smaps.toLowerCase().contains(n[1].toLowerCase())));
+        }
+        line("smaps: lineas", String.valueOf(smaps.split("\n").length));
+
         section("/proc/self/auxv");
         String auxv = readText("/proc/self/auxv", 64);
         StringBuilder hex = new StringBuilder();
@@ -375,6 +389,7 @@ public class ArchProbe extends Activity {
         section("/sys");
         line("/sys/class/net/", exec("/system/bin/ls", "/sys/class/net"));
         line("/sys/class/net/wlan0/address", readText("/sys/class/net/wlan0/address", 64).trim());
+        line("/sys/class/net/eth0/address", readText("/sys/class/net/eth0/address", 64).trim());
         line("/sys/devices/system/cpu/online", readText("/sys/devices/system/cpu/online", 64).trim());
         line("cpufreq cpu0 max", readText("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", 64).trim());
         line("DMI board_vendor", readText("/sys/devices/virtual/dmi/id/board_vendor", 128).trim());
