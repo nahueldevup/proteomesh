@@ -34,8 +34,8 @@
     "storage_type": "ufs"
   },
   "kernel": {
-    "version": "5.10.0",
-    "full_version": "Linux version 5.10.0"
+    "version": "5.10.168-26360765-abA346MUBU2AWG1",
+    "full_version": "Linux version 5.10.168-26360765-abA346MUBU2AWG1 (dpi@SWHE2308) (Android (9471654, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Thu Jul 13 08:45:33 KST 2023"
   },
   "cpu": {
     "soc_manufacturer": "MediaTek",

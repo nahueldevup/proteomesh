@@ -34,8 +34,8 @@
     "storage_type": "emmc"
   },
   "kernel": {
-    "version": "5.4.195",
-    "full_version": "Linux version 5.4.195"
+    "version": "5.4.195-26360765-abA145MUBS4BXA1",
+    "full_version": "Linux version 5.4.195-26360765-abA145MUBS4BXA1 (dpi@SWHE2308) (Android (7284624, based on r383902b) clang version 14.0.1) #1 SMP PREEMPT Wed Jan 10 11:37:42 KST 2024"
   },
   "cpu": {
     "soc_manufacturer": "MediaTek",

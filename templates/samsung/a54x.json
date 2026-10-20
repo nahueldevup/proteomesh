@@ -34,8 +34,8 @@
     "storage_type": "ufs"
   },
   "kernel": {
-    "version": "5.10.0",
-    "full_version": "Linux version 5.10.0"
+    "version": "5.10.198-26360765-abA546EXXU5AWHC",
+    "full_version": "Linux version 5.10.198-26360765-abA546EXXU5AWHC (dpi@SWHE2308) (Android (9471654, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Tue Aug 29 02:24:37 KST 2023"
   },
   "cpu": {
     "soc_manufacturer": "Samsung",

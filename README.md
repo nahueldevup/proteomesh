@@ -120,8 +120,9 @@ python3 tools/instance_manager.py stop mi-a54-01
 
 ## ⚠️ Limitaciones Conocidas
 
-* **Artefactos de scroll en Chromium:** en Chrome/Brave/Google/WebView los flings rápidos pueden mostrar smearing/bandas horizontales y frames blancos por rasterizado SwiftShader + captura/encoder; Firefox no los reproduce. Se descartaron fps 30/60, flags de Chrome, `use_redroid_c2` y códec VP9; GPU host cerrada (detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §39).
-* **GPU host no adoptada:** se evitó el `SIGSYS` de `kcmp` en Mesa, pero gralloc/GBM de apps y la captura siguen rotos; el pipeline queda en `guest` (SwiftShader/ANGLE).
+* **Artefactos de scroll en Chromium:** en Chrome/Brave/Google/WebView los flings rápidos pueden mostrar checkerboarding (frames blancos por tiles sin rasterizar en SwiftShader) y tearing en el stream de scrcpy; Firefox no los reproduce. Se evaluaron flags experimentales en laboratorio (`enable-zero-copy` + `enable-gpu-rasterization` reducen ~84% los cuadros blancos) pero no se adoptaron para preservar el navegador 100% de fábrica sin firmas web; fps 30/60, `use_redroid_c2`, códec VP9 y GPU host descartados. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §39-§40.
+* **GPU host no adoptada:** se evitó el `SIGSYS` de `kcmp` en Mesa, pero gralloc/GBM de apps, la captura y scrcpy siguen rotos; strings de GPU del host (AMD/Mesa) serían una fuga de genuinidad masiva. El pipeline queda en `guest` (SwiftShader/ANGLE).
+* **Metadatos de red nativos:** `/proc/net/dev`, `/proc/net/route` y `/proc/net/arp` se filtran para mostrar `wlan0` en procesos de app, pero la subred/gateway Docker (`172.17.0.0/16`, `172.17.0.1`) y las direcciones de `getDhcpInfo` siguen siendo visibles para quien lea procfs o use APIs nativas; las APIs Java de conectividad/WiFi sí devuelven el perfil. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §42-§43.
 * **Attestation por hardware:** la evidencia se simula en framework/userspace; no se emula un TEE/StrongBox físico ni claves de attestation reales.
 * **Sensores y cámaras:** son perfiles sintéticos coherentes, no captura física real.
 * **Telefonía:** no hay SIM/módem físico; la identidad y el estado de red son simulados por hooks.

@@ -34,8 +34,8 @@
     "storage_type": "emmc"
   },
   "kernel": {
-    "version": "5.10.0",
-    "full_version": "Linux version 5.10.0"
+    "version": "4.9.190-26360765-abA047FXXU4CWE4",
+    "full_version": "Linux version 4.9.190-26360765-abA047FXXU4CWE4 (dpi@SWHE2304) (Android (7284624, based on r383902b) clang version 14.0.1) #1 SMP PREEMPT Mon May 15 09:31:18 KST 2023"
   },
   "cpu": {
     "soc_manufacturer": "Samsung",

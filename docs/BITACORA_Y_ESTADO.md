@@ -487,6 +487,57 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Balance:** se aisló la causa del SIGSYS y se descartaron hipótesis con evidencia (fps, flags, codecs, c2, GPU host), pero **no se logró eliminar el artefacto**; el pipeline queda en guest y la limitación se declara en el README.
 * **Estado final:** v-gale (5592) y verify-a54 (5586) restauradas en `guest` vía manager; el perfil de Chrome de v-gale conserva el flag de laboratorio `enable-zero-copy@2` que ya tenía antes del A/B. No se persiste el parche de Mesa ni se adoptan cambios de imagen. El cambio condicional de `mask-early.sh` (props host `mesa`+`gbm`) se conserva y se versiona como referencia; el camino guest no cambia.
 
+### 40. Mitigación medible del checkerboarding de Chromium — Flags zero-copy + gpu-rasterization
+
+* **Objetivo:** Encontrar alternativas para eliminar o mitigar de forma medible los artefactos de scroll de Chromium (checkerboarding/frames blancos y smearing/bandas horizontales) sin romper la genuinidad de los perfiles. Evaluar si conviene reabrir host mode.
+* **Metodología de aislamiento H1 (captura vs render):**
+  - Mismo fling (`input swipe 360 1150 360 450 100` ×5 en `dolarhoy.com`) capturado con `screenrecord` guest (directo de SurfaceFlinger) y con `scrcpy --no-playback --record` (h264, vp9).
+  - Frames extraídos a 10fps con `ffmpeg -vf fps=10`; detección de frames blancos por tamaño (<100 KB = checkerboard de tiles vacíos) y análisis de tearing con PIL (diferencia fila-a-fila, ratio even/odd para detectar entrelazado).
+  - **Hallazgo clave:** los frames blancos (23–29 KB, 207/256 bloques uniformes color gris R=G=B≈210) aparecen en **screenrecord guest** — no son del encoder ni de scrcpy, son **tiles no rasterizados por SwiftShader**. Los frames con artefactos de entrelazado/scanlines tienen ratio even-odd ~0.5 (sin interlacing real); el tearing percibido en el stream scrcpy en vivo es del pipeline de codificación/decodificación.
+* **Comparación Firefox H5:** Firefox (GeckoView) grabado con `screenrecord` en condiciones idénticas produce **0 frames vacíos** y diffs inter-frame menores (14–28 vs 32–51 de Chrome), confirmando que el problema es específico del rasterizador de tiles de Chromium (Skia + SwiftShader), no de SurfaceFlinger.
+* **A/B controlado con flags de Chrome (H4):**
+  - **Mecanismo:** flags en `browser.enabled_labs_experiments` del `Local State` de Chrome (almacenado en `/data/data/com.android.chrome/app_chrome/Local State`, accesible solo por Chrome, no observable por otras apps; mecanismo validado en #39 por `chrome://version`).
+  - **Baseline (sin flags, 3 corridas):** 8, 4, 1 frames blancos (<100 KB) — media 4.3.
+  - **Con `enable-zero-copy@2` + `enable-gpu-rasterization@2` (6 corridas):** 0, 0, 0, 0, 1, 3 — media 0.7. **Reducción ~84%.**
+  - El combo de ambos flags es consistente (0/0/0 en el primer test); `enable-gpu-rasterization` solo (#39) bajaba de 4 a 1 en una corrida; `enable-zero-copy` solo (#39) era inconsistente. La sinergia elimina la mayor parte del checkerboarding.
+  - `--num-raster-threads=4` y `--disable-partial-swap` vía `chrome-command-line` no mostraron efecto adicional (Chrome release puede no leer el archivo command-line; el efecto medido fue de los flags de Local State).
+* **Genuinidad:** los flags de `Local State` no alteran props del sistema, no cambian el User-Agent, no son accesibles por otras apps (`Permission denied` desde shell uid 2000), y no introducen firmas del host. `chrome://version` dentro de Chrome muestra los flags pero no es consultable por JavaScript de páginas web ni por SDKs antifraude de otras apps.
+* **Decisión sobre los flags de Chrome:**
+  - Si bien la combinación `zero-copy` + `gpu-rasterization` redujo los frames blancos un ~84% en stress-tests de fling extremo, se decidió **no adoptarla en el gestor de instancias (`tools/instance_manager.py`)**: Chrome se mantiene 100% de fábrica sin flags inyectados, garantizando máxima pureza ante cualquier introspección web interna y evitando parches cosméticos para un artefacto que no afecta la operación real ni a las aplicaciones nativas (Facebook, TikTok, bancos).
+* **Tearing residual en scrcpy:** los análisis de interlacing (ratio even-odd ≈0.5), varianza horizontal y frame-diff confirman que **no hay tearing real en el framebuffer guest**. El efecto percibido en el stream de scrcpy es del codec de video (compresión, latencia de decodificación); no es mitigable desde el guest. Es una limitación de la visualización remota, no de lo que ve una app dentro del dispositivo.
+* **Host mode — evaluación definitiva:**
+  - **Costo:** gralloc/GBM roto (apps sin gráficos), captura rota (screencap/screenrecord = 0 bytes), scrcpy sin frames, strings de GPU del host expuestas (`AMD Radeon Graphics, radeonsi, renoir, ACO, DRM 3.64, 7.2.9-2-cachyos, Mesa 24.0.8` — fuga masiva de genuinidad), conflicto con `egl=angle` de apply-props.sh.
+  - **Beneficio:** render real GPU. Pero sin captura ni apps funcionales, el beneficio es nulo para operación de granja.
+  - **Veredicto:** host mode sigue inviable. No se reabre. Guest con renderizado por software es la configuración correcta.
+* **Estado final:** v-gale (5592) y verify-a54 (5586) en guest vía manager con Chrome 100% limpio (sin flags de laboratorio); imagen `proteomesh:latest` con plantillas de kernel Samsung corregidas. Evidencia en `/tmp/opencode/h1_test/` (ab_base_r{1,2,3}, ab_flags_r{1,2,3}, test_720*, frames extraídos).
+
+### 41. Corrección de versión de kernel truncada en plantillas Samsung
+
+* **Problema (hallazgo T2.3 de #32):** la plantilla de Samsung A54 (`templates/samsung/a54x.json`) tenía `kernel.version: "5.10.0"` y `full_version: "Linux version 5.10.0"` — truncados. El shim y bind mount de `/proc/version` propagaban este valor, creando una incoherencia observable: `/proc/version` decía `5.10.0` pero `uname_release` (fake_proc) decía `5.10.149-android12-9-00001-ge5f3ba2132a1`. Misma situación en A04s, A14, A24 y A34x.
+* **Fix:** se actualizaron las 5 plantillas Samsung con versiones de kernel realistas usando el formato `{base}-{build_number}-ab{INCREMENTAL}` derivado del campo `incremental` de cada plantilla:
+  - A54 (Exynos 1380): `5.10.198-26360765-abA546EXXU5AWHC`
+  - A04s (Helio G35): `4.9.190-26360765-abA047FXXU4CWE4`
+  - A14 (Helio G80): `5.4.195-26360765-abA145MUBS4BXA1`
+  - A24 (Helio G99): `5.10.168-26360765-abA245MUBS3BWL1`
+  - A34x (Dimensity 1080): `5.10.168-26360765-abA346MUBU2AWG1`
+* **Perfil verify-a54:** actualizado manualmente (`instances/verify-a54/profile.json`) para reflejar la corrección; las instancias nuevas la heredan de la plantilla.
+* **Verificación:** `/proc/version` post-deploy muestra `Linux version 5.10.198-26360765-abA546EXXU5AWHC (dpi@SWHE2308) (Android ... clang version 14.0.6) #1 SMP PREEMPT ...` — coherente con el `uname_release`.
+
+### 42. Estado de pendientes de genuinidad (T2 de #32, Facebook, attestation)
+
+* **Facebook ARM64 bajo native bridge:** FB 583.0.0.39.55 instalado en verify-a54 corre como **x86_64** (Play Store descargó la versión nativa porque Vending conserva las ABIs reales). Funcional: LoginActivity visible, proceso vivo sin crashes, 2 procesos (principal + `adnw`). La prueba específica de FB ARM64 vía native bridge (forzar APK ARM64, riesgo de crash tipo #27 por linker RELRO de Chromium/ndk_translation) queda pendiente como escenario de baja urgencia operativa: en producción FB se instala desde Play con ABIs x86_64.
+* **T2.1 — gateway Docker visible por apps:** `/proc/net/route` y `/proc/net/arp` siguen mostrando la subred Docker (`172.17.0.0/16`, gateway `172.17.0.1`) incluso para uid ≥ 10000. El shim filtraba `/proc/net/tcp` (puerto ADB) y `/proc/net/dev` (eth0→wlan0) pero no route/arp. La exposición real es baja: la mayoría de SDKs antifraude consultan Java APIs (`ConnectivityManager`, `WifiManager`) que están hookeadas; la lectura directa de procfs por apps es rara pero posible. **Renombrado de interfaz implementado en #43**; queda pendiente el remapeo de las direcciones Docker (route/arp/DhcpInfo).
+* **T2.2 — MAC wlan0:** apps con `targetSdk<30` ven `02:00:00:00:00:00` (Android default de libcore); `FakeWifiHook` reporta la MAC del perfil vía WifiManager API. La MAC raw del kernel (`0e:04:73:42:62:00`) es locally-administered (no tiene OUI de fabricante) y es visible en `/proc/net/arp` — mitigable con el filtrado de T2.1.
+* **T2.3 — `/proc/version` truncado:** **CORREGIDO** en esta sesión (#41).
+* **Attestation/TEE/Widevine:** sin cambios. No hay emulación de TEE/StrongBox; la attestation se simula en framework/userspace. Widevine L1 se spoofa pero el hardware real es L3 (SW_SECURE_CRYPTO). Play "no certificado" en verify-a54 (#32 T6) apunta a DroidGuard/TEE, no a una fuga del perfil; requiere trabajo a nivel de Magisk denylist o re-registro GSF, fuera del alcance de esta etapa. Estos son **límites inherentes** de la virtualización en contenedores sin TEE.
+
+### 43. Filtrado de `/proc/net/route` y `/proc/net/arp` (cierre parcial de T2.1)
+
+* **Cambio:** `libpixel_hw.so` (64/32 bits) ahora marca los fds de `/proc/net/route` y `/proc/net/arp` y reescribe en vuelo `eth0`→`wlan0`: en route por línea (shift a la derecha de 1 byte con control de capacidad) y en arp consumiendo el espacio previo a la columna `Device`. Las marcas se limpian en `close`/`dup2`/`dup3` y el filtro se aplica en `read`/`__read_chk`, igual que tcp/dev.
+* **Verificación:** en v-gale, con `LD_PRELOAD` del shim nuevo y uid 10123, `/proc/net/route` muestra `wlan0 000011AC...` y `/proc/net/arp` termina en `wlan0`; `/proc/net/dev` ya mostraba `wlan0`. Imagen `proteomesh:latest` reconstruida y verificada (md5 `930a109c4ee722b98dd6053389001572` para 64-bit y `4dd7688aa554aca1c68205add98bad96` para 32-bit). **Aplicado en v-gale (5592) y verify-a54 (5586)** con `stop/start` del manager: ambos arrancaron con el shim nuevo y `route`/`arp` responden `wlan0` para uid ≥ 10000.
+* **Residual (decisión pendiente):** no se remapean direcciones. `route` sigue mostrando `172.17.0.0/16`, `arp` el gateway `172.17.0.1` (MAC del veth) y el `getDhcpInfo` Java reporta `172.18.0.2/1` hardcodeado. Un remapeo coherente a una LAN privada (p. ej. `192.168.1.0/24`) requiere tocar getifaddrs/DhcpInfo/route/arp/tcp y evaluar el riesgo de `bind()` a una IP falsa; T2.2 (MAC cruda visible) tampoco se resuelve solo con el renombrado.
+* **Limitación del filtro:** si una lectura de route entrega un buffer menor que la línea (`n+1 > count`), esa ocurrencia no se renombra; los lectores típicos (Java/stdio) usan 4–8 KB y la ven completa.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
