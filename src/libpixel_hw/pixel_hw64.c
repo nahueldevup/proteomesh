@@ -130,6 +130,45 @@ static long raw_lseek(int fd, long offset, int whence) {
     return rax;
 }
 
+static long raw_write(int fd, const void *buf, unsigned long count) {
+    register long rax asm("rax") = 1; // SYS_write
+    register long rdi asm("rdi") = (long)fd;
+    register long rsi asm("rsi") = (long)buf;
+    register long rdx asm("rdx") = (long)count;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi), "r" (rsi), "r" (rdx)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
+static long raw_getpid(void) {
+    register long rax asm("rax") = 39; // SYS_getpid
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        :
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
+static long raw_fcntl(int fd, int cmd, long arg) {
+    register long rax asm("rax") = 72; // SYS_fcntl
+    register long rdi asm("rdi") = (long)fd;
+    register long rsi asm("rsi") = (long)cmd;
+    register long rdx asm("rdx") = arg;
+    __asm__ volatile (
+        "syscall"
+        : "+r" (rax)
+        : "r" (rdi), "r" (rsi), "r" (rdx)
+        : "rcx", "r11", "memory"
+    );
+    return rax;
+}
+
 // --- Módulo A/B: seguimiento de descriptores en memoria ---
 #define FD_TABLE_SIZE 65536
 static unsigned char s_ashmem_fds[FD_TABLE_SIZE];
@@ -1413,6 +1452,114 @@ int faccessat(int dirfd, const char *path, int mode, int flags) {
     return real_fn ? real_fn(dirfd, path, mode, flags) : -1;
 }
 
+// /proc/self/maps: se sirve un snapshot saneado (memfd) a las apps para
+// ocultar el native bridge (libndk_translation), el propio shim (libpixel_hw)
+// y las rutas de arquitectura x86/x86_64 (reescritas a arm/arm64). El resto
+// del contenido (direcciones, permisos, offsets) se preserva tal cual.
+#define MAPS_BUF_SIZE (1 << 20)
+static char s_maps_buf[MAPS_BUF_SIZE];
+
+static int maps_tok_at(const char *buf, ssize_t i, ssize_t end, const char *tok) {
+    ssize_t k = 0;
+    while (tok[k]) {
+        if (i + k >= end || buf[i + k] != tok[k]) return 0;
+        k++;
+    }
+    return 1;
+}
+
+static int maps_line_has(const char *buf, ssize_t ls, ssize_t le, const char *tok) {
+    ssize_t tl = 0;
+    while (tok[tl]) tl++;
+    for (ssize_t i = ls; i + tl <= le; i++) {
+        if (maps_tok_at(buf, i, le, tok)) return 1;
+    }
+    return 0;
+}
+
+static ssize_t sanitize_maps(char *buf, ssize_t n) {
+    ssize_t out = 0, ls = 0;
+    while (ls < n) {
+        ssize_t le = ls;
+        while (le < n && buf[le] != '\n') le++;
+        if (!maps_line_has(buf, ls, le, "ndk_translation") &&
+            !maps_line_has(buf, ls, le, "pixel_hw")) {
+            for (ssize_t i = ls; i < le; ) {
+                if (maps_tok_at(buf, i, le, "x86_64")) {
+                    buf[out++] = 'a'; buf[out++] = 'r'; buf[out++] = 'm';
+                    buf[out++] = '6'; buf[out++] = '4';
+                    i += 6;
+                } else if (maps_tok_at(buf, i, le, "x86")) {
+                    buf[out++] = 'a'; buf[out++] = 'r'; buf[out++] = 'm';
+                    i += 3;
+                } else {
+                    buf[out++] = buf[i++];
+                }
+            }
+            if (le < n) buf[out++] = '\n';
+        }
+        ls = (le < n) ? le + 1 : le;
+    }
+    return out;
+}
+
+static int is_self_maps_path(const char *path) {
+    if (!path) return 0;
+    if (str_eq(path, "/proc/self/maps")) return 1;
+    if (!str_starts_with(path, "/proc/")) return 0;
+    long pid = raw_getpid();
+    if (pid <= 0) return 0;
+    char num[16];
+    char rev[16];
+    int ri = 0, ni = 0;
+    while (pid > 0 && ri < 15) { rev[ri++] = (char)('0' + (pid % 10)); pid /= 10; }
+    while (ri > 0) num[ni++] = rev[--ri];
+    num[ni] = '\0';
+    const char *p = path + 6;
+    int k = 0;
+    while (k < ni && p[k] == num[k]) k++;
+    return (k == ni) && str_eq(p + k, "/maps");
+}
+
+static int maps_snapshot(const char *path, int fd) {
+    if (fd < 0 || my_getuid() < 10000) return fd;
+    if (!is_self_maps_path(path)) return fd;
+    ssize_t n = 0;
+    while (n < MAPS_BUF_SIZE - 1) {
+        long r = raw_read(fd, s_maps_buf + n, (unsigned long)(MAPS_BUF_SIZE - 1 - n));
+        if (r <= 0) break;
+        n += r;
+    }
+    if (n <= 0 || n >= MAPS_BUF_SIZE - 1) {
+        raw_lseek(fd, 0, 0);
+        return fd;
+    }
+    ssize_t m = sanitize_maps(s_maps_buf, n);
+    int cloexec = 0;
+    long fl = raw_fcntl(fd, 1 /*F_GETFD*/, 0);
+    if (fl >= 0 && (fl & 1)) cloexec = 1;
+    long mfd = raw_memfd_create("maps", 0x0001); // MFD_CLOEXEC
+    if (mfd < 0) {
+        raw_lseek(fd, 0, 0);
+        return fd;
+    }
+    if (!cloexec) raw_fcntl((int)mfd, 2 /*F_SETFD*/, 0);
+    ssize_t w = 0;
+    while (w < m) {
+        long r = raw_write((int)mfd, s_maps_buf + w, (unsigned long)(m - w));
+        if (r <= 0) break;
+        w += r;
+    }
+    if (w != m) {
+        raw_close((int)mfd);
+        raw_lseek(fd, 0, 0);
+        return fd;
+    }
+    raw_lseek((int)mfd, 0, 0);
+    raw_close(fd);
+    return (int)mfd;
+}
+
 static void mark_net_fd(const char *path, int fd) {
     if (my_getuid() < 10000 || !path || fd < 0) return;
     if (str_contains(path, "/net/tcp")) fd_mark(s_tcp_fds, fd);
@@ -1443,6 +1590,7 @@ int open(const char *path, int flags, ...) {
     } else {
         fd = real_fn(path, flags);
     }
+    fd = maps_snapshot(path, fd);
     mark_net_fd(path, fd);
     return fd;
 }
@@ -1470,6 +1618,7 @@ int open64(const char *path, int flags, ...) {
     } else {
         fd = real_fn(path, flags);
     }
+    fd = maps_snapshot(path, fd);
     mark_net_fd(path, fd);
     return fd;
 }
@@ -1496,6 +1645,7 @@ int openat(int dirfd, const char *path, int flags, ...) {
     } else {
         fd = real_fn(dirfd, path, flags);
     }
+    fd = maps_snapshot(path, fd);
     mark_net_fd(path, fd);
     return fd;
 }
@@ -1523,6 +1673,7 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     } else {
         fd = real_fn(dirfd, path, flags);
     }
+    fd = maps_snapshot(path, fd);
     mark_net_fd(path, fd);
     return fd;
 }
