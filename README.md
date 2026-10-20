@@ -6,6 +6,20 @@ El entorno evade heurísticas de detección de emuladores, virtualización y con
 
 ---
 
+## 🎯 Objetivo y Genuinidad
+
+ProteoMesh busca que cada instancia sea **indistinguible de un teléfono físico real para todo lo que una app puede observar**, no solo para un benchmark puntual. La *genuinidad* se define como **coherencia holística**: todas las capas deben contar la misma historia, sin valores `unknown`, sin mezclas de fabricantes y sin contradicciones internas.
+
+Los tres pilares del proyecto son:
+
+1. **Individualidad de hardware:** dos instancias nunca comparten IMEI/MEID, serial, Android ID, MACs, BSSID, UUIDs de DRM, huella de pantalla ni firmas residuales de build.
+2. **Coherencia de perfil:** un Galaxy A54 5G debe verse como Exynos 1380 + Mali-G68 + sensores STMicro + Galaxy Store en SoC, GPU, HALs, props, cámaras, sensores, tienda y telemetría; cualquier remanente Qualcomm/Pixel es una firma delatora.
+3. **Eficiencia operativa:** render interno `720x1280@30` con reporte lógico del panel real, para sostener instancias en un host pequeño sin delatar el rasterizado por software.
+
+La superficie objetivo cubre identidad (TAC GSMA, OUI IEEE, Luhn), telefonía/SIM, red y geolocalización, build/kernel/props, ABIs, root/SELinux, tiendas oficiales, Play Protect/Play Integrity local, Widevine y detección de emulador/root/Frida. El alcance ampliado y la autocrítica técnica están en [`contexto_explicativo_de_referencia.md`](contexto_explicativo_de_referencia.md); los límites vigentes, en **Limitaciones Conocidas** y en la bitácora (§39).
+
+---
+
 ## 🚀 Capacidades Principales
 
 ### 1. Catálogo Oficial de 17 Dispositivos (Android 13 API 33)
@@ -101,6 +115,18 @@ python3 tools/instance_manager.py stop mi-a54-01
 * **[Arquitectura Integral del Sistema](docs/ARQUITECTURA.md):** Especificación profunda de las 3 capas, flujo GeeLark, evasión de tiendas y mecanismos GMS.
 * **[Guía de Reproducción y Despliegue](docs/GUIA_DE_REPRODUCCION.md):** Manual paso a paso para compilar binarios nativos, construir imágenes y operar instancias.
 * **[Bitácora Histórica y Estado del Proyecto](docs/BITACORA_Y_ESTADO.md):** Registro cronológico detallado de todos los retos técnicos, causas raíz y soluciones implementadas.
+
+---
+
+## ⚠️ Limitaciones Conocidas
+
+* **Artefactos de scroll en Chromium:** en Chrome/Brave/Google/WebView los flings rápidos pueden mostrar smearing/bandas horizontales y frames blancos por rasterizado SwiftShader + captura/encoder; Firefox no los reproduce. Se descartaron fps 30/60, flags de Chrome, `use_redroid_c2` y códec VP9; GPU host cerrada (detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §39).
+* **GPU host no adoptada:** se evitó el `SIGSYS` de `kcmp` en Mesa, pero gralloc/GBM de apps y la captura siguen rotos; el pipeline queda en `guest` (SwiftShader/ANGLE).
+* **Attestation por hardware:** la evidencia se simula en framework/userspace; no se emula un TEE/StrongBox físico ni claves de attestation reales.
+* **Sensores y cámaras:** son perfiles sintéticos coherentes, no captura física real.
+* **Telefonía:** no hay SIM/módem físico; la identidad y el estado de red son simulados por hooks.
+* **Capacidad del host:** con 13–16 GB de RAM el laboratorio opera 2 instancias simultáneas; el render es por software.
+* **Native bridge ARM64:** las apps ARM64 corren traducidas; queda pendiente la validación específica de Facebook.
 
 ---
 

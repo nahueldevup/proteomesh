@@ -2,6 +2,8 @@
 
 Este documento resume los avances técnicos logrados, los desafíos resueltos y el estado validado de cada subsistema de emulación.
 
+**Contexto y objetivo:** ProteoMesh busca *genuinidad holística*: que cada CloudPhone sea indistinguible de un dispositivo físico para toda la superficie observable por apps (hardware, identidad GSMA/IEEE, telefonía, red/geolocalización, build/kernel, ABIs, root/SELinux, tiendas, Play Protect/Integrity local, DRM, sensores), manteniendo individualidad entre instancias y eficiencia en el host. Los tres pilares (individualidad, coherencia de perfil y optimización de recursos), el alcance y la autocrítica técnica están en el README y en `contexto_explicativo_de_referencia.md`. Este registro documenta tanto lo logrado como lo que quedó pendiente o se descartó (p. ej. #31 y #39).
+
 ---
 
 ## 1. Tabla de Estado por Subsistema
@@ -386,7 +388,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Configuración probada:** contenedor temporal con `androidboot.redroid_gpu_mode=host`, `androidboot.redroid_gpu_node=/dev/dri/renderD128` (AMD Radeon Vega, Ryzen 7 5700G) y puerto 5587 sobre el mismo `/data`.
 * **Resultado gráfico:** SurfaceFlinger reporta GLES `AMD Radeon Graphics (radeonsi, renoir, ACO, DRM 3.64, 7.2.9-2-cachyos) OpenGL ES 3.2 Mesa 24.0.8`; render real por GPU.
 * **Bloqueo:** `screencap`/`screenrecord` devuelven 0 bytes (imprescindible para el streaming de la granja); crashes de `GraphicBufferAllocator` (asignaciones 4×4 format 43/56, gralloc.gbm) y crash del launcher.
-* **Decisión:** el pipeline queda en `guest` (SwiftShader). El experimento no se adopta; los artefactos visuales pendientes siguen documentados como limitación de la pila gráfica de la instancia (#23/#29).
+* **Decisión:** el pipeline queda en `guest` (SwiftShader). El experimento no se adopta; los artefactos visuales pendientes siguen documentados como limitación de la pila gráfica de la instancia (#23/#29). Reevaluado en **#39**: se eliminó el bloqueo seccomp, pero el resto del pipeline de apps (gralloc/GBM, captura) sigue inutilizable.
 
 ### 32. Verificación de Genuinidad y Aislamiento entre Instancias (Plan de 6 Pruebas)
 * **Alcance:** verify-a54 (SM-A546M) y v-tapas (23028RA60L) en paralelo. Herramientas: Root Checker Basic, DevCheck, Device Info, DRM Info, Pixelscan (Chrome 155 x86_64), Play Store, `getprop`/adb. Se instaló Chrome 155 en v-tapas (no lo tenía) copiando los splits de verify-a54 para comparación justa.
@@ -469,7 +471,21 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Validación en v-gale:** (1) 2 arranques en frío tras `force-stop`: proceso vivo, `logcat -b crash` vacío, sin "delivery armed on install"; (2) página `geo.html` local: ciclo `create → start(false,false,true) → delivery started` y en pantalla `GEO OK lat=-34.603719 lon=-58.381586 acc=4.6` con Chrome vivo; (3) despliegue limpio: rebuild de imagen (`f21d5bdf4899`) + `instance_manager stop/start` → md5 del módulo instalado coincide con el build (`ffd8324173787862a50d6063e5260bf6`) y el arranque con la pestaña geo restaurada no crashea.
 * **Alcance multi-perfil:** el fix viaja en `modules/FakeWifiPixel.apk` → imagen (`/system/etc/proteomesh/FakeWifiPixel.apk`); `apply-props.sh` actualiza por md5 en el boot de **cualquier** instancia (con el reinicio automático del manager para que lspd recargue). No requiere tocar perfiles, plantillas ni `data-clean`.
 * **Facebook:** no usa `LocationProviderAdapter` (es exclusivo del split de Chromium); su ubicación pasa por `LocationManager`/GMS, que el módulo fakea con hooks Java sin invocar nativo directo → este `SIGTRAP` no aplica. Queda pendiente una prueba específica de FB (app arm64 vía native bridge: riesgos ajenos a este fix).
-* **Artefactos de scroll (observación):** son de render, no del crash: render interno `720x1280@30` (SwiftShader) escalado al tamaño lógico; en capturas aparecen glitches de frame/texto. Mitigables subiendo `androidboot.redroid_fps` (30→60) o probando `redroid_gpu_mode=host`; pendiente A/B.
+* **Artefactos de scroll (observación):** son de render, no del crash: render interno `720x1280@30` (SwiftShader) escalado al tamaño lógico; en capturas aparecen glitches de frame/texto. A/B completo en **#39**: fps 30/60, flags de Chrome, `use_redroid_c2` y códec VP9 no los eliminan; GPU host queda descartado.
+
+### 39. Artefactos de scroll en Chromium: A/B descartados y cierre definitivo de GPU host (SIGSYS kcmp)
+
+* **Síntoma:** smearing/bandas horizontales y líneas desplazadas solo al scrollear rápido en apps Chromium (Chrome 155 x86_64, Brave, Google, WebView); Firefox limpio. En las capturas del fling aparecen además frames casi blancos (checkerboarding de tiles sin rasterizar) y, en el stream scrcpy, scanlines/frames mezclados.
+* **Repro y medición:** `dolarhoy.com` + flings `input swipe 360 1150 360 450 100`; grabación `scrcpy --no-playback --record=X.mp4 --no-audio` (h264 y vp9); frames con `ffmpeg -vf fps=10`; frames blancos detectados por peso (<150 KB) y OCR con `tesseract` para descartar duplicados de texto. El tearing se ve en el stream pero no en `screencap` guest (captura/encoder vs compositor).
+* **A/B descartados (ninguno elimina el artefacto):**
+  - fps 30 vs 60 (`guest30`/`guest60`): sin diferencia.
+  - Flags de Chrome vía `browser.enabled_labs_experiments` en `Local State` (mecanismo validado por `chrome://version`): `enable-gpu-rasterization@2` baja los frames blancos de 4 a 1 en una corrida pero mantiene las bandas; `enable-zero-copy@2` da una corrida limpia y la siguiente bajo carga muestra tearing masivo.
+  - `androidboot.use_redroid_c2=0` (contenedor manual con el mismo `/data`): scrcpy funciona, pero `c_016` sigue con tearing.
+  - Códec VP9 (`--video-codec=vp9`): mismos frames blancos con ghosting (`b_018`/`b_019`).
+* **Host mode — causa raíz del SIGSYS y parche:** el tombstone mostraba `SIGSYS/SYS_SECCOMP`, syscall x86_64 **312 (`kcmp`)**, invocado por `os_same_file_description()` dentro de `amdgpu_winsys_create` (`/vendor/lib64/dri/libgallium_dri.so`, Mesa 24.0.8). En el contenedor de prueba (verify-a54 manual, `gpu_mode=host`, `egl=mesa`, `gralloc=gbm`) se aplicó un bind-mount con el binario parcheado en el call site: VA `0xcb12d2` (offset de archivo `0xcb02d2`), `bf 38 01 00 00 ...` → `b9 ff ff ff ff eb 14` + NOPs, forzando el fallback documentado de Mesa (ret -1 + warning `os_same_file_description couldn't determine...`). Resultado: **desaparece el SIGSYS** y SystemUI/launcher/Chrome arrancan.
+* **Por qué se descarta igualmente:** con el pipeline host, las apps siguen sin gráficos utilizables — Chrome GPU falla `GrContext creation failed`/`SharedImageStub`, SystemUI/launcher3 crashean por bitmaps null (`BaseCanvas`/`DotRenderer`), `screencap` devuelve negro y scrcpy no produce frames (`Recording stopped before headers`). Además `apply-props.sh` reescribe `ro.hardware.egl=angle` al final del boot (L214), por lo que adoptarlo exigiría más cambios de imagen. Veredicto del #31 confirmado: host no es viable en esta pila; la limitación es SwiftShader + captura/encoder.
+* **Balance:** se aisló la causa del SIGSYS y se descartaron hipótesis con evidencia (fps, flags, codecs, c2, GPU host), pero **no se logró eliminar el artefacto**; el pipeline queda en guest y la limitación se declara en el README.
+* **Estado final:** v-gale (5592) y verify-a54 (5586) restauradas en `guest` vía manager; el perfil de Chrome de v-gale conserva el flag de laboratorio `enable-zero-copy@2` que ya tenía antes del A/B. No se persiste el parche de Mesa ni se adoptan cambios de imagen. El cambio condicional de `mask-early.sh` (props host `mesa`+`gbm`) se conserva y se versiona como referencia; el camino guest no cambia.
 
 ---
 
