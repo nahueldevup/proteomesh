@@ -977,6 +977,53 @@ static int is_root_artifact(const char *path) {
     return 0;
 }
 
+// Atributos de /sys/class/net/wlan0: los expuestos por eth0 (el netdev real
+// del contenedor) se sirven desde el kernel, de modo que valores y contadores
+// (statistics/*) quedan dinamicos y coherentes con el renombrado de
+// /proc/net/dev. uevent se sintetiza aparte porque INTERFACE debe decir wlan0.
+static const char *const s_wlan_attr_map[][2] = {
+    {"addr_assign_type", "/sys/devices/virtual/net/eth0/addr_assign_type"},
+    {"addr_len", "/sys/devices/virtual/net/eth0/addr_len"},
+    {"broadcast", "/sys/devices/virtual/net/eth0/broadcast"},
+    {"carrier", "/sys/devices/virtual/net/eth0/carrier"},
+    {"dev_id", "/sys/devices/virtual/net/eth0/dev_id"},
+    {"duplex", "/sys/devices/virtual/net/eth0/duplex"},
+    {"flags", "/sys/devices/virtual/net/eth0/flags"},
+    {"ifindex", "/sys/devices/virtual/net/eth0/ifindex"},
+    {"iflink", "/sys/devices/virtual/net/eth0/iflink"},
+    {"mtu", "/sys/devices/virtual/net/eth0/mtu"},
+    {"name_assign_type", "/sys/devices/virtual/net/eth0/name_assign_type"},
+    {"operstate", "/sys/devices/virtual/net/eth0/operstate"},
+    {"speed", "/sys/devices/virtual/net/eth0/speed"},
+    {"tx_queue_len", "/sys/devices/virtual/net/eth0/tx_queue_len"},
+    {"type", "/sys/devices/virtual/net/eth0/type"},
+    {"statistics", "/sys/devices/virtual/net/eth0/statistics"},
+    {"statistics/collisions", "/sys/devices/virtual/net/eth0/statistics/collisions"},
+    {"statistics/multicast", "/sys/devices/virtual/net/eth0/statistics/multicast"},
+    {"statistics/rx_bytes", "/sys/devices/virtual/net/eth0/statistics/rx_bytes"},
+    {"statistics/rx_compressed", "/sys/devices/virtual/net/eth0/statistics/rx_compressed"},
+    {"statistics/rx_crc_errors", "/sys/devices/virtual/net/eth0/statistics/rx_crc_errors"},
+    {"statistics/rx_dropped", "/sys/devices/virtual/net/eth0/statistics/rx_dropped"},
+    {"statistics/rx_errors", "/sys/devices/virtual/net/eth0/statistics/rx_errors"},
+    {"statistics/rx_fifo_errors", "/sys/devices/virtual/net/eth0/statistics/rx_fifo_errors"},
+    {"statistics/rx_frame_errors", "/sys/devices/virtual/net/eth0/statistics/rx_frame_errors"},
+    {"statistics/rx_length_errors", "/sys/devices/virtual/net/eth0/statistics/rx_length_errors"},
+    {"statistics/rx_missed_errors", "/sys/devices/virtual/net/eth0/statistics/rx_missed_errors"},
+    {"statistics/rx_nohandler", "/sys/devices/virtual/net/eth0/statistics/rx_nohandler"},
+    {"statistics/rx_over_errors", "/sys/devices/virtual/net/eth0/statistics/rx_over_errors"},
+    {"statistics/rx_packets", "/sys/devices/virtual/net/eth0/statistics/rx_packets"},
+    {"statistics/tx_aborted_errors", "/sys/devices/virtual/net/eth0/statistics/tx_aborted_errors"},
+    {"statistics/tx_bytes", "/sys/devices/virtual/net/eth0/statistics/tx_bytes"},
+    {"statistics/tx_carrier_errors", "/sys/devices/virtual/net/eth0/statistics/tx_carrier_errors"},
+    {"statistics/tx_compressed", "/sys/devices/virtual/net/eth0/statistics/tx_compressed"},
+    {"statistics/tx_dropped", "/sys/devices/virtual/net/eth0/statistics/tx_dropped"},
+    {"statistics/tx_errors", "/sys/devices/virtual/net/eth0/statistics/tx_errors"},
+    {"statistics/tx_fifo_errors", "/sys/devices/virtual/net/eth0/statistics/tx_fifo_errors"},
+    {"statistics/tx_heartbeat_errors", "/sys/devices/virtual/net/eth0/statistics/tx_heartbeat_errors"},
+    {"statistics/tx_packets", "/sys/devices/virtual/net/eth0/statistics/tx_packets"},
+    {"statistics/tx_window_errors", "/sys/devices/virtual/net/eth0/statistics/tx_window_errors"},
+};
+
 static const char *redirect_path(const char *path) {
     if (!path) return path;
     if (str_eq(path, "/sys/fs/selinux/enforce")) {
@@ -1007,6 +1054,15 @@ static const char *redirect_path(const char *path) {
         }
         if (str_eq(path, "/sys/class/net/wlan0/address")) {
             return "/data/local/tmp/fake_proc/mac_wlan0";
+        }
+        if (str_starts_with(path, "/sys/class/net/wlan0/")) {
+            const char *leaf = path + 21;
+            if (str_eq(leaf, "uevent")) {
+                return "/system/etc/proteomesh/sys_class_net/wlan0/uevent";
+            }
+            for (unsigned int i = 0; i < sizeof(s_wlan_attr_map) / sizeof(s_wlan_attr_map[0]); i++) {
+                if (str_eq(leaf, s_wlan_attr_map[i][0])) return s_wlan_attr_map[i][1];
+            }
         }
     }
     return path;
@@ -1201,6 +1257,7 @@ void __system_property_foreach(void (*propfn)(const void *, void *), void *cooki
 // 10. Wrappers de Archivos (stat, access, open, fopen)
 #define ENOENT_VAL 2
 #define EACCES_VAL 13
+#define EINVAL_VAL 22
 
 static void set_errno_val(int val) {
     static int *(*real_errno)(void) = (void *)0;
@@ -1470,12 +1527,12 @@ int faccessat(int dirfd, const char *path, int mode, int flags) {
     return real_fn ? real_fn(dirfd, path, mode, flags) : -1;
 }
 
-// /proc/self/maps y /proc/self/smaps: se sirve un snapshot saneado (memfd) a
-// las apps para ocultar el native bridge (libndk_translation), el propio shim
-// (libpixel_hw) y las rutas de arquitectura x86/x86_64 (reescritas a
-// arm/arm64). En smaps se descarta el bloque completo de cada mapping
-// prohibido (header + atributos) para no dejar bloques huerfanos. El resto del
-// contenido (direcciones, permisos, offsets) se preserva tal cual.
+// /proc/self/{maps,smaps,numa_maps,smaps_rollup}: se sirve un snapshot saneado
+// (memfd) a las apps para ocultar el native bridge (libndk_translation), el
+// propio shim (libpixel_hw) y las rutas de arquitectura x86/x86_64
+// (reescritas a arm/arm64). En smaps se descarta el bloque completo de cada
+// mapping prohibido (header + atributos) para no dejar bloques huerfanos; en
+// maps/numa_maps se descarta la linea. El resto del contenido se preserva.
 #define PROC_BUF_SIZE (8 << 20)
 static char s_proc_buf[PROC_BUF_SIZE];
 
@@ -1600,7 +1657,13 @@ static int is_self_proc_path(const char *path, const char *leaf) {
 static int proc_snapshot(const char *path, int fd) {
     if (fd < 0 || my_getuid() < 10000) return fd;
     int smaps = is_self_proc_path(path, "smaps");
-    if (!smaps && !is_self_proc_path(path, "maps")) return fd;
+    int numa = 0;
+    int rollup = 0;
+    if (!smaps && !is_self_proc_path(path, "maps")) {
+        numa = is_self_proc_path(path, "numa_maps");
+        rollup = is_self_proc_path(path, "smaps_rollup");
+        if (!numa && !rollup) return fd;
+    }
     ssize_t n = 0;
     while (n < PROC_BUF_SIZE - 1) {
         long r = raw_read(fd, s_proc_buf + n, (unsigned long)(PROC_BUF_SIZE - 1 - n));
@@ -1611,11 +1674,11 @@ static int proc_snapshot(const char *path, int fd) {
         raw_lseek(fd, 0, 0);
         return fd;
     }
-    ssize_t m = smaps ? sanitize_smaps(s_proc_buf, n) : sanitize_maps(s_proc_buf, n);
+    ssize_t m = smaps ? sanitize_smaps(s_proc_buf, n) : rollup ? n : sanitize_maps(s_proc_buf, n);
     int cloexec = 0;
     long fl = raw_fcntl(fd, 1 /*F_GETFD*/, 0);
     if (fl >= 0 && (fl & 1)) cloexec = 1;
-    long mfd = raw_memfd_create(smaps ? "smaps" : "maps", 0x0001); // MFD_CLOEXEC
+    long mfd = raw_memfd_create(smaps ? "smaps" : numa ? "numa_maps" : rollup ? "smaps_rollup" : "maps", 0x0001); // MFD_CLOEXEC
     if (mfd < 0) {
         raw_lseek(fd, 0, 0);
         return fd;
@@ -2165,7 +2228,53 @@ static int fake_sys_net_readlink(const char *path, char *buf, size_t bufsiz) {
         while (tgt[i] && i < bufsiz) { buf[i] = tgt[i]; i++; }
         return (int)i;
     }
+    // Los atributos de wlan0 (incluido address) son ficheros regulares en
+    // sysfs: readlink debe devolver EINVAL, no ENOENT.
+    if (str_starts_with(path, "/sys/class/net/wlan0/")) {
+        set_errno_val(EINVAL_VAL);
+        return -1;
+    }
     return -2;
+}
+
+// Al abrir un atributo de wlan0 el fd apunta al fichero real de eth0 (o al
+// arbol ficticio): /proc/self/fd/N no debe delatar esa ruta interna.
+static ssize_t rewrite_fd_target(const char *path, char *buf, ssize_t n, size_t bufsiz) {
+    if (n <= 0 || !path || !buf || my_getuid() < 10000) return n;
+    if (!str_contains(path, "/fd/")) return n;
+    static const char *const from[] = {
+        "/sys/devices/virtual/net/eth0",
+        "/sys/class/net/eth0",
+        "/system/etc/proteomesh/sys_class_net/wlan0",
+        "/data/local/tmp/fake_proc/mac_wlan0",
+    };
+    static const char *const to[] = {
+        "/sys/class/net/wlan0",
+        "/sys/class/net/wlan0",
+        "/sys/class/net/wlan0",
+        "/sys/class/net/wlan0/address",
+    };
+    for (unsigned int k = 0; k < sizeof(from) / sizeof(from[0]); k++) {
+        int fl = 0, tl = 0;
+        while (from[k][fl]) fl++;
+        while (to[k][tl]) tl++;
+        if (n < fl) continue;
+        int ok = 1;
+        for (int i = 0; i < fl; i++) {
+            if (buf[i] != from[k][i]) { ok = 0; break; }
+        }
+        if (!ok) continue;
+        ssize_t nn = n - fl + tl;
+        if ((size_t)nn > bufsiz) return n;
+        if (tl > fl) {
+            for (ssize_t i = n - 1; i >= fl; i--) buf[i + (tl - fl)] = buf[i];
+        } else if (tl < fl) {
+            for (ssize_t i = fl; i < n; i++) buf[i - (fl - tl)] = buf[i];
+        }
+        for (int i = 0; i < tl; i++) buf[i] = to[k][i];
+        return nn;
+    }
+    return n;
 }
 
 ssize_t readlink(const char *path, char *buf, size_t bufsiz) {
@@ -2178,7 +2287,8 @@ ssize_t readlink(const char *path, char *buf, size_t bufsiz) {
     if (fr != -2) return fr;
     static ssize_t (*real_fn)(const char *, char *, size_t) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("readlink");
-    return real_fn ? real_fn(path, buf, bufsiz) : -1;
+    ssize_t r = real_fn ? real_fn(path, buf, bufsiz) : -1;
+    return rewrite_fd_target(path, buf, r, bufsiz);
 }
 
 ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
@@ -2191,7 +2301,8 @@ ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
     if (fr != -2) return fr;
     static ssize_t (*real_fn)(int, const char *, char *, size_t) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("readlinkat");
-    return real_fn ? real_fn(dirfd, path, buf, bufsiz) : -1;
+    ssize_t r = real_fn ? real_fn(dirfd, path, buf, bufsiz) : -1;
+    return rewrite_fd_target(path, buf, r, bufsiz);
 }
 
 int execve(const char *pathname, char *const argv[], char *const envp[]) {

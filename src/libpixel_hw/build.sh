@@ -11,13 +11,14 @@ TARGET_32="${SCRIPT_DIR}/../../build_magisk/system/lib/libpixel_hw.so"
 # Algunos entornos (p.ej. AppImage) rompen argv[0] del driver gcc y este no
 # encuentra cc1. En ese caso se le indica con -B el directorio real de cc1.
 CC=(gcc)
-if ! "${CC[0]}" -print-prog-name=cc1 2>/dev/null | grep -q '^/'; then
-    CC1DIR="$("${CC[0]}" -print-search-dirs 2>/dev/null | sed -n 's/^libraries: =//p' | cut -d: -f1)"
-    if [[ -n "${CC1DIR}" && -d "${CC1DIR}" ]]; then
-        [[ "${CC1DIR}" == */ ]] || CC1DIR="${CC1DIR}/"
-        CC+=("-B${CC1DIR}")
-        echo "[*] gcc sin cc1 resoluble; usando -B${CC1DIR}"
-    fi
+CC1="$("${CC[0]}" -print-prog-name=cc1 2>/dev/null || true)"
+if [[ "$CC1" != /* || ! -x "$CC1" ]]; then
+    CC1="$(find /usr/lib/gcc -name cc1 -type f 2>/dev/null | head -n1)"
+fi
+if [[ -n "$CC1" && -x "$CC1" ]]; then
+    CC1DIR="$(dirname "$CC1")"
+    CC+=("-B${CC1DIR}")
+    echo "[*] gcc sin cc1 resoluble; usando -B${CC1DIR}"
 fi
 
 echo "[*] Compiling libpixel_hw (64-bit)..."

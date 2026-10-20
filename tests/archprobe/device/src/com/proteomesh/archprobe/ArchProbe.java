@@ -305,6 +305,33 @@ public class ArchProbe extends Activity {
         }
         line("smaps: lineas", String.valueOf(smaps.split("\n").length));
 
+        section("/proc/self/smaps_rollup scan");
+        String rollup = readText("/proc/self/smaps_rollup", 2 * 1024 * 1024);
+        String[][] rollupNeedles = {
+            {"libndk_translation", "libndk_translation"},
+            {"native_bridge", "native_bridge"},
+            {"libpixel_hw", "libpixel_hw"},
+            {"x86_64 en rutas", "x86_64"},
+        };
+        for (String[] n : rollupNeedles) {
+            line("smaps_rollup contiene '" + n[0] + "'", String.valueOf(rollup.toLowerCase().contains(n[1].toLowerCase())));
+        }
+        line("smaps_rollup: lineas", String.valueOf(rollup.split("\n").length));
+
+        section("/proc/self/numa_maps scan");
+        String numa = readText("/proc/self/numa_maps", 2 * 1024 * 1024);
+        String[][] numaNeedles = {
+            {"libndk_translation", "libndk_translation"},
+            {"native_bridge", "native_bridge"},
+            {"libpixel_hw", "libpixel_hw"},
+            {"zygisk", "zygisk"},
+            {"x86_64 en rutas", "x86_64"},
+        };
+        for (String[] n : numaNeedles) {
+            line("numa_maps contiene '" + n[0] + "'", String.valueOf(numa.toLowerCase().contains(n[1].toLowerCase())));
+        }
+        line("numa_maps: lineas", String.valueOf(numa.split("\n").length));
+
         section("/proc/self/auxv");
         String auxv = readText("/proc/self/auxv", 64);
         StringBuilder hex = new StringBuilder();
@@ -390,6 +417,48 @@ public class ArchProbe extends Activity {
         line("/sys/class/net/", exec("/system/bin/ls", "/sys/class/net"));
         line("/sys/class/net/wlan0/address", readText("/sys/class/net/wlan0/address", 64).trim());
         line("/sys/class/net/eth0/address", readText("/sys/class/net/eth0/address", 64).trim());
+        File wl = new File("/sys/class/net/wlan0");
+        line("wlan0 existe", String.valueOf(wl.exists()));
+        line("eth0 existe", String.valueOf(new File("/sys/class/net/eth0").exists()));
+        String[] wlAttrs = wl.list();
+        if (wlAttrs != null) java.util.Arrays.sort(wlAttrs);
+        line("wlan0 attrs", wlAttrs == null ? "null" : java.util.Arrays.toString(wlAttrs));
+        line("wlan0/uevent", readText("/sys/class/net/wlan0/uevent", 128).trim().replace('\n', ' '));
+        line("wlan0/type", readText("/sys/class/net/wlan0/type", 32).trim());
+        line("wlan0/operstate", readText("/sys/class/net/wlan0/operstate", 32).trim());
+        line("wlan0/mtu", readText("/sys/class/net/wlan0/mtu", 32).trim());
+        line("wlan0/ifindex", readText("/sys/class/net/wlan0/ifindex", 32).trim());
+        line("wlan0/speed", readText("/sys/class/net/wlan0/speed", 32).trim());
+        line("wlan0/statistics/rx_bytes", readText("/sys/class/net/wlan0/statistics/rx_bytes", 32).trim());
+        line("wlan0/statistics/tx_bytes", readText("/sys/class/net/wlan0/statistics/tx_bytes", 32).trim());
+        String[] wlStats = new File("/sys/class/net/wlan0/statistics").list();
+        line("wlan0 statistics entries", wlStats == null ? "null" : String.valueOf(wlStats.length));
+        String[] fdPaths = {
+            "/sys/class/net/wlan0/type",
+            "/sys/class/net/wlan0/statistics/rx_bytes",
+            "/sys/class/net/wlan0/address",
+            "/sys/class/net/wlan0/uevent",
+        };
+        for (String p : fdPaths) {
+            try {
+                java.io.FileDescriptor desc =
+                    android.system.Os.open(p, android.system.OsConstants.O_RDONLY, 0);
+                String link = "(fd no encontrado)";
+                String[] names = new java.io.File("/proc/self/fd").list();
+                if (names != null) {
+                    for (String nm : names) {
+                        try {
+                            String t = android.system.Os.readlink("/proc/self/fd/" + nm);
+                            if (t.contains("eth0") || t.contains("wlan0")) { link = t; break; }
+                        } catch (Throwable ignored) {}
+                    }
+                }
+                line("fd link " + p, link);
+                android.system.Os.close(desc);
+            } catch (Throwable t) {
+                line("fd link " + p, "(error: " + t + ")");
+            }
+        }
         line("/sys/devices/system/cpu/online", readText("/sys/devices/system/cpu/online", 64).trim());
         line("cpufreq cpu0 max", readText("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", 64).trim());
         line("DMI board_vendor", readText("/sys/devices/virtual/dmi/id/board_vendor", 128).trim());

@@ -94,7 +94,7 @@ maps contiene 'arm64 en rutas': true
 maps contiene 'linker64': true
 maps contiene 'linker (32)': true
 maps: primeras 3 lineas: 12c00000-32c00000 rw-p 00000000 00:00 0                                  [anon:dalvik-main space (region space)]
-40e2f000-40e34000 rw-p 00000000 00:00 0                                  [anon:dalvik-large object space allocation]
+4043e000-40443000 rw-p 00000000 00:00 0                                  [anon:dalvik-large object space allocation]
 
 ===== /proc/self/smaps scan =====
 smaps contiene 'libndk_translation': false
@@ -102,10 +102,25 @@ smaps contiene 'native_bridge': false
 smaps contiene 'libpixel_hw': false
 smaps contiene 'zygisk': false
 smaps contiene 'x86_64 en rutas': false
-smaps: lineas: 61308
+smaps: lineas: 62062
+
+===== /proc/self/smaps_rollup scan =====
+smaps_rollup contiene 'libndk_translation': false
+smaps_rollup contiene 'native_bridge': false
+smaps_rollup contiene 'libpixel_hw': false
+smaps_rollup contiene 'x86_64 en rutas': false
+smaps_rollup: lineas: 23
+
+===== /proc/self/numa_maps scan =====
+numa_maps contiene 'libndk_translation': false
+numa_maps contiene 'native_bridge': false
+numa_maps contiene 'libpixel_hw': false
+numa_maps contiene 'zygisk': false
+numa_maps contiene 'x86_64 en rutas': false
+numa_maps: lineas: 2413
 
 ===== /proc/self/auxv =====
-auxv (hex, primeros 32B): 210000000000000000fd3f070a7e00003300000000000000300d000000000000
+auxv (hex, primeros 32B): 210000000000000000fd7cfdfd7200003300000000000000300d000000000000
 
 ===== NetworkInterface (Java, ruta netlink) =====
 if: wlan0: up mac=b0:79:94:1f:35:17 fe80::48bb:8095:bcc0:c383%wlan0 192.168.1.154
@@ -127,6 +142,22 @@ WifiInfo: ip=192.168.1.154 mac=b0:79:94:1f:35:17
 wlan0
 /sys/class/net/wlan0/address: b0:79:94:1f:35:17
 /sys/class/net/eth0/address: (error: FileNotFoundException: /sys/class/net/eth0/address: open failed: ENOENT (No such file or directory))
+wlan0 existe: true
+eth0 existe: false
+wlan0 attrs: [addr_assign_type, addr_len, address, broadcast, carrier, dev_id, duplex, flags, ifindex, iflink, mtu, name_assign_type, operstate, speed, statistics, tx_queue_len, type, uevent]
+wlan0/uevent: INTERFACE=wlan0 IFINDEX=2 DEVTYPE=wlan
+wlan0/type: 1
+wlan0/operstate: up
+wlan0/mtu: 1500
+wlan0/ifindex: 2
+wlan0/speed: 10000
+wlan0/statistics/rx_bytes: 809481
+wlan0/statistics/tx_bytes: 490685
+wlan0 statistics entries: 24
+fd link /sys/class/net/wlan0/type: /sys/class/net/wlan0/type
+fd link /sys/class/net/wlan0/statistics/rx_bytes: /sys/class/net/wlan0/statistics/rx_bytes
+fd link /sys/class/net/wlan0/address: /sys/class/net/wlan0/address
+fd link /sys/class/net/wlan0/uevent: /sys/class/net/wlan0/uevent
 /sys/devices/system/cpu/online: 0-7
 cpufreq cpu0 max: 2000000
 DMI board_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/board_vendor: open failed: ENOENT (No such file or directory))

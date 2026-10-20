@@ -1,0 +1,3 @@
+INTERFACE=wlan0
+IFINDEX=2
+DEVTYPE=wlan
