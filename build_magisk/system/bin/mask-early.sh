@@ -18,7 +18,16 @@ if [ -x "$RP" ]; then
     $RP -n ro.dalvik.vm.native.bridge "libzygisk.solibnb.so"
     $RP -n ro.enable.native.bridge.exec "1"
     $RP -n ro.hardware.hwcomposer "redroid"
-    $RP -n ro.hardware.gralloc "redroid"
+    if [ "$(getprop ro.boot.redroid_gpu_mode)" = "host" ]; then
+        # GPU host mode: EGL mesa + gralloc gbm. redroid los configura en su
+        # gpu_config (early init) pero el write-once de ro.* en esta imagen los
+        # deja bakeados en guest (angle/redroid) -> hwui sin surface. Se fuerzan
+        # en post-fs-data, antes de que arranquen allocator HAL y zygote.
+        $RP -n ro.hardware.egl "mesa"
+        $RP -n ro.hardware.gralloc "gbm"
+    else
+        $RP -n ro.hardware.gralloc "redroid"
+    fi
 fi
 
 # Aplicar plantilla de hardware activa desde el perfil
