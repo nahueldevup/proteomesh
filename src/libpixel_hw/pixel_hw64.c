@@ -135,6 +135,8 @@ static long raw_lseek(int fd, long offset, int whence) {
 static unsigned char s_ashmem_fds[FD_TABLE_SIZE];
 static unsigned char s_tcp_fds[FD_TABLE_SIZE];
 static unsigned char s_dev_fds[FD_TABLE_SIZE];
+static unsigned char s_route_fds[FD_TABLE_SIZE];
+static unsigned char s_arp_fds[FD_TABLE_SIZE];
 
 static int fd_in_range(int fd) {
     return fd >= 0 && fd < FD_TABLE_SIZE;
@@ -194,6 +196,42 @@ static ssize_t filter_dev_buffer(char *buf, ssize_t n) {
         if (buf[i] == ' ' && buf[i+1] == ' ' && buf[i+2] == 'e' &&
             buf[i+3] == 't' && buf[i+4] == 'h' && buf[i+5] == '0' && buf[i+6] == ':') {
             buf[i+1] = 'w'; buf[i+2] = 'l'; buf[i+3] = 'a'; buf[i+4] = 'n'; buf[i+5] = '0';
+        }
+    }
+    return n;
+}
+
+// /proc/net/route y /proc/net/arp: el kernel del contenedor usa eth0; las
+// apps deben ver wlan0. El gateway/subred Docker queda fuera de este filtro.
+static ssize_t filter_route_buffer(char *buf, ssize_t n, size_t cap) {
+    ssize_t i = 0;
+    while (i + 4 <= n) {
+        int line_start = (i == 0) || (buf[i - 1] == '\n');
+        if (line_start && buf[i] == 'e' && buf[i+1] == 't' &&
+            buf[i+2] == 'h' && buf[i+3] == '0') {
+            char sep = (i + 4 < n) ? buf[i + 4] : '\0';
+            if ((sep == '\t' || sep == ' ' || sep == '\0') &&
+                (size_t)(n + 1) <= cap) {
+                for (ssize_t j = n; j > i + 4; j--) buf[j] = buf[j - 1];
+                buf[i] = 'w'; buf[i+1] = 'l'; buf[i+2] = 'a';
+                buf[i+3] = 'n'; buf[i+4] = '0';
+                n++;
+                i += 5;
+                continue;
+            }
+        }
+        i++;
+    }
+    return n;
+}
+
+static ssize_t filter_arp_buffer(char *buf, ssize_t n) {
+    for (ssize_t i = 0; i + 5 <= n; i++) {
+        if (buf[i] == ' ' && buf[i+1] == 'e' && buf[i+2] == 't' &&
+            buf[i+3] == 'h' && buf[i+4] == '0' &&
+            (i + 5 == n || buf[i+5] == '\n' || buf[i+5] == '\r')) {
+            buf[i] = 'w'; buf[i+1] = 'l'; buf[i+2] = 'a'; buf[i+3] = 'n'; buf[i+4] = '0';
+            i += 4;
         }
     }
     return n;
@@ -1232,6 +1270,8 @@ static void mark_net_fd(const char *path, int fd) {
     if (my_getuid() < 10000 || !path || fd < 0) return;
     if (str_contains(path, "/net/tcp")) fd_mark(s_tcp_fds, fd);
     else if (str_contains(path, "/net/dev")) fd_mark(s_dev_fds, fd);
+    else if (str_contains(path, "/net/route")) fd_mark(s_route_fds, fd);
+    else if (str_contains(path, "/net/arp")) fd_mark(s_arp_fds, fd);
 }
 
 int open(const char *path, int flags, ...) {
@@ -1353,6 +1393,8 @@ int close(int fd) {
     }
     fd_clear(s_tcp_fds, fd);
     fd_clear(s_dev_fds, fd);
+    fd_clear(s_route_fds, fd);
+    fd_clear(s_arp_fds, fd);
     static int (*real_fn)(int) = (void *)0;
     if (!real_fn) real_fn = (int (*)(int))dlsym_next("close");
     return real_fn ? real_fn(fd) : -1;
@@ -1500,6 +1542,8 @@ int dup2(int oldfd, int newfd) {
         fd_clear(s_ashmem_fds, newfd);
         fd_clear(s_tcp_fds, newfd);
         fd_clear(s_dev_fds, newfd);
+        fd_clear(s_route_fds, newfd);
+        fd_clear(s_arp_fds, newfd);
         ashmem_state_free(newfd);
     }
     static int (*real_fn)(int, int) = (void *)0;
@@ -1512,6 +1556,8 @@ int dup3(int oldfd, int newfd, int flags) {
         fd_clear(s_ashmem_fds, newfd);
         fd_clear(s_tcp_fds, newfd);
         fd_clear(s_dev_fds, newfd);
+        fd_clear(s_route_fds, newfd);
+        fd_clear(s_arp_fds, newfd);
         ashmem_state_free(newfd);
     }
     static int (*real_fn)(int, int, int) = (void *)0;
@@ -1628,6 +1674,10 @@ ssize_t read(int fd, void *buf, size_t count) {
             ret = filter_tcp_buffer((char *)buf, ret);
         } else if (fd_test(s_dev_fds, fd)) {
             ret = filter_dev_buffer((char *)buf, ret);
+        } else if (fd_test(s_route_fds, fd)) {
+            ret = filter_route_buffer((char *)buf, ret, count);
+        } else if (fd_test(s_arp_fds, fd)) {
+            ret = filter_arp_buffer((char *)buf, ret);
         }
     }
     return ret;
@@ -1648,6 +1698,10 @@ ssize_t __read_chk(int fd, void *buf, size_t count, size_t buflen) {
             ret = filter_tcp_buffer((char *)buf, ret);
         } else if (fd_test(s_dev_fds, fd)) {
             ret = filter_dev_buffer((char *)buf, ret);
+        } else if (fd_test(s_route_fds, fd)) {
+            ret = filter_route_buffer((char *)buf, ret, count);
+        } else if (fd_test(s_arp_fds, fd)) {
+            ret = filter_arp_buffer((char *)buf, ret);
         }
     }
     return ret;
