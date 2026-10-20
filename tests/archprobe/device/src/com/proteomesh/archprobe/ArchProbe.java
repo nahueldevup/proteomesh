@@ -211,6 +211,26 @@ public class ArchProbe extends Activity {
         line("getprop cpu.abi", exec("/system/bin/getprop", "ro.product.cpu.abi"));
         line("getprop build.type", exec("/system/bin/getprop", "ro.build.type"));
 
+        // 3b. Diagnostico de entorno (proceso e hijo)
+        section("ENTORNO proceso/hijo");
+        try {
+            line("System.getenv LD_PRELOAD", String.valueOf(System.getenv("LD_PRELOAD")));
+        } catch (Throwable t) {
+            line("System.getenv LD_PRELOAD", "(error: " + t + ")");
+        }
+        try {
+            String found = "(no presente)";
+            for (String e : android.system.Os.environ()) {
+                if (e.startsWith("LD_PRELOAD=")) { found = e; break; }
+            }
+            line("Os.environ LD_PRELOAD", found);
+        } catch (Throwable t) {
+            line("Os.environ LD_PRELOAD", "(error: " + t + ")");
+        }
+        line("hijo /proc/self/environ", exec("/system/bin/sh", "-c",
+                "cat /proc/self/environ | tr '\\000' '\\n' | grep -a LD_PRELOAD || echo '(sin LD_PRELOAD)'"));
+        line("hijo $LD_PRELOAD", exec("/system/bin/sh", "-c", "echo \"[${LD_PRELOAD}]\""));
+
         // 4. Props del propio proceso (reflexion -> __system_property_get nativo)
         section("PROPS via SystemProperties.get (proceso propio)");
         String[] keys = {

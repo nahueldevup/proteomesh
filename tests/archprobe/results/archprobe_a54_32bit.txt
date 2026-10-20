@@ -1,0 +1,137 @@
+PROTOMESH ARCH PROBE v1
+pkg=com.proteomesh.archprobe uid=10111 targetSdk=27
+
+===== JAVA / System.getProperty =====
+os.arch: aarch64
+os.version: 5.10.198-26360765-abA546EXXU5AWHC
+os.name: Linux
+java.vm.name: Dalvik
+java.vendor: The Android Project
+
+===== JAVA / Build =====
+Build.MODEL: SM-A546M
+Build.MANUFACTURER: samsung
+Build.BRAND: samsung
+Build.DEVICE: a54x
+Build.PRODUCT: a54xnsxx
+Build.BOARD: s5e8835
+Build.HARDWARE: exynos1380
+Build.FINGERPRINT: samsung/a54xnsxx/a54x:13/TP1A.220624.014/A546EXXU5AWHC:user/release-keys
+Build.TYPE: user
+Build.TAGS: release-keys
+Build.SUPPORTED_ABIS: arm64-v8a,armeabi-v7a,armeabi
+Build.SUPPORTED_64_BIT_ABIS: arm64-v8a
+Build.CPU_ABI: arm64-v8a
+Build.CPU_ABI2: 
+Build.VERSION.RELEASE: 13
+Build.VERSION.SECURITY_PATCH: 2023-08-01
+
+===== LIBC / Os.uname() (mismo proceso) =====
+sysname: Linux
+nodename: localhost
+release: 5.10.198-26360765-abA546EXXU5AWHC
+version: #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023
+machine  <-- clave: aarch64
+
+===== SUBPROCESO / exec uname -a =====
+uname -a: Linux localhost 5.10.198-26360765-abA546EXXU5AWHC #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023 aarch64 Toybox
+getprop vm.native.bridge: 0
+getprop cpu.abi: arm64-v8a
+getprop build.type: user
+
+===== ENTORNO proceso/hijo =====
+System.getenv LD_PRELOAD: null
+Os.environ LD_PRELOAD: LD_PRELOAD=/system/lib64/libpixel_hw.so
+hijo /proc/self/environ: LD_PRELOAD=/system/lib64/libpixel_hw.so
+hijo $LD_PRELOAD: [/system/lib64/libpixel_hw.so]
+
+===== PROPS via SystemProperties.get (proceso propio) =====
+ro.product.cpu.abi: arm64-v8a
+ro.product.cpu.abilist: arm64-v8a,armeabi-v7a,armeabi
+ro.product.cpu.abilist64: arm64-v8a
+ro.dalvik.vm.native.bridge: 0
+ro.enable.native.bridge.exec: 
+ro.dalvik.vm.isa.arm64: arm64
+ro.dalvik.vm.isa.arm: arm
+ro.build.type: user
+ro.build.tags: release-keys
+ro.debuggable: 0
+ro.secure: 1
+ro.boot.verifiedbootstate: green
+ro.boot.flash.locked: 1
+ro.boot.veritymode: enforcing
+ro.product.model: SM-A546M
+ro.build.fingerprint: samsung/a54xnsxx/a54x:13/TP1A.220624.014/A546EXXU5AWHC:user/release-keys
+ro.soc.model: s5e8835
+ro.build.date: Mon May 27 13:32:14 UTC 2024
+ro.build.version.security_patch: 2023-08-01
+ro.hardware: exynos1380
+ro.board.platform: s5e8835
+ro.boot.hardware: exynos1380
+
+===== /proc =====
+/proc/version: Linux version 5.10.198-26360765-abA546EXXU5AWHC (dpi@SWHE2308) (Android (9471654, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Tue Aug 29 02:24:37 KST 2023
+cpuinfo: procesadores: 8
+cpuinfo: CPU implementer	: 0x41
+cpuinfo: tiene 'flags' (x86): false
+cpuinfo: 'lm' (x86_64): false
+cpuinfo: 'avx/sse' (x86): false
+cpuinfo: 'asimd/fp' (arm64): true
+status: TracerPid:	0
+status: Seccomp:	2
+status: Seccomp_filters:	1
+
+===== /proc/self/maps scan =====
+maps contiene 'libndk_translation': false
+maps contiene 'houdini': false
+maps contiene 'native_bridge': false
+maps contiene 'libpixel_hw': false
+maps contiene 'lsposed/magisk': false
+maps contiene 'zygisk': false
+maps contiene 'riru': false
+maps contiene 'x86_64 en rutas': false
+maps contiene 'arm64 en rutas': false
+maps contiene 'linker64': false
+maps contiene 'linker (32)': true
+maps: primeras 3 lineas: 12c00000-32c00000 rw-p 00000000 00:00 0                                  [anon:dalvik-main space (region space)]
+61022000-61024000 r--p 00000000 00:94 871037                             /system/bin/app_process32
+
+===== /proc/self/auxv =====
+auxv (hex, primeros 32B): 20000000fdfd4cfd2100000000fd4cfd33000000300d000010000000fdfdfd17
+
+===== NetworkInterface (Java, ruta netlink) =====
+if: wlan0: up mac=02:00:00:00:00:00 fe80::48bb:8095:bcc0:c383%wlan0 192.168.1.154
+if: lo: up mac=null 127.0.0.1
+
+===== libcore.io.Libcore.os.getifaddrs (reflexion) =====
+Libcore.os.getifaddrs: (no expuesto en AndroidOs; ruta interna)
+/proc/net/route (default gw): Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT                                                       
+wlan0	0001A8C0	00000000	0001	0	0	0	00FFFFFF	0	0	0
+/proc/net/wireless: Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+
+===== WifiManager/WifiInfo (Java, red ficticia) =====
+DhcpInfo: ip=192.168.1.154 gw=192.168.1.1 mask=255.255.255.0 dns1=192.168.1.1 dns2=8.8.8.8 server=192.168.1.1
+WifiInfo: ip=192.168.1.154 mac=b0:79:94:1f:35:17
+
+===== /sys =====
+/sys/class/net/: eth0
+lo
+/sys/class/net/wlan0/address: (error: FileNotFoundException: /sys/class/net/wlan0/address: open failed: ENOENT (No such file or directory))
+/sys/devices/system/cpu/online: 0-7
+cpufreq cpu0 max: 2000000
+DMI board_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/board_vendor: open failed: ENOENT (No such file or directory))
+DMI product_name: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/product_name: open failed: ENOENT (No such file or directory))
+DMI sys_vendor: (error: FileNotFoundException: /sys/devices/virtual/dmi/id/sys_vendor: open failed: ENOENT (No such file or directory))
+
+===== Archivos testigo (no deberian existir en ARM real) =====
+/system/lib64/libndk_translation.so: EXISTE
+/system/lib64/libndk_translation_proxy.so: no
+/system/lib/libndk_translation.so: EXISTE
+/system/lib64/libhoudini.so: no
+/system/lib/libhoudini.so: no
+/system/bin/houdini: no
+/system/bin/ndk_translation: no
+/proc/sys/kernel/osrelease: EXISTE
+
+===== FIN =====

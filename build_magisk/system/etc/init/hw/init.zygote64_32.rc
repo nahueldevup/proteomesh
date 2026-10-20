@@ -18,6 +18,7 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
     critical window=${zygote.critical_window.minute:-off} target=zygote-fatal
 
 service zygote_secondary /system/bin/app_process32 -Xzygote /system/bin --zygote --socket-name=zygote_secondary --enable-lazy-preload
+    setenv LD_PRELOAD /system/lib/libpixel_hw.so
     class main
     priority -20
     user root

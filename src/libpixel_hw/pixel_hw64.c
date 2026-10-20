@@ -403,6 +403,7 @@ static ssize_t filter_arp_buffer(char *buf, ssize_t n, size_t cap) {
 extern void *dlopen(const char *filename, int flag);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dladdr(const void *addr, void *info);
+extern char **environ;
 
 typedef struct {
     const char *dli_fname;
@@ -421,9 +422,18 @@ static void *get_libc_handle(void) {
 
 static void *dlsym_next(const char *symbol) {
     void *fn = dlsym((void *)-1l, symbol);
+    if (fn) {
+        Dl_info self_info;
+        Dl_info fn_info;
+        if (dladdr((const void *)&dlsym_next, &self_info) && self_info.dli_fbase &&
+            dladdr(fn, &fn_info) && fn_info.dli_fbase == self_info.dli_fbase) {
+            fn = (void *)0;
+        }
+    }
     if (!fn) fn = dlsym(get_libc_handle(), symbol);
     return fn;
 }
+
 
 static unsigned int my_getuid(void) {
     static unsigned int (*real_fn)(void) = (void *)0;
@@ -916,13 +926,6 @@ char *getenv(const char *name) {
     static char *(*real_fn)(const char *) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("getenv");
     return real_fn ? real_fn(name) : (char *)0;
-}
-
-__attribute__((constructor)) static void init_pixel_hw(void) {
-    int (*real_unsetenv)(const char *) = dlsym_next("unsetenv");
-    if (real_unsetenv) {
-        real_unsetenv("LD_PRELOAD");
-    }
 }
 
 // 8. Detección y filtrado de rutas (SELinux, Mounts, Root)

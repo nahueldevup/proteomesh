@@ -404,6 +404,7 @@ static ssize_t filter_arp_buffer(char *buf, ssize_t n, size_t cap) {
 extern void *dlopen(const char *filename, int flag);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dladdr(const void *addr, void *info);
+extern char **environ;
 
 typedef struct {
     const char *dli_fname;
@@ -422,9 +423,37 @@ static void *get_libc_handle(void) {
 
 static void *dlsym_next(const char *symbol) {
     void *fn = dlsym((void *)-1l, symbol);
+    if (fn) {
+        Dl_info self_info;
+        Dl_info fn_info;
+        if (dladdr((const void *)&dlsym_next, &self_info) && self_info.dli_fbase &&
+            dladdr(fn, &fn_info) && fn_info.dli_fbase == self_info.dli_fbase) {
+            fn = (void *)0;
+        }
+    }
     if (!fn) fn = dlsym(get_libc_handle(), symbol);
     return fn;
 }
+
+static void fixup_ld_preload_lazy(void) {
+    static int done = 0;
+    if (done) return;
+    if (!environ) return;
+    const char *key = "LD_PRELOAD=";
+    for (char **e = environ; *e; e++) {
+        int k = 0;
+        while (key[k] && (*e)[k] == key[k]) k++;
+        if (!key[k]) {
+            if (str_contains(*e + k, "libpixel_hw.so")) {
+                *e = (char *)"LD_PRELOAD=/system/lib64/libpixel_hw.so";
+            }
+            done = 1;
+            return;
+        }
+    }
+    done = 1;
+}
+
 
 static unsigned int my_getuid(void) {
     static unsigned int (*real_fn)(void) = (void *)0;
@@ -908,6 +937,7 @@ int security_getenforce(void) { return 1; }
 
 // 7. Sanitización de entorno (LD_PRELOAD)
 char *getenv(const char *name) {
+    fixup_ld_preload_lazy();
     if (name && name[0] == 'L' && name[1] == 'D' && name[2] == '_' &&
         name[3] == 'P' && name[4] == 'R' && name[5] == 'E' &&
         name[6] == 'L' && name[7] == 'O' && name[8] == 'A' && name[9] == 'D' && name[10] == '\0') {
@@ -916,13 +946,6 @@ char *getenv(const char *name) {
     static char *(*real_fn)(const char *) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("getenv");
     return real_fn ? real_fn(name) : (char *)0;
-}
-
-__attribute__((constructor)) static void init_pixel_hw(void) {
-    int (*real_unsetenv)(const char *) = dlsym_next("unsetenv");
-    if (real_unsetenv) {
-        real_unsetenv("LD_PRELOAD");
-    }
 }
 
 // 8. Detección y filtrado de rutas (SELinux, Mounts, Root)
@@ -1062,6 +1085,7 @@ static const char *get_fake_prop(const char *name) {
 }
 
 int __system_property_get(const char *name, char *value) {
+    fixup_ld_preload_lazy();
     const char *fake = get_fake_prop(name);
     if (fake && value) {
         int len = 0;
@@ -1095,6 +1119,7 @@ static int fake_prop_is_absent(const char *name) {
 }
 
 const void *__system_property_find(const char *name) {
+    fixup_ld_preload_lazy();
     static const void *(*real_fn)(const char *) = (void *)0;
     if (!real_fn) real_fn = (const void *(*)(const char *))dlsym_next("__system_property_find");
     if (!real_fn) return (const void *)0;
@@ -1116,6 +1141,7 @@ static void prop_cb_wrap(void *cookie, const char *name, const char *value, unsi
 void __system_property_read_callback(const void *pi,
                                      void (*callback)(void *, const char *, const char *, unsigned int),
                                      void *cookie) {
+    fixup_ld_preload_lazy();
     static void (*real_fn)(const void *, void (*)(void *, const char *, const char *, unsigned int), void *) = (void *)0;
     if (!real_fn) real_fn = (void *)dlsym_next("__system_property_read_callback");
     if (!real_fn) return;
@@ -1359,6 +1385,7 @@ static int ashmem_fake_path(const char **path) {
 }
 
 int stat(const char *path, void *buf) {
+    fixup_ld_preload_lazy();
     if (ashmem_fake_path(&path) < 0) return -1;
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
@@ -1409,6 +1436,7 @@ int lstat64(const char *path, void *buf) {
 }
 
 int access(const char *path, int mode) {
+    fixup_ld_preload_lazy();
     if (path_is_ashmem(path)) {
         if (!ashmem_policy_present()) {
             set_enoent();
@@ -1569,6 +1597,7 @@ static void mark_net_fd(const char *path, int fd) {
 }
 
 int open(const char *path, int flags, ...) {
+    fixup_ld_preload_lazy();
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
@@ -1596,6 +1625,7 @@ int open(const char *path, int flags, ...) {
 }
 
 int open64(const char *path, int flags, ...) {
+    fixup_ld_preload_lazy();
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
@@ -1624,6 +1654,7 @@ int open64(const char *path, int flags, ...) {
 }
 
 int openat(int dirfd, const char *path, int flags, ...) {
+    fixup_ld_preload_lazy();
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
@@ -1651,6 +1682,7 @@ int openat(int dirfd, const char *path, int flags, ...) {
 }
 
 int openat64(int dirfd, const char *path, int flags, ...) {
+    fixup_ld_preload_lazy();
     if (my_getuid() >= 10000 && is_root_artifact(path)) {
         set_enoent();
         return -1;
