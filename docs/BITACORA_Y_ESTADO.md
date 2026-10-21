@@ -626,6 +626,32 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 49. Blindaje Anti-Root Multi-Capa: Evasión Completa en Apps ARM64 (Root Detection Plus 0/39 y Pixelscan 100/100)
+
+* **Problema:** Tras consolidar la arquitectura de perfiles de hardware y Pixelscan 100/100, se evaluó la suite de auditoría avanzada **Root Detection Plus** (`at.persie0.root_detection_app`, app compilada como split `arm64-v8a`). La app detectaba 5 categorías de riesgo (Root/Jailbreak 2/9, Hooking 2/7, Dangerous Apps 1/2) señalando: presencia de binarios Magisk, apps de gestión de root (`com.topjohnwu.magisk`, `org.lsposed.manager`), variables de entorno sospechosas (`LD_PRELOAD`), frameworks de hooking y herramientas de cloak.
+* **Diagnóstico y Causas Raíz:**
+  1. **Compatibilidad ARM64 / LSPosed:** Se desmintió la hipótesis de que LSPosed no inyecta en apps `arm64-v8a` traducidas. ART ejecuta el bytecode Java/DEX en el motor nativo `x86_64` del host mientras que `libndk_translation` solo traduce código C/C++; LSPosed inyecta en ART y hookea clases Java con éxito en ambos mundos.
+  2. **Bug en `hidePkgHook` de FakeWifi:** En `FakeWifiHook.java`, la intercepción de paquetes lanzaba directamente `throw new PackageManager.NameNotFoundException(pkg)`. En el puente de Xposed, excepciones directas son capturadas como fallos no controlados (`E LSPosed-Bridge`) y la ejecución continuaba llamando al método real del sistema. Se corrigió usando `param.setThrowable(new PackageManager.NameNotFoundException(pkg))`.
+  3. **Catálogo de paquetes sospechosos:** Se identificó que `b34.java` y `b53.k` chequean una lista exhaustiva de paquetes (Magisk, APatch, KernelSU, KingRoot, SuperSU, HideMyAppList, RootCloak, etc.). Se creó `isSuspectPackage(String pkg)` para interceptar tanto consultas individuales (`getPackageInfo`, `getApplicationInfo`) como listados masivos (`getInstalledPackages`, `getInstalledApplications`).
+  4. **Detección de `LD_PRELOAD`:** `b34.w()` evalúa `System.getenv()` contra variables de root. La mitigación se implementó en triple capa:
+     - En `libpixel_hw.so` (`pixel_hw64.c` y `pixel_hw32.c`): intercepción de `/proc/self/environ` devolviendo un memfd saneado sin `LD_PRELOAD`, más propagación en `execve` para subprocesos shell (`sh -c [ -e /data/adb/magisk ]`).
+     - En `FakeWifiHook.java`: sanitización en `ProcessEnvironment.getenv()` y `android.system.Os.environ()` / `getenv()`.
+     - Hook de apoyo en `b34.w()`, `b34.r()` y `b34.D()` para forzar `isDetected=false`.
+  5. **Mount Namespace (NoHello v0.0.7):** Módulo Zygisk que desmonta los montajes tmpfs y overlay de Magisk, además de `/sbin` y `/system/etc/hosts`, en los procesos que se encuentren en la DenyList de Magisk (sin requerir enforce global que rompería GMS).
+* **Verificación en dispositivo (`hide-test`, puerto 5598 con Magisk y LSPosed Manager activos):**
+  * **Root Detection Plus:** **0 / 39 Detecciones (100% Not Detected)**:
+    - Root/Jailbreak Detection: `0 / 9` Not Detected.
+    - Hooking Detection: `0 / 7` Not Detected (Frida, Xposed/LSPosed, Substrate, Zygisk, Zygote, Unix Sockets, Env Vars).
+    - Developer Mode: `0 / 3` Not Detected.
+    - Boot Integrity Signals: `0 / 13` Not Detected.
+    - Virtual Environment: `0 / 5` Not Detected.
+    - Dangerous Apps / Modding Tools: `0 / 2` Not Detected.
+  * **Pixelscan Android Checker:** **100 / 100 Low Risk**.
+  * Evidencias: capturas de pantalla `/tmp/opencode/rdp_perfect_top.png`, `/tmp/opencode/rdp_perfect_bottom.png` y `/tmp/opencode/pixelscan_100_perfect.png`.
+* **Documentación y Guía Operativa:** Creada `docs/GUIA_DE_REPLICACION_ANTIROOT.md` con las instrucciones completas para replicar en instancias existentes (`verify-a54`) y automatizar en nuevas instancias vía `data-clean` e `instance_manager.py`.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

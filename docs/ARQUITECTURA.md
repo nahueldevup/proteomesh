@@ -28,6 +28,8 @@ El sistema opera mediante tres capas coordinadas sin requerir parches en el kern
 │  - android.telephony.TelephonyManager & Subscriptions  │
 │  - GmsDeviceComplianceResponse (Play Protect Bypass)  │
 │  - Intercepción de PackageManager (Brand Stores)       │
+│  - Anti-Root / Modding Cloak (hidePkgHook NameNotFound)│
+│  - Sanitización de entorno (ProcessEnvironment, Os)   │
 │  - java.lang.System.getProperty("os.version")          │
 └────────────────────────────────────────────────────────┘
                            │
@@ -40,17 +42,22 @@ El sistema opera mediante tres capas coordinadas sin requerir parches en el kern
 │  - open("/proc/version") -> Banner GKI oficial         │
 │  - open("/proc/cpuinfo") -> Tabla sintetizada de SoC   │
 │  - open("/sys/devices/system/cpu/...") -> Frecuencias  │
+│  - Anti-Root Bionic: ENOENT en /data/adb/* y /sbin     │
+│  - proc_snapshot: memfd de /proc/self/{environ,maps...}│
+│  - execve: inyección de LD_PRELOAD en subprocesos shell│
 └────────────────────────────────────────────────────────┘
                            │
        Capa de Arranque y Configuración (Init / Root)
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│  Capa de Sistema Base: profile-loader nativo & Bindings│
+│  Capa de Sistema Base: profile-loader & Zygisk NoHello │
 │  - Inyección instantánea de props vía resetprop        │
 │  - Síntesis de /data/local/tmp/fake_proc/              │
 │  - Montaje bind sobre /proc/version y build.props      │
 │  - Stubs APK de tiendas nativas (Galaxy Store, GetApps)│
 │  - Exposición de Cronet en public.libraries.txt        │
+│  - Zygisk NoHello: unmount de /sbin y overlays por app │
+│  - Magisk DenyList coordinado (sin enforce global)     │
 └────────────────────────────────────────────────────────┘
 ```
 

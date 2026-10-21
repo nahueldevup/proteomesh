@@ -82,6 +82,17 @@ case "$1" in
         fi
         cp "$SNAP_A" /data/local/tmp/.proteomesh_scope_prev 2>/dev/null
         echo "[✓] Scope sincronizado: $ADDED nuevas (total $TOTAL)."
+
+        # Sincronizar Magisk DenyList para apps de usuario (requerido por NoHello)
+        if [ -x /sbin/magisk ]; then
+            for u_pkg in $(pm list packages -3 2>/dev/null | sed 's/^package://'); do
+                case "$u_pkg" in
+                    org.lsposed.manager|com.topjohnwu.magisk|eu.chylek.adam.fakewifi) continue ;;
+                    *) /sbin/magisk --denylist add "$u_pkg" 2>/dev/null || true ;;
+                esac
+            done
+        fi
+
         if [ "$ADDED" -gt 0 ]; then
             # lspd cachea el scope al arrancar: la bandera hace que
             # instance_manager.py reinicie el contenedor una vez para aplicarlo.

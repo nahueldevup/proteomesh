@@ -534,6 +534,28 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         return null;
     }
 
+    private static boolean isSuspectPackage(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains("magisk") ||
+               p.contains("lsposed") ||
+               p.contains("xposed") ||
+               p.contains("kernelsu") ||
+               p.contains("apatch") ||
+               p.contains("kingroot") ||
+               p.contains("kingo") ||
+               p.contains("supersu") ||
+               p.contains("superuser") ||
+               p.contains("rootcloak") ||
+               p.contains("hideroot") ||
+               p.contains("hidemyroot") ||
+               p.contains("hidemyapp") ||
+               p.contains("rootcheck") ||
+               p.contains("fakewifi") ||
+               p.contains("temprootremove") ||
+               p.contains("chainfire");
+    }
+
     private static android.content.pm.PackageInfo createMockBrandStorePackageInfo(String pkg) {
         android.content.pm.PackageInfo pi = new android.content.pm.PackageInfo();
         pi.packageName = pkg;
@@ -577,6 +599,93 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         final boolean isSystemServer = "android".equals(lpparam.packageName);
         // Display: system_server (SurfaceFlinger/DMS) conserva los modos reales de render
         final boolean isDisplayTarget = !"android".equals(lpparam.packageName);
+
+        if (!"android".equals(lpparam.packageName)) {
+            try {
+                Class<?> peCls = Class.forName("java.lang.ProcessEnvironment");
+                XposedHelpers.findAndHookMethod(peCls, "getenv", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Map<?, ?> map = (Map<?, ?>) param.getResult();
+                        if (map != null && (map.containsKey("LD_PRELOAD") || map.containsKey("PIXEL_HW__"))) {
+                            Map<Object, Object> clean = new HashMap<>(map);
+                            clean.remove("LD_PRELOAD");
+                            clean.remove("PIXEL_HW__");
+                            clean.remove("MAGISK_VER");
+                            clean.remove("KSU");
+                            clean.remove("APATCH_VER");
+                            clean.remove("RIRU");
+                            clean.remove("ZYGISK_ENABLED");
+                            param.setResult(Collections.unmodifiableMap(clean));
+                        }
+                    }
+                });
+                android.util.Log.i("FakeWifiPixel", "ProcessEnvironment.getenv hooked for " + lpparam.packageName);
+            } catch (Throwable t) {
+                android.util.Log.w("FakeWifiPixel", "ProcessEnvironment.getenv hook failed: " + t);
+            }
+
+            try {
+                Class<?> osCls = Class.forName("android.system.Os");
+                XposedHelpers.findAndHookMethod(osCls, "environ", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        String[] arr = (String[]) param.getResult();
+                        if (arr != null) {
+                            List<String> clean = new ArrayList<>();
+                            for (String s : arr) {
+                                if (s != null && (s.startsWith("LD_PRELOAD=") || s.startsWith("PIXEL_HW__=") ||
+                                                  s.startsWith("MAGISK_VER=") || s.startsWith("KSU=") ||
+                                                  s.startsWith("APATCH_VER=") || s.startsWith("RIRU=") ||
+                                                  s.startsWith("ZYGISK_ENABLED="))) {
+                                    continue;
+                                }
+                                clean.add(s);
+                            }
+                            param.setResult(clean.toArray(new String[0]));
+                        }
+                    }
+                });
+                XposedHelpers.findAndHookMethod(osCls, "getenv", String.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String k = (String) param.args[0];
+                        if ("LD_PRELOAD".equals(k) || "PIXEL_HW__".equals(k) || "MAGISK_VER".equals(k) ||
+                            "KSU".equals(k) || "APATCH_VER".equals(k) || "RIRU".equals(k) || "ZYGISK_ENABLED".equals(k)) {
+                            param.setResult(null);
+                        }
+                    }
+                });
+                android.util.Log.i("FakeWifiPixel", "android.system.Os hooked for " + lpparam.packageName);
+            } catch (Throwable t) {
+                android.util.Log.w("FakeWifiPixel", "android.system.Os hook failed: " + t);
+            }
+
+            if ("at.persie0.root_detection_app".equals(lpparam.packageName)) {
+                try {
+                    Class<?> b34Cls = XposedHelpers.findClass("b34", lpparam.classLoader);
+                    XC_MethodHook falseResultHook = new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            Map<String, Object> res = new HashMap<>();
+                            res.put("isDetected", Boolean.FALSE);
+                            res.put("reasons", new ArrayList<>());
+                            param.setResult(res);
+                        }
+                    };
+                    XposedHelpers.findAndHookMethod(b34Cls, "w", falseResultHook);
+                    try {
+                        XposedHelpers.findAndHookMethod(b34Cls, "r", android.content.Context.class, falseResultHook);
+                    } catch (Throwable ignored) {}
+                    try {
+                        XposedHelpers.findAndHookMethod(b34Cls, "D", android.content.Context.class, falseResultHook);
+                    } catch (Throwable ignored) {}
+                    android.util.Log.i("FakeWifiPixel", "Successfully hooked b34.w/r/D in at.persie0.root_detection_app!");
+                } catch (Throwable t) {
+                    android.util.Log.w("FakeWifiPixel", "b34 hook failed: " + t);
+                }
+            }
+        }
 
         // Hook Pixelscan specifically
         if ("net.pixelscan.check".equals(lpparam.packageName)) {
@@ -711,8 +820,9 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         String pkg = (String) param.args[0];
                         String expectedStore = getExpectedBrandStorePackage();
                         android.util.Log.i("FakeWifiPixel", "hidePkgHook checking: " + pkg + ", expected=" + expectedStore);
-                        if ("com.topjohnwu.magisk".equals(pkg) || "io.github.lsposed.manager".equals(pkg) || "org.lsposed.manager".equals(pkg)) {
-                            throw new PackageManager.NameNotFoundException(pkg);
+                        if (isSuspectPackage(pkg)) {
+                            param.setThrowable(new PackageManager.NameNotFoundException(pkg));
+                            return;
                         }
                         if (expectedStore != null && expectedStore.equals(pkg)) {
                             android.util.Log.i("FakeWifiPixel", ">>> INTERCEPTED: returning mock BrandStore for " + pkg);
@@ -742,7 +852,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                             } else if (item instanceof android.content.pm.ApplicationInfo) {
                                 pkg = ((android.content.pm.ApplicationInfo) item).packageName;
                             }
-                            if (pkg != null && (pkg.contains("magisk") || pkg.contains("lsposed") || pkg.contains("rootcheck") || pkg.contains("fakewifi"))) {
+                            if (pkg != null && isSuspectPackage(pkg)) {
                                 continue;
                             }
                             if (pkg != null && expectedStore != null && expectedStore.equals(pkg)) {

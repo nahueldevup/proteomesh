@@ -245,8 +245,8 @@ if [ -x /sbin/magisk ]; then
     /sbin/magisk --sqlite "INSERT OR REPLACE INTO policies (uid, policy, until, logging, notification) VALUES (2000, 2, 0, 1, 0);" 2>/dev/null || true
     /sbin/magisk --denylist disable 2>/dev/null || true
 
-    # Limpiar denylist para que Zygisk y LSPosed inyecten en todas las apps
-    sqlite3 /data/adb/magisk.db "DELETE FROM denylist;" 2>/dev/null || true
+    # Mantener DenyList sin enforce: requerida por Zygisk NoHello para unmount de root
+    # (No se vacia la denylist: NoHello necesita saber que apps proteger)
 
 
     # Auto-recuperar LSPosed y sincronizar path de FakeWifi

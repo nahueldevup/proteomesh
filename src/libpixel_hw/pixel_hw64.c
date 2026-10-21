@@ -928,6 +928,25 @@ char *getenv(const char *name) {
     return real_fn ? real_fn(name) : (char *)0;
 }
 
+extern int unsetenv(const char *name);
+
+__attribute__((constructor)) static void hide_ld_preload_from_apps(void) {
+    if (environ) {
+        for (char **e = environ; *e; e++) {
+            char *s = *e;
+            if (s[0] == 'L' && s[1] == 'D' && s[2] == '_' && s[3] == 'P' &&
+                s[4] == 'R' && s[5] == 'E' && s[6] == 'L' && s[7] == 'O' &&
+                s[8] == 'A' && s[9] == 'D' && s[10] == '=') {
+                static const char mask[] = "PIXEL_HW__=";
+                for (int i = 0; i < 11; i++) s[i] = mask[i];
+                s[11] = '\0';
+                break;
+            }
+        }
+    }
+    unsetenv("LD_PRELOAD");
+}
+
 // 8. Detección y filtrado de rutas (SELinux, Mounts, Root)
 static int str_eq(const char *a, const char *b) {
     if (!a || !b) return 0;
@@ -1654,12 +1673,31 @@ static int is_self_proc_path(const char *path, const char *leaf) {
     return is_proc_leaf(p + k + 1, leaf);
 }
 
+static ssize_t sanitize_environ(char *buf, ssize_t n) {
+    ssize_t out = 0;
+    ssize_t start = 0;
+    while (start < n) {
+        ssize_t end = start;
+        while (end < n && buf[end] != '\0') end++;
+        int drop = str_starts_with(buf + start, "LD_PRELOAD=") ||
+                   str_starts_with(buf + start, "PIXEL_HW__=");
+        if (!drop) {
+            for (ssize_t i = start; i < end; i++) buf[out++] = buf[i];
+            buf[out++] = '\0';
+        }
+        start = (end < n) ? end + 1 : end;
+    }
+    if (out == 0) buf[out++] = '\0';
+    return out;
+}
+
 static int proc_snapshot(const char *path, int fd) {
     if (fd < 0 || my_getuid() < 10000) return fd;
+    int environ = is_self_proc_path(path, "environ");
     int smaps = is_self_proc_path(path, "smaps");
     int numa = 0;
     int rollup = 0;
-    if (!smaps && !is_self_proc_path(path, "maps")) {
+    if (!environ && !smaps && !is_self_proc_path(path, "maps")) {
         numa = is_self_proc_path(path, "numa_maps");
         rollup = is_self_proc_path(path, "smaps_rollup");
         if (!numa && !rollup) return fd;
@@ -1674,11 +1712,11 @@ static int proc_snapshot(const char *path, int fd) {
         raw_lseek(fd, 0, 0);
         return fd;
     }
-    ssize_t m = smaps ? sanitize_smaps(s_proc_buf, n) : rollup ? n : sanitize_maps(s_proc_buf, n);
+    ssize_t m = environ ? sanitize_environ(s_proc_buf, n) : smaps ? sanitize_smaps(s_proc_buf, n) : rollup ? n : sanitize_maps(s_proc_buf, n);
     int cloexec = 0;
     long fl = raw_fcntl(fd, 1 /*F_GETFD*/, 0);
     if (fl >= 0 && (fl & 1)) cloexec = 1;
-    long mfd = raw_memfd_create(smaps ? "smaps" : numa ? "numa_maps" : rollup ? "smaps_rollup" : "maps", 0x0001); // MFD_CLOEXEC
+    long mfd = raw_memfd_create(environ ? "environ" : smaps ? "smaps" : numa ? "numa_maps" : rollup ? "smaps_rollup" : "maps", 0x0001); // MFD_CLOEXEC
     if (mfd < 0) {
         raw_lseek(fd, 0, 0);
         return fd;
@@ -2305,8 +2343,34 @@ ssize_t readlinkat(int dirfd, const char *path, char *buf, size_t bufsiz) {
     return rewrite_fd_target(path, buf, r, bufsiz);
 }
 
+#ifdef __LP64__
+#define PIXEL_HW_PRELOAD "LD_PRELOAD=/system/lib64/libpixel_hw.so"
+#else
+#define PIXEL_HW_PRELOAD "LD_PRELOAD=/system/lib/libpixel_hw.so"
+#endif
+
+static int envp_with_preload(char *const envp[], char **out, int cap) {
+    char *const *base = envp ? envp : environ;
+    if (!base) return 0;
+    int n = 0;
+    while (base[n]) n++;
+    if (n + 2 > cap) return 0;
+    int j = 0;
+    int found = 0;
+    for (int i = 0; i < n; i++) {
+        out[j++] = base[i];
+        if (str_starts_with(base[i], "LD_PRELOAD=")) found = 1;
+    }
+    if (!found) out[j++] = (char *)PIXEL_HW_PRELOAD;
+    out[j] = (char *)0;
+    return 1;
+}
+
 int execve(const char *pathname, char *const argv[], char *const envp[]) {
+    char *exec_envp_buf[512];
+    char *const *exec_envp = envp;
     if (my_getuid() >= 10000) {
+        if (envp_with_preload(envp, exec_envp_buf, 512)) exec_envp = exec_envp_buf;
         if (is_root_artifact(pathname)) {
             set_enoent();
             return -1;
@@ -2328,5 +2392,5 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     }
     static int (*real_fn)(const char *, char *const [], char *const []) = (void *)0;
     if (!real_fn) real_fn = dlsym_next("execve");
-    return real_fn ? real_fn(pathname, argv, envp) : -1;
+    return real_fn ? real_fn(pathname, argv, (char *const *)exec_envp) : -1;
 }
