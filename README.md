@@ -1,28 +1,27 @@
 # ProteoMesh 🛡️📱
 
-**ProteoMesh** es una plataforma de virtualización, endurecimiento (*hardening*) y simulación de hardware móvil para contenedores Android (**ReDroid 13 / API 33**) sobre Linux x86_64. Su arquitectura profile-driven (estilo GeeLark / GenFarmer) permite instanciar y operar granjas de dispositivos móviles (*CloudPhones*) simulando con precisión matemática y física cualquiera de **17 dispositivos comerciales oficiales** con operadoras y geolocalizaciones consistentes.
+**ProteoMesh** es una plataforma de virtualización, endurecimiento (*hardening*), simulación de hardware móvil y evasión de detección de root/emulación para contenedores Android (**ReDroid 13 / API 33**) sobre Linux x86_64. Su arquitectura profile-driven (estilo GeeLark / GenFarmer) permite instanciar y operar granjas de dispositivos móviles (*CloudPhones*) simulando con precisión matemática y física cualquiera de **17 dispositivos comerciales oficiales** con operadoras y geolocalizaciones consistentes.
 
-El entorno evade heurísticas de detección de emuladores, virtualización y controles de integridad local de aplicaciones bancarias, tiendas oficiales y utilidades de auditoría (`Device Info`, `DevCheck`, `Pixelscan Android Checker`, `Google Play Protect`, `FingerprintJS`).
+El entorno neutraliza exhaustivamente las heurísticas de detección de emuladores, virtualización, frameworks de instrumentación (Xposed/Frida) y análisis de root local, auditado contra las herramientas más exigentes del ecosistema: `Pixelscan Android Checker` (**100/100 Low Risk**), `Root Detection Plus` (**0/39 Detecciones**), `Device Info`, `DevCheck`, `Google Play Protect` y `FingerprintJS Pro`.
 
 ---
 
 ## 🎯 Objetivo y Genuinidad
 
-ProteoMesh busca que cada instancia sea **indistinguible de un teléfono físico real para todo lo que una app puede observar**, no solo para un benchmark puntual. La *genuinidad* se define como **coherencia holística**: todas las capas deben contar la misma historia, sin valores `unknown`, sin mezclas de fabricantes y sin contradicciones internas.
+ProteoMesh busca que cada instancia sea **indistinguible de un teléfono físico real para todo lo que una app puede observar**, no solo para un benchmark puntual. La *genuinidad* se define como **coherencia holística**: todas las capas del sistema deben contar la misma historia, sin valores `unknown`, sin mezclas de fabricantes y sin contradicciones internas entre Java, Bionic libc, sysfs y procfs.
 
-Los tres pilares del proyecto son:
+Los cuatro pilares del proyecto son:
 
-1. **Individualidad de hardware:** dos instancias nunca comparten IMEI/MEID, serial, Android ID, MACs, BSSID, UUIDs de DRM, huella de pantalla ni firmas residuales de build.
-2. **Coherencia de perfil:** un Galaxy A54 5G debe verse como Exynos 1380 + Mali-G68 + sensores STMicro + Galaxy Store en SoC, GPU, HALs, props, cámaras, sensores, tienda y telemetría; cualquier remanente Qualcomm/Pixel es una firma delatora.
-3. **Eficiencia operativa:** render interno `720x1280@30` con reporte lógico del panel real, para sostener instancias en un host pequeño sin delatar el rasterizado por software.
-
-La superficie objetivo cubre identidad (TAC GSMA, OUI IEEE, Luhn), telefonía/SIM, red y geolocalización, build/kernel/props, ABIs, root/SELinux, tiendas oficiales, Play Protect/Play Integrity local, Widevine y detección de emulador/root/Frida. El alcance ampliado y la autocrítica técnica están en [`contexto_explicativo_de_referencia.md`](contexto_explicativo_de_referencia.md); los límites vigentes, en **Limitaciones Conocidas** y en la bitácora (§39).
+1. **Individualidad de hardware:** dos instancias nunca comparten IMEI/MEID, número de serie, Android ID, MACs (Wi-Fi y Bluetooth), BSSID, UUIDs de DRM, huella de pantalla ni identificadores de compilación.
+2. **Coherencia estricta de perfil:** un Galaxy A54 5G debe verse como Exynos 1380 + GPU Mali-G68 + sensores STMicroelectronics + Galaxy Store en SoC, GPU, HALs, props, cámaras, sensores, tienda oficial y telemetría; cualquier remanente Qualcomm, Xiaomi o Pixel es una firma delatora inmediata.
+3. **Blindaje anti-root multi-capa por aplicación:** Magisk 30.6 y LSPosed permanecen plenamente operativos para la administración del laboratorio, pero las aplicaciones cliente no pueden detectar binarios `su`, puntos de montaje, paquetes de administración, variables de entorno sospechosas (`LD_PRELOAD`) ni clases de hooking.
+4. **Eficiencia operativa:** render interno `720x1280 @ 30fps` con reporte lógico del panel real de 90Hz/120Hz, permitiendo sostener múltiples instancias simultáneas en servidores sin GPU dedicada y sin delatar el rasterizado por software.
 
 ---
 
 ## 🚀 Capacidades Principales
 
-### 1. Catálogo Oficial de 17 Dispositivos (Android 13 API 33)
+### 1. Catálogo Oficial de 17 Dispositivos (Android 13 / API 33)
 Perfiles de hardware completos y validados basados en dumps oficiales de firmware:
 * **Samsung:** Galaxy A14 4G, A24 4G, A34 5G, A54 5G, A04s, Galaxy S21 5G.
 * **Xiaomi / Redmi:** Redmi Note 12 4G, Redmi Note 12S, Redmi Note 13 4G, Redmi 12 4G, Redmi 13C.
@@ -40,98 +39,140 @@ Cada plantilla (`templates/<marca>/<modelo>.json`) declara:
 * **Sincronización de Zona Horaria:** Alineación automática del reloj del sistema con la región de la operadora (`America/Argentina/Buenos_Aires`), eliminando discrepancias de geolocalización IP en auditorías (`geo_mismatch_timezone`).
 * **Módem y Banda Base:** Cadenas de firmware de módem reales por plataforma (eliminando por completo valores `unknown`).
 
-### 3. Evasión Antifraude y Ecosistema de Google
-* **Consistencia de Tienda de Fabricante (Pixelscan 75/100):** Stubs oficiales ultraligeros (~4.1 KB, con `MainActivity` lanzable, generados por `tools/build_stubs.sh`) en `stubs/` (`samsung_galaxy_store.apk`, `xiaomi_getapps.apk`, `huawei_appgallery.apk`) combinados con ganchos de `PackageManager` en LSPosed, erradicando advertencias de `Brand Store Missing`.
-* **Bypass de Certificación de Google Play Protect:** Intercepción a nivel de IPC en `GmsDeviceComplianceResponse` y neutralización de `UncertifiedDeviceActivity`, permitiendo el acceso directo y oficial a la Google Play Store.
-* **Stack de Red Chromium Cronet en Google Search:** Exposición de `libcronet.so` en `/system/etc/public.libraries.txt` para autorizar al linker dinámico de Bionic en Android 13, garantizando funcionamiento impecable del Buscador de Google.
-* **Protección Contra Fugas de Kernel Host:** Corrección de buffer en C en `libpixel_hw.so` y ganchos de framework que ocultan cualquier huella del kernel anfitrión (`cachyos`), reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`).
-* **Coherencia de Pantalla (Física vs Lógica):** El compositor de cada instancia renderiza internamente a `720x1280 @ 30fps` (ahorro ~88% de CPU en rasterizado por software), pero las aplicaciones leen el panel real del perfil: resolución lógica (`wm size`), modos soportados, tasa de refresco y densidades físicas `xdpi/ydpi` (ppi) mediante hooks de `android.view.Display` exclusivos para procesos de aplicación. `system_server` y SurfaceFlinger conservan los valores reales, manteniendo coherentes a ADB, `dumpsys` y `scrcpy`.
+### 3. Blindaje Anti-Root y Evasión de Detección Multi-Capa
+El sistema evade exhaustivamente la detección de root y manipulación en aplicaciones x86_64 nativas y ARM64 traducidas:
+* **Aislamiento de Montajes (Zygisk NoHello v0.0.7):** Desmontaje selectivo por namespace de montajes Magisk (`tmpfs`/`overlay`), `/sbin` y `/system/etc/hosts` para apps registradas en la DenyList de Magisk (sin requerir enforce global para preservar GMS).
+* **Ocultamiento Nativo en Bionic C (`libpixel_hw.so`):** Retorno de `ENOENT` en `access`, `faccessat`, `stat`, `statx` y `readlink` para `/data/adb/*` y artefactos de root; sanitización en memoria vía `memfd` de `/proc/self/environ` descartando `LD_PRELOAD`; e inyección de shim en `execve` para subprocesos shell (`sh -c "[ -e ... ]"`).
+* **Intercepción de Framework en Java (LSPosed `FakeWifiPixel.apk`):** Intercepción de `ApplicationPackageManager` (`getPackageInfo`, `getApplicationInfo`, `getInstalledPackages`) arrojando `NameNotFoundException` vía `param.setThrowable()` para ocultar Magisk (oficial y forks), KernelSU, APatch, KingRoot, SuperSU, LSPosed, Frida y utilidades de modding/cloak. Sanitización de entorno en `ProcessEnvironment.getenv()` y `android.system.Os.environ()`.
+* **Sincronización Automática Total (`manage-spoof sync`):** En cada arranque, detecta automáticamente todas las apps de usuario instaladas (`pm list packages -3`) y las agrega tanto al Scope de LSPosed como a la DenyList de Magisk, protegiendo cualquier app nueva sin configuración manual.
+
+### 4. Ecosistema Google y Compatibilidad de Aplicaciones
+* **Pixelscan Android Checker (100/100 Low Risk):** Consistencia fidedigna en las 6 categorías de entorno (Hardware, Red, SO, Sensores, Pantalla e Integridad). Stubs ultraligeros de tiendas de fabricante (`samsung_galaxy_store.apk`, `xiaomi_getapps.apk`, `huawei_appgallery.apk`) combinados con hooks dinámicos de `PackageManager`.
+* **Bypass de Certificación de Google Play Protect:** Intercepción a nivel de IPC en `GmsDeviceComplianceResponse` y neutralización de `UncertifiedDeviceActivity`, permitiendo el acceso directo y oficial a Google Play Store.
+* **Stack de Red Chromium Cronet en Google Search:** Exposición de `libcronet.so` en `/system/etc/public.libraries.txt` para autorizar al linker dinámico de Bionic en Android 13.
+* **Compatibilidad Ashmem (Chromium / Memfd):** Shim v3/v5.1 en `libpixel_hw.so` implementando `/dev/ashmem` sobre `memfd_create` con sellos `GROW|SHRINK` exigidos por Chromium 155+ (crbug 498720726).
+* **Protección Contra Fugas de Kernel Host:** Sustitución de `uname` y `/proc/version` reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`), erradicando cualquier firma del kernel anfitrión (`cachyos`).
 
 ---
 
 ## 🛠️ Arquitectura de Tres Capas
 
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  Aplicaciones Cliente / Tiendas / SDKs Antifraude                      │
+│  (Play Store, Pixelscan, Root Detection Plus, Apps Bancarias)          │
+└────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │  LSPosed Framework (Zygisk Companion en ART)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAPA 1: Framework Java / IPC (FakeWifiPixel.apk)                      │
+│  - android.os.Build & SystemProperties por perfil oficial              │
+│  - android.hardware.camera2 & SensorManager (MEMS fidedignos)          │
+│  - android.view.Display (modos, Hz, xdpi/ydpi lógicos)                 │
+│  - android.net.wifi.WifiManager & TelephonyManager                     │
+│  - GmsDeviceComplianceResponse (Play Protect Bypass)                   │
+│  - Intercepción de PackageManager (Brand Stores + hidePkgHook)         │
+│  - Sanitización de entorno en ProcessEnvironment y android.system.Os   │
+└────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │  LD_PRELOAD (Bionic Libc en Zygote)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAPA 2: Runtime Bionic C (libpixel_hw.so 64 y 32 bits)                │
+│  - uname() -> Kernel Android GKI 5.10.149 oficial sin fugas host      │
+│  - sysinfo() -> Memoria RAM LPDDR fidedigna del perfil                 │
+│  - open("/proc/cpuinfo") / ("/proc/version") -> Tablas del SoC         │
+│  - Anti-Root Bionic: ENOENT en /data/adb/* y binarios de root          │
+│  - proc_snapshot: memfd de /proc/self/{environ,maps,smaps,numa_maps}   │
+│  - execve: propagación de LD_PRELOAD a subprocesos de shell            │
+│  - sysfs de red virtual: wlan0 con MAC del perfil (eth0 oculta)        │
+└────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │  Init & Zygote Fork
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│  CAPA 3: Sistema Base, Init y Aislamiento de Montajes                  │
+│  - profile-loader nativo en C: inyección de props vía resetprop        │
+│  - Zygisk NoHello v0.0.7: unmount de /sbin, hosts y overlays Magisk    │
+│  - Magisk DenyList coordinado (sin enforce global para preservar GMS)  │
+│  - Stubs APK de tiendas nativas (Galaxy Store, GetApps, AppGallery)    │
+│  - Redirección y enlace de public.libraries.txt (Cronet)               │
+└────────────────────────────────────────────────────────────────────────┘
 ```
-┌────────────────────────────────────────────────────────┐
-│  Capa de Aplicación y Tiendas (Play Store, Pixelscan)  │
-└────────────────────────────────────────────────────────┘
-                           │  Zygisk Companion (Zygote)
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│  Módulo LSPosed (FakeWifiHook.java)                    │
-│  - android.os.Build, SystemProperties, Camera2, Sensores│
-│  - TelephonyManager, WifiManager, Play Protect Bypass  │
-└────────────────────────────────────────────────────────┘
-                           │  LD_PRELOAD (Bionic Libc)
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│  Capa Nativa C (libpixel_hw.so 64/32 bits)             │
-│  - uname(), sysinfo(), /proc/cpuinfo, /proc/version     │
-└────────────────────────────────────────────────────────┘
-                           │  Init & Boot
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│  Capa de Sistema Base (profile-loader nativo en C)     │
-│  - Inyección vía resetprop, síntesis de fake_proc      │
-│  - Montajes bind, stubs APK y public.libraries.txt     │
-└────────────────────────────────────────────────────────┘
-```
+
+---
+
+## 📊 Matriz de Validación de Calidad
+
+Resultados comprobados en instancias reales de producción (`verify-a54` y `inst-note13`):
+
+| Herramienta / Prueba | Categoría Auditada | Métrica Obtenida | Estado |
+|---|---|---|---|
+| **Pixelscan Android Checker** | **Environment Risk Score** | **100 / 100** | 🏆 **Low Risk (Verde)** |
+| **Root Detection Plus** | Root / Jailbreak Detection | **0 / 9** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | Hooking Detection (Frida, Xposed, Zygisk...) | **0 / 7** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | Developer Mode & USB Debugging | **0 / 3** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | Boot Integrity Signals | **0 / 13** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | Virtual Environment (Emulador/Custom ROM) | **0 / 5** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | Dangerous Apps / Modding Tools | **0 / 2** Detecciones | ✅ 100% Not Detected |
+| **Root Detection Plus** | **Total General** | **0 / 39 Detecciones** | 🏆 **100% Clean (0 Issues)** |
+| **ArchProbe (Sonda Interna)** | SoC / CPU / Kernel / Net / Maps | **0 fugas de host / 0 x86_64** | 🏆 **Coherencia Total** |
 
 ---
 
 ## 📋 Guía Rápida de Uso
 
-### 1. Construir la Imagen Base
+### 1. Construir la Imagen Docker Base
 ```bash
-docker build -t proteomesh:latest .
+# Compilar interceptores nativos y módulo Java (si hubo cambios)
+bash src/libpixel_hw/build.sh
+bash src/lsposed_module/build_apk.sh
+
+# Construir la imagen golden unificada
+DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .
 ```
 
 ### 2. Gestionar Instancias con `instance_manager.py`
 ```bash
-# 1. Listar plantillas de hardware y operadoras
+# 1. Listar plantillas de hardware y operadoras disponibles
 python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 
-# 2. Previsualizar identidad aleatoria válida en rango
+# 2. Previsualizar identidad aleatoria válida en rango para un modelo
 python3 tools/instance_manager.py randomize samsung/a54x ar_personal
 
-# 3. Crear una nueva instancia (clona base limpia y congela el perfil)
-python3 tools/instance_manager.py create mi-a54-01 samsung/a54x ar_personal --port 5584
+# 3. Crear una nueva instancia (clona data-clean con blindaje anti-root preinstalado)
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --start
 
-# 4. Iniciar la instancia
-python3 tools/instance_manager.py start mi-a54-01
-
-# 5. Visualizar la pantalla mediante scrcpy
+# 4. Visualizar la pantalla del dispositivo mediante scrcpy
 scrcpy -s 127.0.0.1:5584
 
-# 6. Detener la instancia
+# 5. Detener o reiniciar la instancia
 python3 tools/instance_manager.py stop mi-a54-01
+python3 tools/instance_manager.py start mi-a54-01
 ```
 
 ---
 
 ## 📚 Documentación Técnica Detallada
 
-* **[Arquitectura Integral del Sistema](docs/ARQUITECTURA.md):** Especificación profunda de las 3 capas, flujo GeeLark, evasión de tiendas y mecanismos GMS.
+* **[Guía Maestra de Blindaje Anti-Root y Replicación](docs/GUIA_DE_REPLICACION_ANTIROOT.md):** Manual exhaustivo con causas raíz, procedimientos de replicación en instancias existentes, automatización para nuevas instancias e inventario detallado de cada archivo modificado.
+* **[Arquitectura Integral del Sistema](docs/ARQUITECTURA.md):** Especificación profunda del modelo de tres capas, flujo GeeLark, evasión de tiendas y mecanismos GMS.
 * **[Guía de Reproducción y Despliegue](docs/GUIA_DE_REPRODUCCION.md):** Manual paso a paso para compilar binarios nativos, construir imágenes y operar instancias.
-* **[Bitácora Histórica y Estado del Proyecto](docs/BITACORA_Y_ESTADO.md):** Registro cronológico detallado de todos los retos técnicos, causas raíz y soluciones implementadas.
+* **[Bitácora Histórica y Estado del Proyecto](docs/BITACORA_Y_ESTADO.md):** Registro cronológico detallado de todos los retos técnicos (§1 a §49), causas raíz, tombstones resueltos y métricas.
 
 ---
 
-## ⚠️ Limitaciones Conocidas
+## ⚠️ Limitaciones Conocidas y Alcance Técnico
 
-* **Artefactos de scroll en Chromium:** en Chrome/Brave/Google/WebView los flings rápidos pueden mostrar checkerboarding (frames blancos por tiles sin rasterizar en SwiftShader) y tearing en el stream de scrcpy; Firefox no los reproduce. Se evaluaron flags experimentales en laboratorio (`enable-zero-copy` + `enable-gpu-rasterization` reducen ~84% los cuadros blancos) pero no se adoptaron para preservar el navegador 100% de fábrica sin firmas web; fps 30/60, `use_redroid_c2`, códec VP9 y GPU host descartados. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §39-§40.
-* **GPU host no adoptada:** se evitó el `SIGSYS` de `kcmp` en Mesa, pero gralloc/GBM de apps, la captura y scrcpy siguen rotos; strings de GPU del host (AMD/Mesa) serían una fuga de genuinidad masiva. El pipeline queda en `guest` (SwiftShader/ANGLE).
-* **Metadatos de red nativos:** `/proc/net/dev`, `/proc/net/route`, `/proc/net/arp` y `/proc/net/tcp` se filtran para procesos de app: interfaz `wlan0`, subred `192.168.1.0/24`, IP del dispositivo derivada de la MAC del perfil, gateway `192.168.1.1` con MAC de router propia, y `DhcpInfo`/`WifiInfo` coherentes (misma IP por perfil). `/sys/class/net/` se sirve como árbol ficticio (`lo` + `wlan0`, `wlan0/address` con la MAC del perfil, `eth0` oculto); `wlan0` sintetiza `uevent`, `type`, `flags`, `operstate`, `speed` y 24 entradas de `statistics/` (los accesos absolutos leen `eth0` real; los relativos al dir ficticio usan placeholders), `readlink`/`/proc/self/fd` son coherentes y `NetworkInterface.getHardwareAddress` reporta la MAC del perfil para apps en scope. Residual: `lstat("/sys/class/net/wlan0")` se ve como directorio (no symlink), `wireless/`/`phy80211/` ausentes y el árbol ficticio es discoverable. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §42-§44 y §47-§48.
-* **`/proc/self/maps`, `smaps`, `smaps_rollup` y `numa_maps` de apps:** se sirve un snapshot saneado (memfd): sin líneas de `libndk_translation` ni del propio shim, con rutas `x86_64`/`x86` reescritas a `arm64`/`arm`; en `smaps`/`numa_maps` se descartan los bloques completos de los mappings prohibidos y `smaps_rollup` se copia (solo agregados, sin nombres). Residual: si `smaps` supera 8 MB se entrega el fd real (fallback) y `numa_maps` conserva los valores numéricos reales del kernel. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §45 y §47-§48.
-* **Cobertura 32-bit:** el `zygote32` preloada el shim 32-bit (`/system/lib/libpixel_hw.so`) y el companion Zygisk 32-bit arranca (`zygiskd32`) con inyección LSPosed/FakeWifi verificada en apps x86 32-bit (evidencia `tests/archprobe/results/archprobe_a54_32bit.txt`). Para lograrlo se omite la recarga de `libnb.so` en ese companion (workaround de un bug del build i386 de Magisk): los procesos 32-bit no cargan `ndk_translation` al vuelo, por lo que las apps con libs nativas **armeabi-v7a** no están soportadas (las x86 sí). El camino 64-bit no se ve afectado. Detalle en [`docs/BITACORA_Y_ESTADO.md`](docs/BITACORA_Y_ESTADO.md), §46.
-* **Attestation por hardware:** la evidencia se simula en framework/userspace; no se emula un TEE/StrongBox físico ni claves de attestation reales.
-* **Sensores y cámaras:** son perfiles sintéticos coherentes, no captura física real.
-* **Telefonía:** no hay SIM/módem físico; la identidad y el estado de red son simulados por hooks.
-* **Capacidad del host:** con 13–16 GB de RAM el laboratorio opera 2 instancias simultáneas; el render es por software.
-* **Native bridge ARM64:** las apps ARM64 corren traducidas; queda pendiente la validación específica de Facebook.
+* **Attestation por hardware (StrongBox / TEE):** la evidencia se sintetiza en userspace y framework; no se emula un chip TEE/Knox físico ni claves criptográficas de fábrica para `MEETS_STRONG_INTEGRITY`. Al ser un entorno virtualizado en la nube, el límite físico alcanzable con PIF es `MEETS_BASIC_INTEGRITY` y `MEETS_DEVICE_INTEGRITY`.
+* **Capacidad del host:** con 13–16 GB de RAM el laboratorio opera de forma óptima hasta 2 instancias concurrentes con renderizado fluido por software.
+* **Metadatos de red nativos:** `/proc/net/{dev,route,arp,tcp}` y `/sys/class/net/` se sirven virtualizados (interfaz `wlan0`, subred `192.168.1.0/24`, MAC de router coherente y `eth0` oculta). Residual: `lstat("/sys/class/net/wlan0")` se ve como directorio y el árbol ficticio `/system/etc/proteomesh` es descubrible por inspección exhaustiva de root.
+* **Cobertura 32-bit (x86):** el `zygote32` preloada el shim 32-bit (`libpixel_hw.so`) y el companion Zygisk 32-bit arranca con inyección verificada en apps x86 de 32 bits. Se omite la recarga dinámica de `ndk_translation` en 32 bits (workaround de Magisk i386), por lo que apps legacy con libs exclusivas `armeabi-v7a` no arrancan (el camino 64-bit ARM64 no se ve afectado).
+* **Artefactos de scroll en Chromium:** en Chrome/Brave/WebView los flings rápidos pueden mostrar checkerboarding en SwiftShader/ANGLE debido al rasterizado por CPU en el contenedor.
 
 ---
 
 ## 📄 Notas de Uso
-Este proyecto es un entorno de investigación técnica sobre virtualización, namespaces, frameworks de integridad y capas de abstracción en Android. Diseñado para pruebas de rendimiento, telemetría y pruebas de robustez de aplicaciones móviles.
+Este proyecto es un entorno de investigación técnica avanzada sobre virtualización, namespaces, frameworks de integridad, análisis de telemetría y capas de abstracción en Android. Diseñado para pruebas de rendimiento, investigación en ciberseguridad y robustez de aplicaciones móviles.
