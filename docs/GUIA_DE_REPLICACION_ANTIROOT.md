@@ -281,7 +281,7 @@ A continuación se detalla cada componente del repositorio que fue creado o modi
 - **Cambios realizados:** En la acción `manage-spoof sync` (invocada en cada arranque por `apply-props.sh`), se añadió la sincronización automática de la DenyList de Magisk: detecta todas las aplicaciones de terceros (`pm list packages -3`) y las registra automáticamente en la DenyList (excluyendo únicamente los managers de root y LSPosed). De este modo, cualquier app que el usuario instale queda inmediatamente blindada por NoHello sin configuración manual.
 
 ### 8. `docs/GUIA_DE_REPLICACION_ANTIROOT.md` (Documentación Operativa Maestra)
-- **Propósito:** Guía completa con arquitectura, causas raíz técnicas resueltas, procedimiento paso a paso para replicar en instancias existentes, instrucciones de automatización para nuevas instancias y protocolo de validación.
+- **Propósito:** Guía completa con arquitectura, causas raíz técnicas resueltas, procedimiento paso a paso para replicar en instancias existentes (`verify-a54`), guía de automatización para nuevas instancias (`data-clean`) e inventario de archivos.
 
 ### 9. `docs/ARQUITECTURA.md` (Documentación de Arquitectura Global)
 - **Propósito:** Actualizado para reflejar formalmente la Capa 3 de Mount Namespace Isolation (Zygisk NoHello) y los nuevos interceptores de paquetes y entorno en las capas Java y Bionic.
