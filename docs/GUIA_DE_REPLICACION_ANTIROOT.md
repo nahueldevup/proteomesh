@@ -6,7 +6,7 @@ Esta guía documenta la arquitectura, causas raíz técnicas, modificaciones de 
 
 ## 1. Resultados Obtenidos y Línea Base de Validación
 
-En la instancia de validación (`hide-test`, puerto ADB 5598; contenedor retirado, datos persistentes), con **Magisk 30.6** y **LSPosed Framework** plenamente instalados, activos y operativos:
+En la instancia de validación (`f05-main`, puerto ADB 5601; creada desde el `data-clean` original), con **Magisk 30.6** y **LSPosed Framework** plenamente instalados, activos y operativos:
 
 | Suite de Evaluación | Categoría / Indicador | Resultado Obtenido | Estado |
 |---|---|---|---|
@@ -19,12 +19,14 @@ En la instancia de validación (`hide-test`, puerto ADB 5598; contenedor retirad
 | **Root Detection Plus** | **Total General** | **0 / 39 Detecciones** | 🏆 **100% Clean (0 Issues)** |
 | **Pixelscan Android Checker** | **Environment Risk Score** | **100 / 100** | 🏆 **Low Risk (Verde)** |
 
-> **Límite de F0.5 (2026-10-22, aceptado):** el 0/39 se revalidó en `hide-test`, que tiene licencia Play. En el clon limpio `f05-live`, PairIP abre `LicenseActivity` → Play Pass (`UnauthenticatedMainActivity`); sin cuenta licenciada no se puede ejecutar RDP. Se aceptó esta excepción al cerrar F0.5. Pixelscan sí se revalidó en `f05-live` con 100/100.
+> **Cierre de F0.5 (2026-10-22):** Pixelscan **100/100** y RDP **0/39** se revalidaron en `f05-main`, creada desde `data-clean`. RDP ya estaba instalado y licenciado en la base; no se agregó cuenta ni se usó paywall. La antigua excepción del clon `f05-live` quedó obsoleta.
 
 *Evidencia versionable:*
-- `tests/results/f05-live/f05-rdp-hidetest-02.png` y `.xml` (0 Detected • 39 Not Detected en `hide-test`)
-- `tests/results/f05-live/f05-rdp-clean-license-blocked.png` y `.log` (bloqueo de licencia en clon limpio)
-- `tests/results/f05-live/f05-pixelscan-final-1080.png` (Score 100 / 100 en `f05-live`)
+- `tests/results/f05-main/f05-main-rdp-top.png` y `.xml` (0 Detected • 39 Not Detected)
+- `tests/results/f05-main/f05-main-rdp-bottom.png` y `.xml` (categorías 0/7, 0/3, 0/13, 0/5, 0/2)
+- `tests/results/f05-main/f05-main-pixelscan.png` y `.xml` (Score 100 / 100, Low Risk)
+- `tests/results/f05-main/RESUMEN.md` (hashes y detalle)
+- `tests/results/f05-live/` (evidencia histórica del clon eliminado)
 
 ---
 
@@ -213,13 +215,14 @@ adb -s $TARGET shell 'uiautomator dump /sdcard/ps.xml >/dev/null 2>&1; cat /sdca
 # Esperado: 100 / 100, Low Risk
 
 # 3. Correr Root Detection Plus
-#    Requiere una instalación con licencia Play Pass ya activada (p. ej. hide-test).
-#    En un clon limpio sin cuenta, PairIP abre el paywall y la app no ejecuta el scan.
-adb -s $TARGET shell 'pm clear at.persie0.root_detection_app; su 0 cmd package set-installer at.persie0.root_detection_app com.android.vending; am start -W -n at.persie0.root_detection_app/.MainActivity'
+#    En data-clean/f05-main ya está instalado y licenciado. No ejecutar pm clear:
+#    borra el estado local de licencia y puede reabrir el paywall.
+adb -s $TARGET shell 'am force-stop at.persie0.root_detection_app; am start -W -n at.persie0.root_detection_app/.MainActivity'
 sleep 2
 adb -s $TARGET shell 'input tap 136 1856; sleep 0.5; input tap 540 2058'
 sleep 12
 adb -s $TARGET shell 'uiautomator dump /sdcard/rdp.xml >/dev/null 2>&1; cat /sdcard/rdp.xml' | grep -o 'text="[^"]*"' | grep -E 'Detected|Security'
+# Esperado: 0 Detected / 39 Not Detected
 # Esperado:
 # No security issues found in this category.
 # 0 Detected

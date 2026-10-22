@@ -1,4 +1,8 @@
-# F0.5 — Evidencia de validación viva
+# F0.5 — Evidencia histórica del clon eliminado
+
+> **Histórico:** el clon `redroid-f05-clean` y el contenedor `f05-live` fueron eliminados.
+> El cierre vigente de F0.5 está en `tests/results/f05-main/RESUMEN.md`: Pixelscan 100/100
+> y RDP 0/39 sobre el `data-clean` original, sin excepción de licencia.
 
 Fecha: 2026-10-22
 
@@ -58,8 +62,11 @@ Rollback: `proteomesh:pre-f05` `sha256:558f46f38ca78213d43220e54f9c301a719e39526
 
 ## Conclusión
 
-F0.5 queda **cerrada el 2026-10-22 con excepción aceptada** (commit `c3cfeb6`):
+Esta es la evidencia **histórica** del clon `f05-live` (commit `c3cfeb6`):
 
-- Pixelscan 100/100 y C5 están validados en el clon limpio.
-- RDP 0/39 está validado solo en una instancia con licencia (`hide-test`); se aceptó esa excepción y no se declara RDP limpio en el clon sin cuenta.
-- La copia de `data-clean` al clon no es bit-a-bit por 8 fuentes fscrypt; queda como limitación conocida para F4.
+- Pixelscan 100/100 y C5 quedaron validados en el clon.
+- En el clon, RDP quedó bloqueado por licencia y se aceptó una excepción temporal.
+- La copia del clon no era bit-a-bit por 8 fuentes fscrypt.
+
+Esa excepción fue **reemplazada** por el smoke test de `f05-main` sobre el `data-clean` original:
+Pixelscan 100/100 y RDP 0/39 sin paywall. Ver `tests/results/f05-main/RESUMEN.md`.

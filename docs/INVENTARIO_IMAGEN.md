@@ -121,7 +121,7 @@ Esto es útil para herramientas, pero contradice P1 si la imagen se distribuye c
 - Documentar que el perfil canónico es el que se monta en `/system/etc/proteomesh_profile.json`; el default de la imagen no es confiable.
 - **Implementado:** `docker-compose.yml` quedó legacy con variables obligatorias y `tools/compose_up_safe.sh` exige perfil `generated_identity` y rechaza `data-clean`.
 - **Implementado:** `prepare-magisk.sh` ya usa Magisk 30.6 y protege el binario parcheado; su ejecución real sigue pendiente de validación.
-- **Validado en vivo:** imagen nueva (`5cc1c1f…`) probada en `f05-live` sobre clon limpio: Pixelscan 100/100; RDP 0/39 solo con la instancia licenciada `hide-test` (excepción aceptada al cerrar F0.5). Ver `tests/results/f05-live/RESUMEN.md`.
+- **Validado en vivo:** imagen nueva (`5cc1c1f…`) probada en `f05-main` sobre el `data-clean` original: Pixelscan 100/100 y RDP 0/39, sin paywall ni excepción. La evidencia del clon `f05-live` es histórica. Ver `tests/results/f05-main/RESUMEN.md`.
 
 ### F1 (contrato)
 

@@ -181,7 +181,7 @@ adb -s 127.0.0.1:$PORT shell cat /proc/version
 * **Google Play Store:** Abre directamente a la pantalla oficial de inicio de sesión (`UnauthenticatedMainActivity`) sin el bloqueo de "Dispositivo no certificado".
 * **Buscador de Google:** Ejecuta búsquedas web sin pantallas de error ("Ocurrió un error"), conectando mediante el stack Cronet expuesto en `public.libraries.txt`.
 * **Pixelscan:** Al ejecutar el test en el dispositivo, verifica un puntaje de **100/100 Low Risk** (estado validado en `docs/ESTADO_ACTUAL.md`) con cero advertencias de `Brand Store Missing`.
-* **Root Detection Plus:** El APK `at.persie0.root_detection_app` requiere licencia Play Pass; sin una cuenta licenciada abre `UnauthenticatedMainActivity`. La evidencia 0/39 de F0.5 se tomó en `hide-test` con licencia, no en el clon limpio.
+* **Root Detection Plus:** En `data-clean` el APK `at.persie0.root_detection_app` ya está instalado y licenciado; se ejecuta sin paywall. La evidencia 0/39 de F0.5 se tomó en `f05-main` sobre `data-clean`. No ejecutar `pm clear` sobre RDP: borra el estado local de licencia.
 * **Device Info / DevCheck:** Verifica en la pestaña *Sistema* que el Kernel muestre `5.10.149-android12-9-...`, el Bootloader esté reportado como bloqueado con su versión de compilación, y la Banda Base muestre el firmware de módem oficial.
 
 ### C. Verificación de Pantalla Lógica (lo que ven las Aplicaciones)

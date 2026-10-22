@@ -105,7 +105,7 @@ El sistema evade exhaustivamente la detección de root y manipulación en aplica
 
 ## 📊 Matriz de Validación de Calidad
 
-Resultados comprobados en instancias reales de producción (`verify-a54`, `inst-note13`, `hide-test` y el clon limpio `f05-live`):
+Resultados comprobados en instancias reales de producción (`verify-a54`, `inst-note13`, `hide-test` y `f05-main` sobre `data-clean`):
 
 | Herramienta / Prueba | Categoría Auditada | Métrica Obtenida | Estado |
 |---|---|---|---|
@@ -119,7 +119,7 @@ Resultados comprobados en instancias reales de producción (`verify-a54`, `inst-
 | **Root Detection Plus** | **Total General** | **0 / 39 Detecciones** | 🏆 **100% Clean (0 Issues)** |
 | **ArchProbe (Sonda Interna)** | SoC / CPU / Kernel / Net / Maps | **0 fugas de host / 0 x86_64** | 🏆 **Coherencia Total** |
 
-> **F0.5 (2026-10-22, cerrada con excepción):** Pixelscan **100/100** fue revalidado en el clon limpio `f05-live`. Root Detection Plus **0/39** se revalidó en `hide-test`, que tiene licencia Play; el mismo APK en el clon limpio queda bloqueado por PairIP/Play Pass. Se aceptó esa excepción y quedó documentada. Evidencia en `tests/results/f05-live/` y detalle en `docs/ESTADO_ACTUAL.md`.
+> **F0.5 (2026-10-22, cerrada):** Pixelscan **100/100** y Root Detection Plus **0/39** fueron revalidados en `f05-main`, creada desde el `data-clean` original. RDP ya estaba instalado y licenciado en la base; no hizo falta cuenta nueva ni excepción. Evidencia en `tests/results/f05-main/` y detalle en `docs/ESTADO_ACTUAL.md`.
 
 ---
 
