@@ -658,7 +658,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **RDP:** **0/39** en `hide-test` con licencia; el clon limpio no puede ejecutarlo porque PairIP abre `LicenseActivity` → Play Pass (`UnauthenticatedMainActivity`). Copiar app data, Vending y GMS/GSF no replicó la licencia. Evidencia: `f05-rdp-hidetest-02.png`/`.xml` y `f05-rdp-clean-license-blocked.png`/`.log`.
 * **C5:** validado en vivo con `su -c` para DenyList, reintentos tras reinicio y restauración de `wm size/density`, paquetes desactivados y BG processes. `net.pixelscan.check` quedó en scope y DenyList; scope total 20.
 * **Corrección posterior (mismo día):** el clon `redroid-f05-clean` y el contenedor `f05-live` se eliminaron. Se creó `f05-main` desde el `data-clean` original del repo principal; RDP ya venía instalado y licenciado, abrió sin paywall y dio **0/39** (`0/9`, `0/7`, `0/3`, `0/13`, `0/5`, `0/2`). Pixelscan también dio **100/100** a `1080x2340 @450`. Evidencia en `tests/results/f05-main/`, con hashes en `RESUMEN.md`.
-* **Estado:** F0.5 **cerrada el 2026-10-22 sin excepción RDP**. La copia parcial del clon y sus 8 fuentes faltantes ya no existen; el smoke test final usa el `data-clean` original. La reproducibilidad desde cero sigue para F4. Docs y evidencia previa en `c3cfeb6`; fix de overrides en `a01586e`.
+* **Estado:** F0.5 **cerrada el 2026-10-22 sin excepción RDP**. La copia parcial del clon y sus 8 fuentes faltantes ya no existen; el smoke test final usa el `data-clean` original. La reproducibilidad desde cero sigue para F4. Evidencia previa en `c3cfeb6`; fix de overrides en `a01586e`; smoke test en `c72b33a`.
 
 ---
 

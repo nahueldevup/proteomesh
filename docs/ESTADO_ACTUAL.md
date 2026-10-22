@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; fix C5 `a01586e`; smoke test F0.5 en `main` |
+| Commit de referencia | `b7d900f`; fix C5 `a01586e`; smoke test F0.5 `c72b33a` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest` (`sha256:5cc1c1f9c61463131075154a6d51ec7e948df410e9a53fc4e50aa185db2800af`); rollback `proteomesh:pre-f05` (`sha256:558f46f38ca78213d43220e54f9c301a719e39526a7e1024c10048be44b77759`) |
 | Estado del repo | `main`; F0.5 cerrada; evidencia en `tests/results/f05-main/` y `tests/results/f05-live/` |
@@ -33,7 +33,7 @@
 | `--name` sin validar | C18 | **Corregido en F0.5:** `instance_manager.py` valida `^[a-z0-9][a-z0-9_-]{0,62}$` en create/start/stop y usa `shlex.quote`. |
 | Magisk del script no coincide | C20 | **Corregido en F0.5:** `prepare-magisk.sh` usa `modules.lock`/`deps_fetch.py` para Magisk 30.6 y conserva el `magisk` parcheado salvo `--force-raw`. |
 | Apps instaladas post-boot | C5 | **Corregido y validado en vivo:** `sync-scope` consulta la DenyList con `su -c`, reintenta hasta 15×2s tras reiniciar y `apply_runtime_defaults` restaura `wm size/density` y paquetes desactivados. |
-| Evidencia on-device y CI | C13, C14 | Evidencia versionada en `c3cfeb6` y en el commit del smoke test; hay tests host-side de nombres, pero no CI ni validación automática 100/100/0/39. |
+| Evidencia on-device y CI | C13, C14 | Evidencia versionada en `c3cfeb6` y `c72b33a`; hay tests host-side de nombres, pero no CI ni validación automática 100/100/0/39. |
 | Docs históricas contradictorias | C12, F0.5 | **Corregido en F0.5:** README, guías, arquitectura y tabla de bitácora dicen 100/100; los documentos históricos llevan banner. |
 | Procesos de root visibles | Auditoría previa | NoHello oculta mounts, no procesos (`magiskd`, `lspd`, `zygiskd`); no hay detector que lo explote hoy, pero es una fuga de diseño. |
 | DenyList enforcement | Validaciones previas | Debe quedar **OFF**; activarlo rompe GMS. No es un bug, es una restricción operativa. |

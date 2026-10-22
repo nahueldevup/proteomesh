@@ -5,7 +5,8 @@ Fecha: 2026-10-22
 Repo: `/home/nahuel/Documentos/open-code-folder/redroid-integrity-lab`  
 Instancia: `f05-main`, puerto `5601`, contenedor `3e4383faa391`  
 Imagen: `proteomesh:latest` `sha256:5cc1c1f9c61463131075154a6d51ec7e948df410e9a53fc4e50aa185db2800af`  
-Base: `data-clean` original del repo principal.
+Base: `data-clean` original del repo principal.  
+Commit de esta evidencia: `c72b33a`.
 
 ## Pixelscan
 
