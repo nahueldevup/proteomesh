@@ -114,6 +114,13 @@ DISABLE_PACKAGES = [
     "com.google.android.contactkeys",
     # Android Auto (2 procesos background que consumen ~210MB)
     "com.google.android.projection.gearhead",
+    # Trazas de sistema Perfetto/Systrace (~102MB)
+    "com.android.traceur",
+    # Asistente de configuración y partners (ya completados en data-clean, ~219MB)
+    "com.google.android.setupwizard",
+    "com.google.android.partnersetup",
+    # Extensiones de cámara OEM (la cámara se virtualiza por LSPosed, ~98MB)
+    "com.android.cameraextensions",
     # Red sobrante (no hay hotspot, VPN nativa, ni tethering)
     "com.android.hotspot2.osulogin",
     "com.android.vpndialogs",

@@ -741,6 +741,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
      - `FakeGps.java`: métodos de `Location` y `SystemProperties` cacheados estáticamente.
      - `FakeWifiHook.java`: mapas limpios de `ProcessEnvironment.getenv()` y `Os.environ()` cacheados por proceso.
      - `FakeSensors.java`: constructor `SensorEvent(int)` pre-resuelto estáticamente.
+     - Poda adicional de 4 servicios prescindibles en `DISABLE_PACKAGES` (`com.android.traceur`, `com.google.android.setupwizard`, `com.google.android.partnersetup`, `com.android.cameraextensions`), liberando ~420 MB adicionales de RAM de sistema por instancia.
 * **Verificación y Puerta de Regresión:**
   - Tests unitarios host: **47 / 47 tests OK** en 1.38s.
   - Tests ashmem: **48 / 48 assertions OK**.
