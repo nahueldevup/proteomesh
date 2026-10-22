@@ -134,7 +134,7 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
   * Se instalan APKs stub nativos (~4.1 KB) con `MainActivity` lanzable y `classes.dex` mínimas: LSPosed marca como `obsolete package` y elimina del scope a todo paquete sin componentes (`ConfigManager.cacheScopes()`), por lo que el stub debe declarar al menos una activity. Constan físicamente en `/data/system/packages.xml` y la tienda es lanzable como una real (sin ejecutar procesos en segundo plano). Se reconstruyen con `tools/build_stubs.sh`.
   * Se interceptan llamadas Java de `PackageManager.getPackageInfo` y `ApplicationPackageManager`.
   * Se hookea la rutina de comprobación interna `net.pixelscan.check.MainActivity.s` devolviendo `true` para la tienda asociada a la marca activa.
-  * **Puntaje verificado:** **75/100** en Pixelscan con cero advertencias de tienda.
+  * **Puntaje verificado:** **100/100 Low Risk** en Pixelscan con cero advertencias de tienda (validación vigente; ver `docs/ESTADO_ACTUAL.md`).
 
 ### B. Bypass de Certificación de Google Play Protect
 * **Reto:** ReDroid con GMS bloquea el acceso a Google Play Store con la pantalla *"Dispositivo no certificado por Play Protect"*.

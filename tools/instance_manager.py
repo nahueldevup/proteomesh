@@ -8,6 +8,8 @@ Funcionalidades:
 - list-carriers  : Lista las operadoras telefónicas disponibles.
 - randomize      : Genera y previsualiza un conjunto único de identificadores (IMEI, MAC, Serial, etc.) para una plantilla.
 - create         : Crea una nueva instancia con su carpeta, volumen /data y profile.json congelado.
+- start/stop     : Arranca o detiene una instancia existente.
+- sync-scope     : Sincroniza apps post-boot al scope LSPosed y a la DenyList.
 - list-instances : Lista las instancias creadas en el sistema.
 """
 
@@ -19,6 +21,7 @@ import time
 import subprocess
 import random
 import string
+import shlex
 import argparse
 from typing import Optional
 from pathlib import Path
@@ -28,6 +31,7 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 CARRIERS_DIR = BASE_DIR / "carriers"
 INSTANCES_DIR = BASE_DIR / "instances"
 CLEAN_DATA_DIR = BASE_DIR / "data-clean"
+INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 
 # ── Optimización de renderizado ──────────────────────────────────────────────
 # SurfaceFlinger renderiza a resolución/fps reducidos para ahorrar CPU/RAM.
@@ -270,8 +274,19 @@ def cmd_randomize(args):
     print("--------------------------------------------------------------------------------\n")
 
 
+def validate_instance_name(name: str) -> str:
+    """Rechaza nombres que puedan escapar de instances/ o inyectar shell."""
+    if not INSTANCE_NAME_RE.fullmatch(name or ""):
+        raise SystemExit(
+            f"[!] Nombre de instancia inválido: {name!r}. "
+            "Usar solo minúsculas, números, guiones y guiones bajos (máx. 63)."
+        )
+    return name
+
+
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
+    inst_name = validate_instance_name(args.name)
     t_path = find_template(args.template)
     with open(t_path, "r") as f:
         t_data = json.load(f)
@@ -283,7 +298,6 @@ def cmd_create_instance(args):
             c_data = json.load(f)
 
     identity = generate_identity(t_data, c_data)
-    inst_name = args.name
     inst_dir = INSTANCES_DIR / inst_name
     inst_dir.mkdir(parents=True, exist_ok=True)
     inst_data_dir = inst_dir / "data"
@@ -292,13 +306,14 @@ def cmd_create_instance(args):
     # Clonar base de datos /data desde data-clean si existe y data está vacía
     if CLEAN_DATA_DIR.exists() and not (inst_data_dir / "adb").exists():
         print(f"[*] Inicializando sistema de archivos /data desde plantilla base (data-clean)...")
+        safe_name = shlex.quote(inst_name)
         sanitize_sh = (
-            f"cp -a /lab/data-clean/* /lab/instances/{inst_name}/data/ 2>/dev/null || true && "
-            f"rm -f /lab/instances/{inst_name}/data/property/persistent_properties && "
-            f"rm -rf /lab/instances/{inst_name}/data/system/dropbox/* && "
-            f"rm -f /lab/instances/{inst_name}/data/system/users/0/settings_ssaid.xml* && "
-            f"rm -f /lab/instances/{inst_name}/data/misc/wifi/*.conf* /lab/instances/{inst_name}/data/misc/wifi/*.xml* && "
-            f"rm -rf /lab/instances/{inst_name}/data/misc/bluedroid/*"
+            f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && "
+            f"rm -f /lab/instances/{safe_name}/data/property/persistent_properties && "
+            f"rm -rf /lab/instances/{safe_name}/data/system/dropbox/* && "
+            f"rm -f /lab/instances/{safe_name}/data/system/users/0/settings_ssaid.xml* && "
+            f"rm -f /lab/instances/{safe_name}/data/misc/wifi/*.conf* /lab/instances/{safe_name}/data/misc/wifi/*.xml* && "
+            f"rm -rf /lab/instances/{safe_name}/data/misc/bluedroid/*"
         )
         clone_cmd = [
             "docker", "run", "--rm",
@@ -425,9 +440,53 @@ def container_network_ok(inst_name):
     return True, ip
 
 
+def wait_for_boot(inst_name: str, attempts: int = 150) -> bool:
+    """Espera boot_completed=1 y el marcador de apply-props.sh vía docker exec.
+
+    No depende de ADB/red: si el datapath del contenedor muere, adb queda
+    offline pero el estado de arranque sigue siendo legible por docker exec.
+    """
+    for _ in range(attempts):
+        run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
+                         timeout=10, capture_output=True, text=True)
+        if run_state.stdout.strip() != "true":
+            return False
+        r = _run(["docker", "exec", inst_name, "getprop", "sys.boot_completed"],
+                 timeout=10, capture_output=True, text=True)
+        if r.stdout.strip() == "1":
+            m = _run(["docker", "exec", inst_name, "ls", "/data/local/tmp/.proteomesh_boot_done"],
+                     timeout=10, capture_output=True, text=True)
+            if ".proteomesh_boot_done" in m.stdout:
+                return True
+        time.sleep(2)
+    return False
+
+
+def apply_runtime_defaults(adb_s, meta):
+    """Reaplica overrides de pantalla y límites que se pierden al reiniciar."""
+    disp = meta.get("display", {})
+    w = disp.get("width", 1080)
+    h = disp.get("height", 2340)
+    dpi = disp.get("dpi", 440)
+    _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+         timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+         timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    disabled_count = 0
+    for pkg in DISABLE_PACKAGES:
+        res = _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
+                   timeout=20, capture_output=True, text=True)
+        if "disabled" in res.stdout.lower() or "new state" in res.stdout.lower():
+            disabled_count += 1
+    for setting_cmd, value in BG_PROCESS_SETTINGS.items():
+        _run(["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
+             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return w, h, dpi, disabled_count
+
+
 def cmd_start_instance(args):
     """Inicia el contenedor Docker para la instancia especificada con todos los parámetros de hardware."""
-    inst_name = args.name
+    inst_name = validate_instance_name(args.name)
     inst_dir = INSTANCES_DIR / inst_name
     if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
         print(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
@@ -503,7 +562,7 @@ def cmd_start_instance(args):
 
     # Limpiar marcadores del arranque anterior: sys.boot_completed se pone a 1
     # antes de que apply-props.sh empiece, y las banderas viejas causarían
-    # falsos positivos en wait_boot()/detección del módulo actualizado.
+    # falsos positivos en wait_for_boot()/detección del módulo actualizado.
     _run(["adb", "-s", adb_s, "shell", "rm", "-f",
           "/data/local/tmp/.proteomesh_boot_done",
           "/data/local/tmp/.proteomesh_module_updated",
@@ -600,27 +659,6 @@ def cmd_start_instance(args):
 
     # ── Optimización post-boot ───────────────────────────────────────────────
 
-    def wait_boot():
-        """Espera boot_completed=1 y el marcador de apply-props.sh vía docker exec.
-
-        No depende de ADB/red: si el datapath del contenedor muere, adb queda
-        offline pero el estado de arranque sigue siendo legible por docker exec.
-        """
-        for _ in range(150):
-            run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
-                             timeout=10, capture_output=True, text=True)
-            if run_state.stdout.strip() != "true":
-                return False
-            r = _run(["docker", "exec", inst_name, "getprop", "sys.boot_completed"],
-                     timeout=10, capture_output=True, text=True)
-            if r.stdout.strip() == "1":
-                m = _run(["docker", "exec", inst_name, "ls", "/data/local/tmp/.proteomesh_boot_done"],
-                         timeout=10, capture_output=True, text=True)
-                if ".proteomesh_boot_done" in m.stdout:
-                    return True
-            time.sleep(2)
-        return False
-
     def post_boot():
         # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
         #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
@@ -650,7 +688,7 @@ def cmd_start_instance(args):
             )
         print("[✓] Límites de procesos background configurados (max_cached=4)")
 
-    if not wait_boot():
+    if not wait_for_boot(inst_name):
         net_ok, net_msg = container_network_ok(inst_name)
         print("[!] ERROR: timeout esperando fin de arranque (sys.boot_completed=1 y marcador apply-props).")
         print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
@@ -691,7 +729,7 @@ def cmd_start_instance(args):
               "/data/local/tmp/.proteomesh_module_updated",
               "/data/local/tmp/.proteomesh_scope_updated"],
              timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if not wait_boot():
+        if not wait_for_boot(inst_name):
             net_ok, net_msg = container_network_ok(inst_name)
             print("[!] ERROR: timeout esperando el segundo arranque.")
             print(f"[!] Red host→contenedor: {'OK' if net_ok else 'FALLA'} — {net_msg}")
@@ -712,10 +750,82 @@ def cmd_start_instance(args):
 
 def cmd_stop_instance(args):
     """Detiene y elimina el contenedor Docker de la instancia."""
-    inst_name = args.name
+    inst_name = validate_instance_name(args.name)
     print(f"[*] Deteniendo contenedor '{inst_name}'...")
     subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"[✓] Instancia '{inst_name}' detenida (los datos de /data se conservan en disco).")
+
+
+def cmd_sync_scope(args):
+    """Agrega apps post-boot al scope LSPosed/DenyList y reinicia si hace falta."""
+    inst_name = validate_instance_name(args.name)
+    inst_dir = INSTANCES_DIR / inst_name
+    meta_path = inst_dir / "meta.json"
+    if not meta_path.exists():
+        print(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
+        raise SystemExit(1)
+    with open(meta_path, "r") as f:
+        meta = json.load(f)
+    port = meta.get("adb_port", 5580)
+    adb_s = f"127.0.0.1:{port}"
+
+    running = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
+                   timeout=10, capture_output=True, text=True)
+    if running.stdout.strip() != "true":
+        print(f"[!] La instancia '{inst_name}' no está corriendo. Usá: start {inst_name}")
+        raise SystemExit(1)
+
+    _run(["adb", "connect", adb_s], timeout=10, capture_output=True, text=True)
+    res = _run(["adb", "-s", adb_s, "shell", "manage-spoof", "sync"],
+               timeout=120, capture_output=True, text=True)
+    out = ((res.stdout or "") + (res.stderr or "")).strip()
+    if out:
+        print(out)
+    if res.returncode != 0:
+        print("[!] No se pudo sincronizar el scope; revisar que ADB esté online.")
+        raise SystemExit(1)
+
+    flag = _run(["adb", "-s", adb_s, "shell", "ls",
+                 "/data/local/tmp/.proteomesh_scope_updated"],
+                timeout=15, capture_output=True, text=True)
+    if ".proteomesh_scope_updated" not in flag.stdout:
+        print("[✓] Scope ya estaba al día; no hace falta reiniciar.")
+    else:
+        print("[*] Scope nuevo detectado: reiniciando para que lspd lo cargue...")
+        _run(["docker", "exec", inst_name, "rm", "-f",
+              "/data/local/tmp/.proteomesh_boot_done"], timeout=15,
+             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run(["docker", "restart", inst_name], timeout=30)
+        if not wait_for_boot(inst_name):
+            print("[!] Timeout esperando el reinicio; revisar: docker logs " + inst_name)
+            raise SystemExit(1)
+        _run(["adb", "connect", adb_s], timeout=10, capture_output=True, text=True)
+        w, h, dpi, disabled_count = apply_runtime_defaults(adb_s, meta)
+        print(f"[✓] Reinicio completado; apply-props.sh volvió a sincronizar el scope.")
+        print(f"[✓] Overrides restaurados: {w}x{h} @ {dpi}dpi; paquetes desactivados: {disabled_count}")
+
+    if args.package:
+        in_scope = False
+        in_denylist = False
+        for _ in range(15):
+            check = _run(["adb", "-s", adb_s, "shell", "manage-spoof", "list"],
+                         timeout=30, capture_output=True, text=True)
+            if args.package in (check.stdout or ""):
+                in_scope = True
+                denied = _run(["adb", "-s", adb_s, "shell",
+                               "su -c '/sbin/magisk --denylist ls'"],
+                              timeout=30, capture_output=True, text=True)
+                if args.package in ((denied.stdout or "") + (denied.stderr or "")):
+                    in_denylist = True
+                    break
+            time.sleep(2)
+        if not in_scope:
+            print(f"[!] El paquete {args.package} no figura en el scope.")
+            raise SystemExit(1)
+        if not in_denylist:
+            print(f"[!] El paquete {args.package} no figura en la DenyList.")
+            raise SystemExit(1)
+        print(f"[✓] {args.package} verificado en scope LSPosed y DenyList.")
 
 
 def cmd_list_instances(args):
@@ -789,6 +899,12 @@ def main():
     sub = subparsers.add_parser("stop", help="Detiene una instancia existente")
     sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
     sub.set_defaults(func=cmd_stop_instance)
+
+    # sync-scope
+    sub = subparsers.add_parser("sync-scope", help="Sincroniza apps post-boot al scope LSPosed/DenyList")
+    sub.add_argument("name", help="Nombre de la instancia")
+    sub.add_argument("--package", "-P", required=False, help="Paquete a verificar tras sincronizar")
+    sub.set_defaults(func=cmd_sync_scope)
 
     # list-instances
     sub = subparsers.add_parser("list-instances", help="Lista las instancias existentes")

@@ -1,5 +1,11 @@
+# LEGACY / NO CANÓNICO.
+# El camino soportado es: python3 tools/instance_manager.py create|start.
+# Este compose solo se usa con un perfil ya renderizado (generated_identity)
+# y un volumen de instancia, nunca con data-clean ni con un template crudo.
+# Se ejecuta con: tools/compose_up_safe.sh
 services:
   redroid:
+    profiles: ["legacy"]
     image: proteomesh:latest
     container_name: redroid-clean
     privileged: true
@@ -13,8 +19,8 @@ services:
       - net.ipv6.conf.all.disable_ipv6=1
       - net.ipv6.conf.default.disable_ipv6=1
     volumes:
-      - ./data-clean:/data
-      - ./templates/google/pixel5_redfin.json:/system/etc/proteomesh_profile.json:ro
+      - ${PROTEOMESH_DATA:?definir_PROTEOMESH_DATA}:/data
+      - ${PROTEOMESH_PROFILE:?definir_PROTEOMESH_PROFILE}:/system/etc/proteomesh_profile.json:ro
     command:
       - androidboot.redroid_gpu_mode=guest
       - androidboot.use_redroid_c2=1

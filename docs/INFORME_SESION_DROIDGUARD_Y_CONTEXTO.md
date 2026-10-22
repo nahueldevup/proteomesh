@@ -1,3 +1,5 @@
+> **Documento histórico (2026-10-22):** el baseline operativo actual es **Android 13 / API 33**. Android 14 y Play Integrity (`MEETS_BASIC_INTEGRITY`/`MEETS_DEVICE_INTEGRITY`) son objetivos posteriores (ADR-002). Para el estado vigente, ver `docs/ESTADO_ACTUAL.md`.
+
 # INFORME TÉCNICO Y DE CONTEXTO — Sesión ReDroid Integrity Lab
 **Fecha:** 2026-09-24 (sesión larga, ~10:00 → ~19:20 hora contenedor)
 **Idioma de trabajo:** español

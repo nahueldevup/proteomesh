@@ -4,22 +4,51 @@
 # ==============================================================================
 set -euo pipefail
 
+FORCE_RAW=0
+if [ "${1:-}" = "--force-raw" ]; then
+    FORCE_RAW=1
+elif [ $# -gt 0 ]; then
+    echo "[!] Opción desconocida: $1"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build_magisk"
 MAGISK_DEST="${BUILD_DIR}/system/etc/init/magisk"
 INIT_DEST="${BUILD_DIR}/system/etc/init"
-MAGISK_APK_URL="https://github.com/ayasa520/Magisk/releases/download/v30.7/Magisk-v30.7.apk"
-TEMP_APK="/tmp/Magisk-v30.7.apk"
+
+if [ ! -f "${SCRIPT_DIR}/tools/deps_fetch.py" ]; then
+    echo "[!] Falta tools/deps_fetch.py; no se puede verificar la versión de Magisk."
+    exit 1
+fi
+
+TEMP_APK="$(python3 "${SCRIPT_DIR}/tools/deps_fetch.py" path magisk)"
 
 echo "[i] Preparando estructura en ${BUILD_DIR}..."
 mkdir -p "${MAGISK_DEST}"
 mkdir -p "${INIT_DEST}"
 
-# 1. Descargar Magisk APK si no existe
-if [ ! -f "${TEMP_APK}" ]; then
-    echo "[i] Descargando Magisk APK desde ${MAGISK_APK_URL}..."
-    curl -sSL "${MAGISK_APK_URL}" -o "${TEMP_APK}"
+# El binario magisk del árbol puede tener el parche Zygisk. La extracción
+# cruda del APK lo pisaría; se conserva salvo --force-raw.
+PATCHED_MAGISK_BACKUP=""
+if [ "${FORCE_RAW}" -eq 0 ] && [ -f "${MAGISK_DEST}/magisk" ]; then
+    PATCHED_MAGISK_BACKUP="$(mktemp)"
+    cp -a "${MAGISK_DEST}/magisk" "${PATCHED_MAGISK_BACKUP}"
+    echo "[i] Se conservará el binario magisk existente (usar --force-raw para pisarlo)."
 fi
+
+restore_patched_magisk() {
+    if [ -n "${PATCHED_MAGISK_BACKUP}" ] && [ -f "${PATCHED_MAGISK_BACKUP}" ]; then
+        cp -a "${PATCHED_MAGISK_BACKUP}" "${MAGISK_DEST}/magisk"
+        rm -f "${PATCHED_MAGISK_BACKUP}"
+        PATCHED_MAGISK_BACKUP=""
+        echo "[i] Binario magisk parcheado restaurado."
+    fi
+}
+trap restore_patched_magisk EXIT
+
+# 1. Usar el APK verificado por modules.lock (Magisk 30.6)
+echo "[i] Usando Magisk 30.6 verificado desde ${TEMP_APK}..."
 
 # 2. Extraer binarios nativos x86_64 y assets usando python3
 echo "[i] Extrayendo binarios x86_64 y assets..."
@@ -89,4 +118,8 @@ on property:init.svc.zygote=stopped
 RC_EOF
 
 chmod 644 "${INIT_DEST}/bootanim.rc"
+
+restore_patched_magisk
+trap - EXIT
+
 echo "[✓] Magisk Bootless preparado exitosamente en ${BUILD_DIR}"

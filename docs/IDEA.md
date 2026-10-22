@@ -1,1 +1,3 @@
+> **Documento histórico (2026-10-22):** el baseline operativo actual es **Android 13 / API 33**. Android 14 y Play Integrity (`MEETS_BASIC_INTEGRITY`/`MEETS_DEVICE_INTEGRITY`) son objetivos posteriores (ADR-002). Para el estado vigente, ver `docs/ESTADO_ACTUAL.md`.
+
 El objetivo de este laboratorio es lograr la ejecución de un entorno **Android 14 (ReDroid)** en un host Linux, con capacidad de interfaz gráfica remota fluida y cumplimiento de las evaluaciones de **Google Play Integrity API** (`MEETS_BASIC_INTEGRITY` / `MEETS_DEVICE_INTEGRITY`), emulando un dispositivo físico real

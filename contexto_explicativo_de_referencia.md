@@ -1,3 +1,5 @@
+> **Documento histórico con auditoría.** Las 7 fugas de la §5 se evaluaron contra un estado anterior del laboratorio. Varias ya se resolvieron para instancias creadas por `instance_manager.py` (RAM/storage dinámicos, BSSID/SSID por perfil), pero los fallbacks de `FakeWifiHook`/`profile-loader` siguen existiendo (ver `docs/INVENTARIO_IMAGEN.md` y C19). El estado vigente está en `docs/ESTADO_ACTUAL.md`.
+
 # Documento de Contexto Técnico, Arquitectura y Auditoría Crítica
 **Proyecto:** ReDroid Integrity Lab / ProteoMesh  
 **Propósito:** Guía técnica exhaustiva, análisis de causa raíz y hoja de ruta post-commit `d1a1c9a` para construir una plataforma de CloudPhones virtualizados al nivel de GeeLark y GenFarmer.  

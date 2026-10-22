@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "generated": "2026-10-22",
+  "baseline_commit": "b7d900f",
+  "baseline_android": "13 / API 33",
+  "dependencies": {
+    "nohello": {
+      "version": "0.0.7",
+      "repo": "https://github.com/MhmRdd/NoHello",
+      "url": "https://github.com/MhmRdd/NoHello/releases/download/0.0.7/Nohello-v0.0.7-53-4d53ecf-release.zip",
+      "sha256": "36d25e6870c336b1d79487a223b6885452a6a915b0e3033d76979e1002d2fa43",
+      "license": "MIT",
+      "install": {
+        "target": "data-clean/adb/modules/zygisk_nohello",
+        "method": "extract-zip",
+        "managed_by": "tools/bootstrap_data_clean.sh"
+      }
+    },
+    "magisk": {
+      "version": "30.6",
+      "repo": "https://github.com/ayasa520/Magisk",
+      "url": "https://github.com/ayasa520/Magisk/releases/download/v30.6/Magisk-v30.6.apk",
+      "sha256": "a1292054b25c31f19f4cdc3f33b8b48020574fc237eabd7633e54193698ac396",
+      "license": "GPL-3.0",
+      "install": {
+        "target": "build_magisk/system/etc/init/magisk",
+        "method": "prepare-magisk.sh",
+        "managed_by": "prepare-magisk.sh"
+      }
+    }
+  },
+  "manual": {
+    "lsposed": {
+      "version": "1.9.2",
+      "repo": "https://github.com/LSPosed/LSPosed",
+      "status": "preinstalled-in-data-clean",
+      "note": "No se descarga desde el repo; vive dentro de data-clean. Versionar su origen es Fase 4."
+    }
+  },
+  "local_artifacts": {
+    "libzygisk_64": {
+      "path": "build_magisk/system/lib64/libzygisk.solibnb.so",
+      "sha256": "b24d49d3675ac00cd00a6c7a3ad1173d26ba9ee826c339a2d79fe85c8e9b690f",
+      "note": "Companion Zygisk 64-bit con parche isCompatibleWith @0x3284f."
+    },
+    "libzygisk_32": {
+      "path": "build_magisk/system/lib/libzygisk.solibnb.so",
+      "sha256": "716adff81ddb58d3792f4ee6d4af13d83d6b8b903dfcd1d4c1ad13cf4d235d4a",
+      "note": "Companion Zygisk 32-bit con salto del reload de libnb.so @0x5f529."
+    },
+    "libinject_patched": {
+      "path": "build_magisk/system/etc/init/magisk/libinject_patched.so",
+      "sha256": "d1b37fd2f836c2fcecd865e609922c75cc1d27e313e1b0278a652de71c81ec44",
+      "note": "Companion de inyección parcheado; su origen reproducible todavía no está scripted."
+    },
+    "profile_loader": {
+      "path": "build_magisk/system/bin/profile-loader",
+      "sha256": "14cbfc1aa71f6414ebd7ed5160e28514d864fb47b21e9d4e20b7bfc3f0364484",
+      "note": "Binario compilado desde src/profile_loader."
+    },
+    "fake_wifi_apk": {
+      "path": "modules/FakeWifiPixel.apk",
+      "sha256": "3642b63823d7389b7cf785c1232ba63daeb3952c195c2475843b272fd703fe67",
+      "note": "APK compilado desde src/lsposed_module."
+    }
+  }
+}

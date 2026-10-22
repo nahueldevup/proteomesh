@@ -16,11 +16,13 @@ build_gapps/
 
 # Temporary and build artifacts
 *.log
+!tests/results/f05-live/f05-rdp-clean-license-blocked.log
 *.tmp
 *.bak
 *.orig
 __pycache__/
 *.py[cod]
+.cache/
 .probe/
 build/tests/
 

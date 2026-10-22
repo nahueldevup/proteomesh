@@ -6,7 +6,7 @@ Esta guía documenta la arquitectura, causas raíz técnicas, modificaciones de 
 
 ## 1. Resultados Obtenidos y Línea Base de Validación
 
-En la instancia de validación (`hide-test`, puerto ADB 5598), con **Magisk 30.6** y **LSPosed Framework** plenamente instalados, activos y operativos:
+En la instancia de validación (`hide-test`, puerto ADB 5598; contenedor retirado, datos persistentes), con **Magisk 30.6** y **LSPosed Framework** plenamente instalados, activos y operativos:
 
 | Suite de Evaluación | Categoría / Indicador | Resultado Obtenido | Estado |
 |---|---|---|---|
@@ -19,10 +19,12 @@ En la instancia de validación (`hide-test`, puerto ADB 5598), con **Magisk 30.6
 | **Root Detection Plus** | **Total General** | **0 / 39 Detecciones** | 🏆 **100% Clean (0 Issues)** |
 | **Pixelscan Android Checker** | **Environment Risk Score** | **100 / 100** | 🏆 **Low Risk (Verde)** |
 
-*Evidencia gráfica generada:*
-- `/tmp/opencode/rdp_perfect_top.png` (Resumen general 0 Detected • 39 Not Detected)
-- `/tmp/opencode/rdp_perfect_bottom.png` (Detalle de Hooking, Boot, Virtual, Dangerous Apps)
-- `/tmp/opencode/pixelscan_100_perfect.png` (Score 100 / 100 en Pixelscan Checker)
+> **Límite de F0.5 (2026-10-22, aceptado):** el 0/39 se revalidó en `hide-test`, que tiene licencia Play. En el clon limpio `f05-live`, PairIP abre `LicenseActivity` → Play Pass (`UnauthenticatedMainActivity`); sin cuenta licenciada no se puede ejecutar RDP. Se aceptó esta excepción al cerrar F0.5. Pixelscan sí se revalidó en `f05-live` con 100/100.
+
+*Evidencia versionable:*
+- `tests/results/f05-live/f05-rdp-hidetest-02.png` y `.xml` (0 Detected • 39 Not Detected en `hide-test`)
+- `tests/results/f05-live/f05-rdp-clean-license-blocked.png` y `.log` (bloqueo de licencia en clon limpio)
+- `tests/results/f05-live/f05-pixelscan-final-1080.png` (Score 100 / 100 en `f05-live`)
 
 ---
 
@@ -120,30 +122,27 @@ bash src/lsposed_module/build_apk.sh
 DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .
 ```
 
-### Paso 2: Copiar el módulo NoHello y reglas a la instancia
-Con la instancia iniciada (reemplazar `127.0.0.1:5586` por el puerto ADB correspondiente):
+### Paso 2: Aprovisionar NoHello y reglas en el volumen
+El módulo ya no se copia desde una instancia viva. Se instala desde el ZIP
+verificado por `modules.lock`:
 ```bash
-TARGET_ADB="127.0.0.1:5586"
+# Detener la instancia si está corriendo; el bootstrap escribe en su /data.
+python3 tools/deps_fetch.py verify
 
-# 1. Crear directorios de NoHello
-adb -s $TARGET_ADB shell 'su 0 mkdir -p /data/adb/modules/zygisk_nohello/zygisk /data/adb/nohello /data/adb/service.d'
+# Provisionar el volumen de la instancia (reemplazar <id>).
+bash tools/bootstrap_data_clean.sh --data-dir "instances/<id>/data"
+```
+El script:
+- verifica el SHA-256 de NoHello 0.0.7;
+- mapea `lib/x86*/libzygisk_nohello.so` a `zygisk/x86.so` y `zygisk/x86_64.so`;
+- escribe `/data/adb/nohello/umount` y `umount_persist`;
+- elimina identidad persistente y deja `module.prop` limpio.
 
-# 2. Copiar archivos de NoHello desde hide-test o el zip de NoHello v0.0.7
-adb -s 127.0.0.1:5598 shell 'su 0 tar -cf - -C /data/adb/modules zygisk_nohello' | adb -s $TARGET_ADB shell 'su 0 tar -xf - -C /data/adb/modules'
-
-# 3. Copiar archivo de configuración de umount
-adb -s $TARGET_ADB shell 'su 0 sh -c "cat << \"EOF\" > /data/adb/nohello/umount
-source { \"KSU\", \"APatch\", \"magisk\", \"worker\" } fs { \"tmpfs\" \"overlay\" }
-point {\"/system/etc/hosts\"}
-
-point {\"/sbin\"}
-EOF
-chmod 644 /data/adb/nohello/umount
-touch /data/adb/nohello/umount_persist
-chmod 644 /data/adb/nohello/umount_persist"'
-
-# 4. Asegurar configuración de Magisk y sincronizar scope y DenyList
-adb -s $TARGET_ADB shell 'su 0 sh -c "
+### Paso 3: Configurar Magisk y sincronizar scope/DenyList
+Con la instancia ya arrancada y ADB conectado:
+```bash
+TARGET_ADB="127.0.0.1:<puerto>"
+adb -s "$TARGET_ADB" shell 'su 0 sh -c "
 /sbin/magisk --sqlite \"INSERT OR REPLACE INTO settings (key, value) VALUES (\\\"denylist\\\", 0);\"
 /sbin/magisk --denylist disable
 manage-spoof sync
@@ -151,7 +150,7 @@ manage-spoof sync
 "'
 ```
 
-### Paso 5: Reiniciar la instancia
+### Paso 4: Reiniciar la instancia
 Reiniciar desde el gestor de instancias para recargar daemons y montajes de manera limpia:
 ```bash
 python3 tools/instance_manager.py stop verify-a54
@@ -165,32 +164,17 @@ python3 tools/instance_manager.py start verify-a54
 El gestor de instancias `tools/instance_manager.py` genera nuevas instancias clonando la imagen dorada del sistema de archivos `/data` ubicada en `data-clean/`:
 
 ```python
-# tools/instance_manager.py línea 296
-sanitize_sh = f"cp -a /lab/data-clean/* /lab/instances/{inst_name}/data/ 2>/dev/null || true && ..."
+# tools/instance_manager.py:307-315
+sanitize_sh = f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && ..."
 ```
 
 Para que **toda nueva instancia nazca 100% blindada automáticamente**:
 
 ### Paso A: Aprovisionar NoHello en `data-clean`
-Copiar los módulos y reglas una única vez dentro de `data-clean`:
+El bootstrap reproducible reemplaza la copia manual desde una instancia viva:
 ```bash
-# Como root o con permisos de docker:
-sudo mkdir -p data-clean/adb/modules/zygisk_nohello/zygisk
-sudo mkdir -p data-clean/adb/nohello
-
-# Copiar zygisk_nohello desde hide-test
-adb -s 127.0.0.1:5598 shell 'su 0 tar -cf - -C /data/adb/modules zygisk_nohello' | sudo tar -xf - -C data-clean/adb/modules/
-
-# Configurar umount
-sudo bash -c 'cat << "EOF" > data-clean/adb/nohello/umount
-source { "KSU", "APatch", "magisk", "worker" } fs { "tmpfs" "overlay" }
-point {"/system/etc/hosts"}
-
-point {"/sbin"}
-EOF
-chmod 644 data-clean/adb/nohello/umount
-touch data-clean/adb/nohello/umount_persist
-chmod 644 data-clean/adb/nohello/umount_persist'
+python3 tools/deps_fetch.py verify
+bash tools/bootstrap_data_clean.sh
 ```
 
 ### Paso B: Integración nativa en `apply-props.sh` y `manage-spoof`
@@ -229,6 +213,8 @@ adb -s $TARGET shell 'uiautomator dump /sdcard/ps.xml >/dev/null 2>&1; cat /sdca
 # Esperado: 100 / 100, Low Risk
 
 # 3. Correr Root Detection Plus
+#    Requiere una instalación con licencia Play Pass ya activada (p. ej. hide-test).
+#    En un clon limpio sin cuenta, PairIP abre el paywall y la app no ejecuta el scan.
 adb -s $TARGET shell 'pm clear at.persie0.root_detection_app; su 0 cmd package set-installer at.persie0.root_detection_app com.android.vending; am start -W -n at.persie0.root_detection_app/.MainActivity'
 sleep 2
 adb -s $TARGET shell 'input tap 136 1856; sleep 0.5; input tap 540 2058'
@@ -278,7 +264,7 @@ A continuación se detalla cada componente del repositorio que fue creado o modi
 
 ### 7. `build_magisk/system/bin/manage-spoof` (Gestor de Alcance y DenyList)
 - **Propósito:** Utilidad de línea de comandos para administrar el scope de spoofing de LSPosed y sincronizar aplicaciones.
-- **Cambios realizados:** En la acción `manage-spoof sync` (invocada en cada arranque por `apply-props.sh`), se añadió la sincronización automática de la DenyList de Magisk: detecta todas las aplicaciones de terceros (`pm list packages -3`) y las registra automáticamente en la DenyList (excluyendo únicamente los managers de root y LSPosed). De este modo, cualquier app que el usuario instale queda inmediatamente blindada por NoHello sin configuración manual.
+- **Cambios realizados:** En la acción `manage-spoof sync` (invocada en cada arranque por `apply-props.sh`), se añadió la sincronización automática de la DenyList de Magisk: detecta todas las aplicaciones de terceros (`pm list packages -3`) y las registra automáticamente en la DenyList (excluyendo únicamente los managers de root y LSPosed). De este modo, una app instalada queda cubierta en el siguiente arranque. Para aplicarla sin esperar, usar `python3 tools/instance_manager.py sync-scope <id> --package <pkg>`.
 
 ### 8. `docs/GUIA_DE_REPLICACION_ANTIROOT.md` (Documentación Operativa Maestra)
 - **Propósito:** Guía completa con arquitectura, causas raíz técnicas resueltas, procedimiento paso a paso para replicar en instancias existentes (`verify-a54`), guía de automatización para nuevas instancias (`data-clean`) e inventario de archivos.

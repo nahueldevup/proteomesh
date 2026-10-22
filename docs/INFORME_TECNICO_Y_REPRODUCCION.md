@@ -1,3 +1,5 @@
+> **Documento histórico (2026-10-22):** el baseline operativo actual es **Android 13 / API 33**. Android 14 y Play Integrity (`MEETS_BASIC_INTEGRITY`/`MEETS_DEVICE_INTEGRITY`) son objetivos posteriores (ADR-002). Para el estado vigente, ver `docs/ESTADO_ACTUAL.md`.
+
 # Informe Técnico de Arquitectura, Depuración y Reproducción
 ## Laboratorio ReDroid + Play Integrity (Xiaomi Redmi 5 Plus / vince)
 **Fecha de actualización:** 23 de Septiembre de 2026  

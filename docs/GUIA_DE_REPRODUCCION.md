@@ -68,6 +68,19 @@ Construye la imagen Docker unificada que integra el sistema Android 13, GMS, Mag
 docker build -t proteomesh:latest .
 ```
 
+### Verificación de dependencias y `data-clean`
+```bash
+# NoHello 0.0.7, Magisk 30.6 y artefactos locales contra modules.lock
+python3 tools/deps_fetch.py verify
+
+# Ensayo sin escribir; quitar --dry-run para aprovisionar data-clean
+bash tools/bootstrap_data_clean.sh --dry-run
+
+# Regresión host-side del manager
+python3 -m unittest discover -s tests/host -v
+```
+El bootstrap real reemplaza NoHello, escribe las reglas de umount y elimina identidad persistente de `data-clean`. No ejecutarlo con instancias corriendo que compartan esa base.
+
 ---
 
 ## 4. Gestión y Despliegue de Instancias (`instance_manager.py`)
@@ -86,17 +99,17 @@ python3 tools/instance_manager.py list-carriers
 ### B. Previsualizar Identidad Aleatoria en Rango (Estilo GeeLark)
 Permite previsualizar los identificadores generados (IMEI con Luhn, MACs con OUI del fabricante, serial y SIM) antes de crear la instancia:
 ```bash
-python3 tools/instance_manager.py randomize samsung/a54x ar_personal
+python3 tools/instance_manager.py randomize --template samsung/a54x --carrier ar_personal
 ```
 
 ### C. Crear una Nueva Instancia Aislada
 Crea la instancia clonando la base limpia (`data-clean/`), congelando el perfil en `instances/<nombre>/profile.json` y asignando un puerto ADB único:
 ```bash
 # Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584
-python3 tools/instance_manager.py create mi-a54-01 samsung/a54x ar_personal --port 5584
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584
 
 # Ejemplo: Crear un Xiaomi Redmi 12 en puerto 5586
-python3 tools/instance_manager.py create redmi-12-01 xiaomi/fire ar_personal --port 5586
+python3 tools/instance_manager.py create --name redmi-12-01 --template xiaomi/fire --carrier ar_personal --port 5586
 ```
 
 ### D. Iniciar la Instancia
@@ -136,6 +149,13 @@ done
 * **Advertencia:** re-ejecutar `create` sobre un nombre existente regenera la identidad y sobrescribe `profile.json`; el `continue` del loop evita ese caso.
 * **Advertencia de recursos:** en hosts de 16 GB no arranques las 17 a la vez; cada instancia en caliente consume 0.4–1.8 GB de RAM. Arrancar de a 1–2.
 
+### I. Sincronizar Apps Instaladas Después del Boot (C5)
+`apply-props.sh` sincroniza el scope LSPosed y la DenyList en cada arranque. Para una app instalada con la instancia ya corriendo:
+```bash
+python3 tools/instance_manager.py sync-scope mi-a54-01 --package <paquete>
+```
+El comando ejecuta `manage-spoof sync`, reinicia solo si hay scope nuevo y verifica que el paquete figure en el scope y en la DenyList. La verificación usa `su -c '/sbin/magisk --denylist ls'` porque `adb root` no funciona en builds de producción; además reintenta hasta 15×2s para cubrir la carrera del arranque. Después del reinicio reaplica `wm size`, `wm density`, paquetes desactivados y `BG_PROCESS_SETTINGS` (`apply_runtime_defaults`).
+
 ---
 
 ## 5. Verificación de Integridad y Diagnóstico
@@ -160,7 +180,8 @@ adb -s 127.0.0.1:$PORT shell cat /proc/version
 ### B. Verificación de Tiendas Oficiales y Servicios
 * **Google Play Store:** Abre directamente a la pantalla oficial de inicio de sesión (`UnauthenticatedMainActivity`) sin el bloqueo de "Dispositivo no certificado".
 * **Buscador de Google:** Ejecuta búsquedas web sin pantallas de error ("Ocurrió un error"), conectando mediante el stack Cronet expuesto en `public.libraries.txt`.
-* **Pixelscan:** Al ejecutar el test en el dispositivo, verifica un puntaje de **75/100** con cero advertencias de `Brand Store Missing`.
+* **Pixelscan:** Al ejecutar el test en el dispositivo, verifica un puntaje de **100/100 Low Risk** (estado validado en `docs/ESTADO_ACTUAL.md`) con cero advertencias de `Brand Store Missing`.
+* **Root Detection Plus:** El APK `at.persie0.root_detection_app` requiere licencia Play Pass; sin una cuenta licenciada abre `UnauthenticatedMainActivity`. La evidencia 0/39 de F0.5 se tomó en `hide-test` con licencia, no en el clon limpio.
 * **Device Info / DevCheck:** Verifica en la pestaña *Sistema* que el Kernel muestre `5.10.149-android12-9-...`, el Bootloader esté reportado como bloqueado con su versión de compilación, y la Banda Base muestre el firmware de módem oficial.
 
 ### C. Verificación de Pantalla Lógica (lo que ven las Aplicaciones)

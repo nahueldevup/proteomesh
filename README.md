@@ -105,7 +105,7 @@ El sistema evade exhaustivamente la detección de root y manipulación en aplica
 
 ## 📊 Matriz de Validación de Calidad
 
-Resultados comprobados en instancias reales de producción (`verify-a54` y `inst-note13`):
+Resultados comprobados en instancias reales de producción (`verify-a54`, `inst-note13`, `hide-test` y el clon limpio `f05-live`):
 
 | Herramienta / Prueba | Categoría Auditada | Métrica Obtenida | Estado |
 |---|---|---|---|
@@ -118,6 +118,8 @@ Resultados comprobados en instancias reales de producción (`verify-a54` y `inst
 | **Root Detection Plus** | Dangerous Apps / Modding Tools | **0 / 2** Detecciones | ✅ 100% Not Detected |
 | **Root Detection Plus** | **Total General** | **0 / 39 Detecciones** | 🏆 **100% Clean (0 Issues)** |
 | **ArchProbe (Sonda Interna)** | SoC / CPU / Kernel / Net / Maps | **0 fugas de host / 0 x86_64** | 🏆 **Coherencia Total** |
+
+> **F0.5 (2026-10-22, cerrada con excepción):** Pixelscan **100/100** fue revalidado en el clon limpio `f05-live`. Root Detection Plus **0/39** se revalidó en `hide-test`, que tiene licencia Play; el mismo APK en el clon limpio queda bloqueado por PairIP/Play Pass. Se aceptó esa excepción y quedó documentada. Evidencia en `tests/results/f05-live/` y detalle en `docs/ESTADO_ACTUAL.md`.
 
 ---
 
@@ -133,14 +135,26 @@ bash src/lsposed_module/build_apk.sh
 DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .
 ```
 
-### 2. Gestionar Instancias con `instance_manager.py`
+### 2. Verificar Dependencias y `data-clean`
+```bash
+# Verificar NoHello/Magisk y los artefactos locales contra modules.lock
+python3 tools/deps_fetch.py verify
+
+# Ensayar el bootstrap reproducible de data-clean (no escribe)
+bash tools/bootstrap_data_clean.sh --dry-run
+
+# Regresión host-side del manager (validación de nombres)
+python3 -m unittest discover -s tests/host -v
+```
+
+### 3. Gestionar Instancias con `instance_manager.py`
 ```bash
 # 1. Listar plantillas de hardware y operadoras disponibles
 python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 
 # 2. Previsualizar identidad aleatoria válida en rango para un modelo
-python3 tools/instance_manager.py randomize samsung/a54x ar_personal
+python3 tools/instance_manager.py randomize --template samsung/a54x --carrier ar_personal
 
 # 3. Crear una nueva instancia (clona data-clean con blindaje anti-root preinstalado)
 python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --start
@@ -151,6 +165,9 @@ scrcpy -s 127.0.0.1:5584
 # 5. Detener o reiniciar la instancia
 python3 tools/instance_manager.py stop mi-a54-01
 python3 tools/instance_manager.py start mi-a54-01
+
+# 6. Tras instalar una app, sincronizar scope LSPosed + DenyList y reiniciar
+python3 tools/instance_manager.py sync-scope mi-a54-01 --package <paquete>
 ```
 
 ---

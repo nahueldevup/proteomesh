@@ -1,3 +1,5 @@
+> **Documento histórico local.** Las rutas absolutas del host pertenecen a una sesión anterior; no forman parte del flujo reproducible actual. Ver `docs/ESTADO_ACTUAL.md`.
+
 # 📋 Guía de Automatización y Reportes para Hermes
 
 Este documento describe cómo ejecutar la suite de telemetría y dónde consultar los reportes generados para el análisis de Play Integrity y hardware spoofing en Redroid.
