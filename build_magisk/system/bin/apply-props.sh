@@ -43,67 +43,17 @@ delprop() {
     $RP --delete "$1" 2>/dev/null || true
 }
 
-# Aplicar plantilla de hardware activa desde el perfil
+# Aplicar plantilla de hardware activa desde el perfil (ADR-001 F1: sin fallback silencioso)
 if [ -x "/system/bin/profile-loader" ]; then
-    /system/bin/profile-loader apply /system/etc/proteomesh_profile.json
+    if [ -f "/proteomesh/bundle/profile.json" ]; then
+        /system/bin/profile-loader apply /proteomesh/bundle/profile.json || true
+    elif [ -f "/system/etc/proteomesh_profile.json" ]; then
+        /system/bin/profile-loader apply /system/etc/proteomesh_profile.json || true
+    else
+        echo "[!] ERROR: No se encontró perfil de hardware en /proteomesh/bundle/profile.json ni en /system/etc/proteomesh_profile.json" >&2
+    fi
 else
-# ==============================================================================
-# 1. Identidad de Dispositivo (Fallback Google Pixel 5 - Android 13)
-# ==============================================================================
-BRAND="google"
-MANUF="Google"
-MODEL="Pixel 5"
-PRODUCT="redfin"
-DEVICE="redfin"
-BOARD="redfin"
-HARDWARE="redfin"
-PLATFORM="sm7250"
-BUILD_ID="TQ3A.230901.001.C2"
-INCREMENTAL="10750268"
-SECURITY_PATCH="2023-11-01"
-RELEASE="13"
-SDK="33"
-FINGERPRINT="google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys"
-FLAVOR="redfin-user"
-DESCRIPTION="redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys"
-
-# Particiones del sistema (incluyendo vendor_dlkm)
-for part in "" "system." "vendor." "product." "system_ext." "odm." "vendor_dlkm."; do
-    setprop "ro.product.${part}brand" "$BRAND"
-    setprop "ro.product.${part}manufacturer" "$MANUF"
-    setprop "ro.product.${part}model" "$MODEL"
-    setprop "ro.product.${part}name" "$PRODUCT"
-    setprop "ro.product.${part}device" "$DEVICE"
-    setprop "ro.product.${part}marketname" "$MODEL"
-done
-
-# Hardware y SoC
-setprop "ro.product.board" "$BOARD"
-setprop "ro.board.platform" "$PLATFORM"
-setprop "ro.hardware" "qcom"
-setprop "ro.boot.hardware" "qcom"
-setprop "ro.hardware.hwcomposer" "redroid"
-setprop "ro.hardware.gralloc" "redroid"
-setprop "ro.boot.hardware.platform" "$PLATFORM"
-setprop "ro.hardware.chipname" "$PLATFORM"
-setprop "ro.build.product" "$PRODUCT"
-
-# Versión de Android y Build Display ID (Build Number)
-for part in "" "system." "vendor." "product." "system_ext." "odm." "vendor_dlkm."; do
-    setprop "ro.${part}build.id" "$BUILD_ID"
-    setprop "ro.${part}build.display.id" "$BUILD_ID"
-    setprop "ro.${part}build.version.incremental" "$INCREMENTAL"
-    setprop "ro.${part}build.version.security_patch" "$SECURITY_PATCH"
-    setprop "ro.${part}build.version.release" "$RELEASE"
-    setprop "ro.${part}build.version.release_or_codename" "$RELEASE"
-    setprop "ro.${part}build.version.sdk" "$SDK"
-    setprop "ro.${part}build.fingerprint" "$FINGERPRINT"
-    setprop "ro.${part}build.type" "user"
-    setprop "ro.${part}build.tags" "release-keys"
-done
-
-setprop "ro.build.flavor" "$FLAVOR"
-setprop "ro.build.description" "$DESCRIPTION"
+    echo "[!] ERROR: /system/bin/profile-loader no está disponible o no es ejecutable" >&2
 fi
 
 # ==============================================================================

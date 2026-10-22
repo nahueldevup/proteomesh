@@ -3,24 +3,25 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; fix C5 `a01586e`; smoke test F0.5 `c72b33a` |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; cierre F1 en `main` |
 | Baseline | Android 13 / API 33 |
-| Imagen | `proteomesh:latest` (`sha256:5cc1c1f9c61463131075154a6d51ec7e948df410e9a53fc4e50aa185db2800af`); rollback `proteomesh:pre-f05` (`sha256:558f46f38ca78213d43220e54f9c301a719e39526a7e1024c10048be44b77759`) |
-| Estado del repo | `main`; F0.5 cerrada; evidencia en `tests/results/f05-main/` y `tests/results/f05-live/` |
-| Próximo hito | Fase 1 — contrato de bundle |
+| Imagen | `proteomesh:latest` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`); rollback `proteomesh:pre-f1` (`sha256:5cc1c1f9c61463131075154a6d51ec7e948df410e9a53fc4e50aa185db2800af`) |
+| Estado del repo | `main`; F1 cerrada (contrato de bundle); tests host-side pasando (15/15) |
+| Próximo hito | Fase 1.5 — Model-agnostic (sacar defaults Pixel 5 de la imagen) |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
 
 ## 1. Qué está validado hoy
 
-- **Pixelscan en `f05-main`:** **100/100 Low Risk** sobre el `data-clean` original; captura 1080x2340 y override `1080x2340 @450`.
+- **Contrato de bundle (Fase 1 cerrada):** `profile.json` obligatorio, formalización de `manifest.json` (`bundle_format: 1`, `runtime_min: "1.0"`), validación de `generated_identity` (Luhn en IMEI, formato MAC, serial) y rechazo explícito de plantillas crudas. `create`/`start` aplican fail-fast antes de invocar Docker. Se eliminaron los fallbacks hardcodeados a Pixel 5 de `mask-early.sh` y `apply-props.sh`. Se monta `/proteomesh/bundle:ro` además de `/system/etc/proteomesh_profile.json:ro`. Suite de 15 tests unitarios en `tests/host/test_instance_manager.py`.
+- **Pixelscan en `f05-main`:** **100/100 Low Risk** sobre el `data-clean` original e imagen F1; captura 1080x2340 y override `1080x2340 @450`.
 - **Root Detection Plus en `f05-main`:** **0/39** (`0/9`, `0/7`, `0/3`, `0/13`, `0/5`, `0/2`) sin paywall. RDP ya estaba instalado y licenciado en `data-clean`; no se agregó una cuenta nueva. La antigua excepción del clon quedó obsoleta.
 - **Evidencia:** `tests/results/f05-main/` (Pixelscan, RDP top/bottom, XML y hashes) y `tests/results/f05-live/` como evidencia histórica del clon. C13 sigue parcial por falta de CI.
 - **C5 validado en vivo:** `sync-scope` usa `su -c` para la DenyList, reintenta tras reinicio y `apply_runtime_defaults` restaura y **verifica** `wm size/density`, paquetes desactivados y BG processes. `net.pixelscan.check` queda en scope y DenyList.
 - **Stack verificado:** Magisk 30.6 bootless, LSPosed 1.9.2, NoHello v0.0.7, `libpixel_hw.so` 64/32, `FakeWifiPixel.apk`, `manage-spoof`.
-- **Entrega de perfil:** `instance_manager.py create` escribe `instances/<name>/profile.json` y lo monta read-only en `/system/etc/proteomesh_profile.json`; `/system/bin/profile-loader apply` lo consume. (C8/C9, confirmados.)
+- **Entrega de perfil:** `instance_manager.py create` escribe `instances/<name>/profile.json` y lo monta read-only en `/system/etc/proteomesh_profile.json` y `/proteomesh/bundle`; `/system/bin/profile-loader apply` lo consume. (C8/C9, confirmados.)
 - **Catálogo:** 17 plantillas en `templates/` y 3 carriers en `carriers/`; todas parsean.
-- **Instancias existentes:** `f05-main` corriendo en `5601` (contenedor `3e4383faa391`); `hide-test` sin contenedor pero con data persistente; `inst-note13`, `verify-a54` y `v-gale` conservan sus datos. El clon `f05-live` y su copia parcial fueron eliminados.
+- **Instancias existentes:** `f05-main` corriendo en `5601` (contenedor `aa76b1e3fb3c`); `hide-test` sin contenedor pero con data persistente; `inst-note13`, `verify-a54` y `v-gale` conservan sus datos. El clon `f05-live` y su copia parcial fueron eliminados.
 - **`data-clean`:** original intacto (`mtime=2026-10-10 07:31:33.117736806 -0300`); NoHello y RDP licenciado ya aprovisionados; sin cuentas en `accounts_ce.db`/`accounts_de.db`; sin `persistent_properties` ni `persist.sys.fake.*`. El clon parcial que tenía 8 fuentes fscrypt faltantes ya no existe.
 
 ## 2. Qué no está resuelto
@@ -73,8 +74,8 @@
 
 - **F0 — Inventario y verificación:** completada al 2026-10-22 (`docs/INVENTARIO_IMAGEN.md`, C1-C20 documentados).
 - **F0.5 — Verdad documental y reproducibilidad:** **cerrada el 2026-10-22.** Incluye docs, `modules.lock`, `deps_fetch`, `bootstrap_data_clean`, Magisk 30.6, validación de `--name`, guardrail de compose, `sync-scope`, imagen nueva, el fix de overrides `a01586e` y el smoke test `f05-main`: Pixelscan 100/100 y RDP 0/39 sobre `data-clean`. La reproducibilidad desde cero queda para F4.
-- **F1 — Contrato de bundle:** perfil obligatorio, sin fallback, fallo explícito en `create`/`start`.
-- **F1.5 — Model-agnostic:** sacar defaults Pixel 5 de la imagen.
+- **F1 — Contrato de bundle:** **cerrada el 2026-10-22.** Bundle formalizado con `profile.json` obligatorio y `manifest.json` (`bundle_format: 1`). `validate_profile` y `validate_bundle` aplican fail-fast en `create`/`start` exigiendo `generated_identity` (Luhn válido en IMEI, MAC, serial) y rechazando templates crudos antes de llamar a Docker. Se eliminaron los fallbacks hardcodeados a Pixel 5 en `mask-early.sh` y `apply-props.sh`. Se monta `/proteomesh/bundle:ro`. 15 tests unitarios en `tests/host/test_instance_manager.py`.
+- **F1.5 — Model-agnostic:** sacar defaults Pixel 5 de la imagen (scripts, profile-loader, APK, permisos).
 - **F2 — Renderizador:** `proteomesh render` puro con schema y golden files.
 - **F3 — Manager:** `--from-bundle`, validación, límites, evidencia post-arranque.
 - **F4 — Dependencias:** completar `modules.lock` (redroid_base/LSPosed), `data-clean` reproducible end-to-end y guía sin `hide-test`.

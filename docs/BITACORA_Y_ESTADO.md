@@ -660,6 +660,16 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Corrección posterior (mismo día):** el clon `redroid-f05-clean` y el contenedor `f05-live` se eliminaron. Se creó `f05-main` desde el `data-clean` original del repo principal; RDP ya venía instalado y licenciado, abrió sin paywall y dio **0/39** (`0/9`, `0/7`, `0/3`, `0/13`, `0/5`, `0/2`). Pixelscan también dio **100/100** a `1080x2340 @450`. Evidencia en `tests/results/f05-main/`, con hashes en `RESUMEN.md`.
 * **Estado:** F0.5 **cerrada el 2026-10-22 sin excepción RDP**. La copia parcial del clon y sus 8 fuentes faltantes ya no existen; el smoke test final usa el `data-clean` original. La reproducibilidad desde cero sigue para F4. Evidencia previa en `c3cfeb6`; fix de overrides en `a01586e`; smoke test en `c72b33a`.
 
+### 51. F1 — Contrato de bundle y eliminación de fallbacks (2026-10-22)
+
+* **Contrato de bundle formalizado:** `instance_manager.py` ahora genera `manifest.json` (`bundle_format: 1`, `runtime_min: "1.0"`) en cada instancia creada o iniciada.
+* **Validación e identidad requerida (Fail-Fast):** Se implementaron `validate_profile` y `validate_bundle`. Se exige `generated_identity` (IMEI válido según Luhn, MAC con 6 octetos hex, número de serie no vacío) y se rechaza el uso directo de templates crudos. Si el bundle no existe o es inválido, `instance_manager.py start` aborta con error explícito antes de cualquier invocación de Docker, evitando contenedores huérfanos o bootloops.
+* **Eliminación de fallbacks a Pixel 5:** Se suprimieron los bloques `else` con identidades fijas de Google Pixel 5 en `build_magisk/system/bin/mask-early.sh` y `apply-props.sh`. Ambos scripts ahora consultan `/proteomesh/bundle/profile.json` y `/system/etc/proteomesh_profile.json` sin contaminar silenciosamente dispositivos de otras marcas.
+* **Montaje de bundle:** Docker ahora monta `-v instances/<name>:/proteomesh/bundle:ro` además del mount tradicional de compatibilidad.
+* **Tests unitarios (15/15 OK):** Suite ampliada en `tests/host/test_instance_manager.py` testeando validación de nombres, campos de perfil, algoritmo de Luhn, manifests y fail-fast en arranque.
+* **Rebuild y validación viva en `f05-main`:** Imagen actualizada `proteomesh:latest` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`; rollback `proteomesh:pre-f1`). `f05-main` arrancó limpiamente reportando `Samsung Galaxy A54 5G` (`SM-A546M`) y mantuvo **100/100 Low Risk** en Pixelscan con overrides `1080x2340 @450`.
+* **Estado:** Fase 1 **cerrada el 2026-10-22**. Próximo hito: Fase 1.5 (Model-agnostic).
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

@@ -18,6 +18,7 @@ import re
 import sys
 import json
 import time
+import hashlib
 import subprocess
 import random
 import string
@@ -32,6 +33,9 @@ CARRIERS_DIR = BASE_DIR / "carriers"
 INSTANCES_DIR = BASE_DIR / "instances"
 CLEAN_DATA_DIR = BASE_DIR / "data-clean"
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
+MAC_RE = re.compile(r"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
+BUNDLE_FORMAT_VERSION = 1
+RUNTIME_VERSION = "1.0"
 
 # ── Optimización de renderizado ──────────────────────────────────────────────
 # SurfaceFlinger renderiza a resolución/fps reducidos para ahorrar CPU/RAM.
@@ -283,6 +287,108 @@ def validate_instance_name(name: str) -> str:
         )
     return name
 
+def validate_profile(doc: dict, source_label: str = "perfil") -> dict:
+    """Valida el contrato de perfil de hardware según ADR-001 (F1).
+
+    Exige identidad generada con IMEI válido por Luhn y rechaza templates crudos.
+    """
+    if not isinstance(doc, dict):
+        raise SystemExit(f"[!] Error en {source_label}: el contenido debe ser un objeto JSON.")
+
+    dev = doc.get("device")
+    if not isinstance(dev, dict):
+        raise SystemExit(f"[!] Error en {source_label}: falta la sección obligatoria 'device'.")
+    for key in ("brand", "model", "manufacturer", "fingerprint"):
+        if not dev.get(key):
+            raise SystemExit(f"[!] Error en {source_label}: campo 'device.{key}' faltante o vacío.")
+
+    disp = doc.get("display")
+    if not isinstance(disp, dict):
+        raise SystemExit(f"[!] Error en {source_label}: falta la sección obligatoria 'display'.")
+    for key in ("width", "height", "dpi"):
+        val = disp.get(key)
+        if not isinstance(val, int) or val <= 0:
+            raise SystemExit(f"[!] Error en {source_label}: 'display.{key}' debe ser un entero positivo.")
+
+    identity = doc.get("generated_identity")
+    if not isinstance(identity, dict):
+        identity = doc.get("identity")
+    if not isinstance(identity, dict):
+        raise SystemExit(
+            f"[!] Error en {source_label}: falta 'generated_identity'. "
+            "Las plantillas crudas no son ejecutables directamente; "
+            "usa 'instance_manager.py create' para generar una identidad válida."
+        )
+
+    imei = str(identity.get("imei") or "").strip()
+    if not imei.isdigit() or not (14 <= len(imei) <= 16):
+        raise SystemExit(f"[!] Error en {source_label}: 'generated_identity.imei' inválido ({imei!r}).")
+    if len(imei) == 15 and calc_luhn(imei[:14]) != int(imei[14]):
+        raise SystemExit(f"[!] Error en {source_label}: el IMEI {imei} no pasa el control de Luhn.")
+
+    serial = str(identity.get("serial") or "").strip()
+    if not serial:
+        raise SystemExit(f"[!] Error en {source_label}: 'generated_identity.serial' faltante o vacío.")
+
+    wmac = str(identity.get("wifi_mac") or "").strip()
+    if not MAC_RE.fullmatch(wmac):
+        raise SystemExit(f"[!] Error en {source_label}: 'generated_identity.wifi_mac' inválida ({wmac!r}).")
+
+    return doc
+
+def create_bundle_manifest(inst_dir: Path, template_source: str, instance_name: str) -> dict:
+    """Genera manifest.json formalizando el bundle según ADR-001 §3.3."""
+    profile_path = inst_dir / "profile.json"
+    p_bytes = profile_path.read_bytes() if profile_path.exists() else b""
+    p_hash = hashlib.sha256(p_bytes).hexdigest() if p_bytes else ""
+
+    manifest = {
+        "bundle_format": BUNDLE_FORMAT_VERSION,
+        "runtime_min": RUNTIME_VERSION,
+        "instance_name": instance_name,
+        "template": template_source,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "profile_sha256": p_hash
+    }
+    with open(inst_dir / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+    return manifest
+
+def validate_bundle(inst_dir: Path) -> tuple[dict, dict]:
+    """Valida la integridad del bundle de la instancia (profile.json + manifest.json).
+
+    Falla con error explícito antes de arrancar Docker si falta el perfil o es inválido.
+    """
+    profile_path = inst_dir / "profile.json"
+    if not profile_path.exists():
+        raise SystemExit(f"[!] Error: La instancia '{inst_dir.name}' no tiene profile.json.")
+    try:
+        with open(profile_path, "r") as f:
+            profile_data = json.load(f)
+    except Exception as e:
+        raise SystemExit(f"[!] Error: 'profile.json' en '{inst_dir.name}' está malformado: {e}")
+
+    validated_profile = validate_profile(profile_data, source_label=f"profile.json de '{inst_dir.name}'")
+
+    manifest_path = inst_dir / "manifest.json"
+    if not manifest_path.exists():
+        tmpl_src = validated_profile.get("instance", {}).get("template_source", "unknown")
+        manifest = create_bundle_manifest(inst_dir, tmpl_src, inst_dir.name)
+    else:
+        try:
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+        except Exception as e:
+            raise SystemExit(f"[!] Error: 'manifest.json' en '{inst_dir.name}' está malformado: {e}")
+        fmt = manifest.get("bundle_format", 0)
+        if fmt != BUNDLE_FORMAT_VERSION:
+            raise SystemExit(
+                f"[!] Error: 'manifest.json' de '{inst_dir.name}' tiene bundle_format={fmt} "
+                f"(soportado: {BUNDLE_FORMAT_VERSION})."
+            )
+
+    return validated_profile, manifest
+
 
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
@@ -352,6 +458,12 @@ def cmd_create_instance(args):
     profile_out = inst_dir / "profile.json"
     with open(profile_out, "w") as f:
         json.dump(profile, f, indent=2)
+
+    # Validar que el perfil generado cumpla el contrato de Fase 1
+    validate_profile(profile, source_label=f"profile.json de '{inst_name}'")
+
+    # Generar manifest.json del bundle formalizando ADR-001 §3.3
+    create_bundle_manifest(inst_dir, str(t_path.relative_to(BASE_DIR)), inst_name)
 
     # Guardar metadata de instancia
     disp = profile.get("display", {})
@@ -502,8 +614,10 @@ def cmd_start_instance(args):
     inst_name = validate_instance_name(args.name)
     inst_dir = INSTANCES_DIR / inst_name
     if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
-        print(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
-        return
+        raise SystemExit(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
+
+    # Validar integridad del bundle (profile.json + manifest.json) ANTES de invocar Docker (Fail-Fast ADR-001)
+    profile_data, manifest = validate_bundle(inst_dir)
 
     with open(inst_dir / "meta.json", "r") as f:
         meta = json.load(f)
@@ -532,6 +646,7 @@ def cmd_start_instance(args):
         "--sysctl", "net.ipv6.conf.default.disable_ipv6=1",
         "-v", f"{inst_dir.resolve()}/data:/data",
         "-v", f"{profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro",
+        "-v", f"{inst_dir.resolve()}:/proteomesh/bundle:ro",
         "-p", f"{port}:5555",
         "proteomesh:latest",
         "androidboot.redroid_gpu_mode=guest",

@@ -30,53 +30,17 @@ if [ -x "$RP" ]; then
     fi
 fi
 
-# Aplicar plantilla de hardware activa desde el perfil
+# Aplicar plantilla de hardware activa desde el perfil (ADR-001 F1: sin fallback silencioso)
 if [ -x "/system/bin/profile-loader" ]; then
-    /system/bin/profile-loader apply /system/etc/proteomesh_profile.json
+    if [ -f "/proteomesh/bundle/profile.json" ]; then
+        /system/bin/profile-loader apply /proteomesh/bundle/profile.json || true
+    elif [ -f "/system/etc/proteomesh_profile.json" ]; then
+        /system/bin/profile-loader apply /system/etc/proteomesh_profile.json || true
+    else
+        echo "[!] ERROR: No se encontró perfil de hardware en /proteomesh/bundle/profile.json ni en /system/etc/proteomesh_profile.json" >&2
+    fi
 else
-# Identidad temprana Google Pixel 5 para Zygote (Fallback)
-if [ -x "$RP" ]; then
-    $RP -n ro.product.model "Pixel 5"
-    $RP -n ro.product.brand "google"
-    $RP -n ro.product.manufacturer "Google"
-    $RP -n ro.product.device "redfin"
-    $RP -n ro.product.board "redfin"
-    $RP -n ro.product.name "redfin"
-    $RP -n ro.soc.manufacturer "Qualcomm"
-    $RP -n ro.soc.model "SM7250"
-    $RP -n ro.hardware "qcom"
-    $RP -n ro.boot.hardware "qcom"
-    $RP -n ro.boot.hardware.sku "GTT9Q"
-    $RP -n ro.boot.hardware.color "just_black"
-    $RP -n ro.bootloader "b1c1-0.5-9876543"
-    $RP -n ro.boot.bootloader "b1c1-0.5-9876543"
-    $RP -n ro.boot.flash.locked "1"
-    $RP -n ro.boot.verifiedbootstate "green"
-    $RP -n ro.boot.veritymode "enforcing"
-    $RP -n ro.build.id "TQ3A.230901.001.C2"
-    $RP -n ro.build.display.id "TQ3A.230901.001.C2"
-    $RP -n ro.build.fingerprint "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys"
-    $RP -n ro.build.description "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys"
-    $RP -n ro.build.flavor "redfin-user"
-    $RP -n ro.build.type "user"
-    $RP -n ro.build.tags "release-keys"
-    $RP -n ro.telephony.sim.count "1"
-    $RP -n ro.telephony.default_network "22"
-    $RP -n ro.carrier "google"
-    $RP -n ro.com.android.mobiledata "true"
-    for part in system vendor product system_ext odm vendor_dlkm; do
-        $RP -n "ro.product.${part}.brand" "google"
-        $RP -n "ro.product.${part}.manufacturer" "Google"
-        $RP -n "ro.product.${part}.model" "Pixel 5"
-        $RP -n "ro.product.${part}.name" "redfin"
-        $RP -n "ro.product.${part}.device" "redfin"
-        $RP -n "ro.${part}.build.id" "TQ3A.230901.001.C2"
-        $RP -n "ro.${part}.build.display.id" "TQ3A.230901.001.C2"
-        $RP -n "ro.${part}.build.fingerprint" "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys"
-        $RP -n "ro.${part}.build.type" "user"
-        $RP -n "ro.${part}.build.tags" "release-keys"
-    done
-fi
+    echo "[!] ERROR: /system/bin/profile-loader no está disponible o no es ejecutable" >&2
 fi
 
 # Aislar la propagación de montajes para evitar loops de multiplicación
