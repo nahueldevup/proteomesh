@@ -681,7 +681,16 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Saneados comentarios de modelo en `handheld_core_hardware.xml` y `pixel_hw64.c`/`pixel_hw32.c`.
 * **Test suite model-agnostic (7 tests nuevos, 22/22 OK):** Creado `tests/host/test_model_agnostic.py` verificando ausencia de strings prohibidos (`Pixel 5`, `redfin`, `SM7250`, `35824011`) en `Dockerfile`, scripts de runtime, XML de permisos, fuentes C, fuentes Java, binario estático y DEX.
 * **Rebuild y validación viva en `f05-main`:** Imagen actualizada `proteomesh:latest` (`sha256:74bd2563fa533458ceb9a39b5d0e58c9385a378e98477f1d1a80ee7372ec97f6`; rollback `proteomesh:pre-f15`). Revalidado en vivo: `f05-main` arranca reportando `Samsung Galaxy A54 5G` (`SM-A546M`), **100/100 Low Risk** en Pixelscan y **0/39** en Root Detection Plus sin paywall.
-* **Estado:** Fase 1.5 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 2 (Renderizador puro).
+* **Estado:** Fase 1.5 **cerrada el 2026-10-22** (commit `00a7353`). Próximo hito: Fase 2 (Renderizador puro).
+
+### 53. F2 — Renderizador puro determinista y golden files (2026-10-22)
+
+* **Renderizador puro (`tools/render.py` y `instance_manager.py render`):** Implementada la función pura `render_bundle` según el principio P2 de ADR-001. No requiere Docker, demonios ni llamadas de red.
+* **Determinismo estricto con `--seed`:** El renderizado con semilla numérica inicializa el PRNG de manera aislada produciendo identificadores matemáticamente consistentes (IMEI con Luhn, MEID, Serial, MACs, Android ID, IMSI/ICCID, WiFi SSID/BSSID) y congelando `profile_sha256` idéntico bit-a-bit en cada ejecución (`diff` vacío comprobado).
+* **Linter de coherencia holística (`lint_template`):** Valida antes de emitir cualquier bundle la coherencia técnica entre fabricante y GPU (ARM $\rightarrow$ Mali, Qualcomm $\rightarrow$ Adreno, Imagination $\rightarrow$ PowerVR), formato del TAC (8 dígitos), parámetros de pantalla positivos y concordancia Android Release $\leftrightarrow$ SDK (ej. Android 13 $\rightarrow$ SDK 33). Las 17 plantillas del catálogo fueron auditadas y superan el linter sin observaciones.
+* **Golden files de referencia:** Generado bundle golden versionable en `tests/golden/bundles/a54x_personal_seed42/` para control de regresión y derivación determinista.
+* **Suite de tests ampliada (30/30 OK):** Creado `tests/host/test_renderer.py` (8 tests) verificando pureza sin Docker/red, determinismo bit-a-bit con seed, comparación exacta con golden files, rechazo de incoherencias en GPU/TAC/display/SDK y linter de las 17 plantillas.
+* **Estado:** Fase 2 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 3 (Manager `--from-bundle`, validación y límites).
 
 ---
 

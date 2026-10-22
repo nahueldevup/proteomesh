@@ -1,0 +1,25 @@
+{
+  "carrier": "ar_personal",
+  "display": {
+    "dpi": 450,
+    "fps": 120,
+    "height": 2340,
+    "width": 1080
+  },
+  "identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "b0:79:94:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "351689221043321",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "R58R06D7E8",
+    "wifi_bssid": "00:e0:fc:e4:84:78",
+    "wifi_mac": "b0:79:94:e3:c2:9b",
+    "wifi_ssid": "Claro-A6FC"
+  },
+  "instance_name": "a54x-golden",
+  "seed": 42,
+  "template": "templates/samsung/a54x.json"
+}

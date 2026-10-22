@@ -1,0 +1,247 @@
+{
+  "cameras": [
+    {
+      "aperture": 1.8,
+      "facing": "BACK",
+      "focal_length": 5.54,
+      "id": "0",
+      "orientation": 90,
+      "pixel_array": [
+        8160,
+        6120
+      ],
+      "sensor_size_mm": [
+        8.0,
+        6.0
+      ]
+    },
+    {
+      "aperture": 2.2,
+      "facing": "FRONT",
+      "focal_length": 3.2,
+      "id": "1",
+      "orientation": 270,
+      "pixel_array": [
+        6528,
+        4896
+      ],
+      "sensor_size_mm": [
+        4.8,
+        3.6
+      ]
+    },
+    {
+      "aperture": 2.2,
+      "facing": "BACK",
+      "focal_length": 1.74,
+      "id": "2",
+      "orientation": 90,
+      "pixel_array": [
+        4000,
+        3000
+      ],
+      "sensor_size_mm": [
+        4.8,
+        3.6
+      ]
+    },
+    {
+      "aperture": 2.4,
+      "facing": "BACK",
+      "focal_length": 1.75,
+      "id": "3",
+      "orientation": 90,
+      "pixel_array": [
+        2592,
+        1944
+      ],
+      "sensor_size_mm": [
+        2.5,
+        1.9
+      ]
+    }
+  ],
+  "cpu": {
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "chipname": "Samsung Exynos 1380",
+    "clusters": [
+      {
+        "count": 4,
+        "implementer": "0x41",
+        "max_freq": 2000000,
+        "min_freq": 500000,
+        "name": "Cortex-A55",
+        "part": "0xd05",
+        "revision": "0",
+        "variant": "0x1"
+      },
+      {
+        "count": 4,
+        "implementer": "0x41",
+        "max_freq": 2400000,
+        "min_freq": 800000,
+        "name": "Cortex-A78",
+        "part": "0xd41",
+        "revision": "0",
+        "variant": "0x1"
+      }
+    ],
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "hardware_line": "Samsung Exynos 1380",
+    "soc_manufacturer": "Samsung",
+    "soc_model": "s5e8835"
+  },
+  "device": {
+    "baseband": "gpf",
+    "baseband_version": "A546EXXU5AWHC",
+    "board": "s5e8835",
+    "bootloader": "A546EXXU5AWHC",
+    "brand": "samsung",
+    "build_host": "build",
+    "build_id": "TP1A.220624.014",
+    "color": "black",
+    "description": "a54xnsxx-user 13 TP1A.220624.014 A546EXXU5AWHC release-keys",
+    "device": "a54x",
+    "fingerprint": "samsung/a54xnsxx/a54x:13/TP1A.220624.014/A546EXXU5AWHC:user/release-keys",
+    "flavor": "a54xnsxx-user",
+    "hardware": "exynos1380",
+    "incremental": "A546EXXU5AWHC",
+    "manufacturer": "samsung",
+    "model": "SM-A546M",
+    "platform": "s5e8835",
+    "product": "a54xnsxx",
+    "ram_mb": 8192,
+    "release": "13",
+    "sdk": "33",
+    "security_patch": "2023-08-01",
+    "sku": "SM-A546M",
+    "storage_gb": 256,
+    "storage_type": "ufs",
+    "tags": "release-keys",
+    "type": "user"
+  },
+  "display": {
+    "dpi": 450,
+    "fps": 120,
+    "height": 2340,
+    "ppi": 403,
+    "width": 1080
+  },
+  "generated_identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "b0:79:94:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "351689221043321",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "R58R06D7E8",
+    "wifi_bssid": "00:e0:fc:e4:84:78",
+    "wifi_mac": "b0:79:94:e3:c2:9b",
+    "wifi_ssid": "Claro-A6FC"
+  },
+  "gpu": {
+    "renderer": "Mali-G68 MP5",
+    "vendor": "ARM",
+    "version": "OpenGL ES 3.2"
+  },
+  "identity_template": {
+    "bt_mac_oui": "B0:79:94",
+    "iccid_prefix": "895434",
+    "imsi_prefix": "72231",
+    "phone_prefix": "+54911",
+    "serial_prefix": "R58R",
+    "tac": "35168922",
+    "wifi_mac_oui": "B0:79:94"
+  },
+  "instance": {
+    "name": "a54x-golden",
+    "seed": 42,
+    "template_source": "templates/samsung/a54x.json"
+  },
+  "kernel": {
+    "full_version": "Linux version 5.10.198-26360765-abA546EXXU5AWHC (dpi@SWHE2308) (Android (9471654, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Tue Aug 29 02:24:37 KST 2023",
+    "version": "5.10.198-26360765-abA546EXXU5AWHC"
+  },
+  "network": {
+    "bssid_oui": "00:E0:FC",
+    "ssid_prefix": "Claro"
+  },
+  "sensors": [
+    {
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "LSM6DSO Accelerometer",
+      "power": 0.17,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.accelerometer",
+      "type": 1,
+      "vendor": "STMicroelectronics",
+      "version": 1
+    },
+    {
+      "max_delay": 200000,
+      "max_range": 34.906586,
+      "min_delay": 2500,
+      "name": "LSM6DSO Gyroscope",
+      "power": 0.55,
+      "resolution": 0.0010681,
+      "string_type": "android.sensor.gyroscope",
+      "type": 4,
+      "vendor": "STMicroelectronics",
+      "version": 1
+    },
+    {
+      "max_delay": 100000,
+      "max_range": 4912.0,
+      "min_delay": 10000,
+      "name": "AK09918C Magnetometer",
+      "power": 1.1,
+      "resolution": 0.15,
+      "string_type": "android.sensor.magnetic_field",
+      "type": 2,
+      "vendor": "Asahi Kasei Microdevices",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 65535.0,
+      "min_delay": 0,
+      "name": "TCS3701 Light Sensor",
+      "power": 0.05,
+      "resolution": 1.0,
+      "string_type": "android.sensor.light",
+      "type": 5,
+      "vendor": "AMS AG",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 5.0,
+      "min_delay": 0,
+      "name": "Virtual Proximity Sensor",
+      "power": 0.1,
+      "resolution": 5.0,
+      "string_type": "android.sensor.proximity",
+      "type": 8,
+      "vendor": "Samsung",
+      "version": 1
+    }
+  ],
+  "telephony": {
+    "carrier_name": "Personal",
+    "country_iso": "ar",
+    "network_type": "13",
+    "operator_numeric": "72234",
+    "phone_type": "1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "template": {
+    "market_name": "Galaxy A54 5G",
+    "name": "Samsung Galaxy A54 5G"
+  },
+  "version": "1.0"
+}

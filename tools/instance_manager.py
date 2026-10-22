@@ -97,18 +97,20 @@ def calc_luhn(digits: str) -> int:
     return (10 - (total % 10)) % 10
 
 
-def rand_hex(length: int, upper: bool = False) -> str:
+def rand_hex(length: int, upper: bool = False, rng: Optional[random.Random] = None) -> str:
     """Genera una cadena hexadecimal aleatoria de longitud fija."""
     chars = "0123456789ABCDEF" if upper else "0123456789abcdef"
-    return "".join(random.choice(chars) for _ in range(length))
+    chooser = rng.choice if rng else random.choice
+    return "".join(chooser(chars) for _ in range(length))
 
 
-def rand_digits(length: int) -> str:
+def rand_digits(length: int, rng: Optional[random.Random] = None) -> str:
     """Genera una cadena de dígitos numéricos aleatorios."""
-    return "".join(random.choice(string.digits) for _ in range(length))
+    chooser = rng.choice if rng else random.choice
+    return "".join(chooser(string.digits) for _ in range(length))
 
 
-def generate_identity(template_data: dict, carrier_data: Optional[dict] = None) -> dict:
+def generate_identity(template_data: dict, carrier_data: Optional[dict] = None, rng: Optional[random.Random] = None) -> dict:
     """
     Genera identificadores únicos pero consistentes con la marca y modelo:
     - IMEI: TAC oficial (8 dígitos) + 6 dígitos aleatorios + dígito de control Luhn.
@@ -122,26 +124,26 @@ def generate_identity(template_data: dict, carrier_data: Optional[dict] = None) 
 
     # 1. IMEI
     tac = str(tmpl_id.get("tac", "35824011"))[:8]
-    snr = rand_digits(6)
+    snr = rand_digits(6, rng=rng)
     base_imei = tac + snr
     cd = calc_luhn(base_imei)
     imei = f"{base_imei}{cd}"
 
     # 2. MEID
-    meid = f"A00000{rand_hex(8, upper=True)}"
+    meid = f"A00000{rand_hex(8, upper=True, rng=rng)}"
 
     # 3. Serial
     serial_pfx = tmpl_id.get("serial_prefix", "R58R")
-    serial = f"{serial_pfx}{rand_hex(6, upper=True)}"
+    serial = f"{serial_pfx}{rand_hex(6, upper=True, rng=rng)}"
 
     # 4. Android ID
-    android_id = rand_hex(16, upper=False)
+    android_id = rand_hex(16, upper=False, rng=rng)
 
     # 5. MACs
     wifi_oui = tmpl_id.get("wifi_mac_oui", "b0:79:94").lower()
     bt_oui = tmpl_id.get("bt_mac_oui", "b0:79:94").lower()
-    wifi_mac = f"{wifi_oui}:{rand_hex(2)}:{rand_hex(2)}:{rand_hex(2)}"
-    bt_mac = f"{bt_oui}:{rand_hex(2)}:{rand_hex(2)}:{rand_hex(2)}"
+    wifi_mac = f"{wifi_oui}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}"
+    bt_mac = f"{bt_oui}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}"
 
     # 6. Telefonía
     c_data = carrier_data or template_data.get("telephony", {})
@@ -149,16 +151,16 @@ def generate_identity(template_data: dict, carrier_data: Optional[dict] = None) 
     iccid_pfx = c_data.get("iccid_prefix", "895431")
     phone_pfx = c_data.get("phone_prefix", "+54911")
 
-    imsi = f"{imsi_pfx}{rand_digits(15 - len(imsi_pfx))}"
-    iccid = f"{iccid_pfx}{rand_digits(19 - len(iccid_pfx))}"
-    phone = f"{phone_pfx}{rand_digits(8)}"
+    imsi = f"{imsi_pfx}{rand_digits(15 - len(imsi_pfx), rng=rng)}"
+    iccid = f"{iccid_pfx}{rand_digits(19 - len(iccid_pfx), rng=rng)}"
+    phone = f"{phone_pfx}{rand_digits(8, rng=rng)}"
 
     # 7. Wi-Fi SSID / BSSID (estables por instancia; profile-loader los respeta)
     net = template_data.get("network", {})
     ssid_pfx = net.get("ssid_prefix", "Home")
     bssid_oui = net.get("bssid_oui", "F4:EC:38").lower()
-    wifi_ssid = f"{ssid_pfx}-{rand_hex(4, upper=True)}"
-    wifi_bssid = f"{bssid_oui}:{rand_hex(2)}:{rand_hex(2)}:{rand_hex(2)}"
+    wifi_ssid = f"{ssid_pfx}-{rand_hex(4, upper=True, rng=rng)}"
+    wifi_bssid = f"{bssid_oui}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}:{rand_hex(2, rng=rng)}"
 
     return {
         "imei": imei,
@@ -336,18 +338,25 @@ def validate_profile(doc: dict, source_label: str = "perfil") -> dict:
 
     return doc
 
-def create_bundle_manifest(inst_dir: Path, template_source: str, instance_name: str) -> dict:
+def create_bundle_manifest(
+    inst_dir: Path,
+    template_source: str,
+    instance_name: str,
+    seed: Optional[int] = None
+) -> dict:
     """Genera manifest.json formalizando el bundle según ADR-001 §3.3."""
     profile_path = inst_dir / "profile.json"
     p_bytes = profile_path.read_bytes() if profile_path.exists() else b""
     p_hash = hashlib.sha256(p_bytes).hexdigest() if p_bytes else ""
+    created_at = "1970-01-01T00:00:00Z" if seed is not None else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     manifest = {
         "bundle_format": BUNDLE_FORMAT_VERSION,
         "runtime_min": RUNTIME_VERSION,
         "instance_name": instance_name,
         "template": template_source,
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "seed": seed,
+        "created_at": created_at,
         "profile_sha256": p_hash
     }
     with open(inst_dir / "manifest.json", "w") as f:
@@ -403,7 +412,9 @@ def cmd_create_instance(args):
         with open(c_path, "r") as f:
             c_data = json.load(f)
 
-    identity = generate_identity(t_data, c_data)
+    seed = getattr(args, "seed", None)
+    rng = random.Random(seed) if seed is not None else None
+    identity = generate_identity(t_data, c_data, rng=rng)
     inst_dir = INSTANCES_DIR / inst_name
     inst_dir.mkdir(parents=True, exist_ok=True)
     inst_data_dir = inst_dir / "data"
@@ -463,7 +474,7 @@ def cmd_create_instance(args):
     validate_profile(profile, source_label=f"profile.json de '{inst_name}'")
 
     # Generar manifest.json del bundle formalizando ADR-001 §3.3
-    create_bundle_manifest(inst_dir, str(t_path.relative_to(BASE_DIR)), inst_name)
+    create_bundle_manifest(inst_dir, str(t_path.relative_to(BASE_DIR)), inst_name, seed=seed)
 
     # Guardar metadata de instancia
     disp = profile.get("display", {})
@@ -477,6 +488,7 @@ def cmd_create_instance(args):
         "template": str(t_path.relative_to(BASE_DIR)),
         "carrier": (c_data or {}).get("id", "default"),
         "adb_port": args.port,
+        "seed": seed,
         "display": {
             "width": w,
             "height": h,
@@ -977,6 +989,42 @@ def cmd_list_instances(args):
     print("====================================================================================================")
 
 
+def cmd_render(args):
+    """Comando CLI para renderizar un bundle determinista según ADR-001 (Fase 2)."""
+    from render import render_bundle, lint_template
+    t_path = find_template(args.template)
+    if getattr(args, "verify", False):
+        with open(t_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        errors = lint_template(data, str(t_path))
+        if errors:
+            print(f"[!] Errores de coherencia en {t_path}:")
+            for e in errors:
+                print(f"  • {e}")
+            raise SystemExit(1)
+        print(f"[✓] Plantilla '{t_path.name}' es válida y coherente.")
+        return
+
+    c_path = find_carrier(args.carrier) if getattr(args, "carrier", None) else None
+    res = render_bundle(
+        template_path=t_path,
+        carrier_path=c_path,
+        seed=getattr(args, "seed", None),
+        instance_name=getattr(args, "name", "default"),
+        out_dir=getattr(args, "out", None)
+    )
+    print(f"[✓] Bundle renderizado exitosamente:")
+    print(f"  • Modelo      : {res['profile'].get('template', {}).get('name')}")
+    print(f"  • SHA-256     : {res['sha256']}")
+    print(f"  • IMEI        : {res['profile']['generated_identity']['imei']}")
+    print(f"  • Serial      : {res['profile']['generated_identity']['serial']}")
+    print(f"  • Wi-Fi MAC   : {res['profile']['generated_identity']['wifi_mac']}")
+    if getattr(args, "seed", None) is not None:
+        print(f"  • Seed        : {args.seed} (Determinista)")
+    if getattr(args, "out", None):
+        print(f"  • Directorio  : {args.out}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="ProteoMesh Instance Manager (Motor de Instancias CloudPhone estilo GeeLark)"
@@ -1003,8 +1051,19 @@ def main():
     sub.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
     sub.add_argument("--carrier", "-c", required=False, default="ar_personal", help="Operadora (default: ar_personal)")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
-    sub.add_argument("--start", "-s", action="store_true", help="Inicia el contenedor inmediatamente")
+    sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
+    sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
     sub.set_defaults(func=cmd_create_instance)
+
+    # render (Fase 2 ADR-001)
+    sub = subparsers.add_parser("render", help="Renderiza un bundle determinista (ADR-001 Fase 2)")
+    sub.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
+    sub.add_argument("--carrier", "-c", required=False, help="Nombre o código de la operadora (ej: ar_personal)")
+    sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
+    sub.add_argument("--name", "-n", default="default", help="Nombre de la instancia (default: default)")
+    sub.add_argument("--out", "-o", type=Path, required=False, help="Directorio de salida para el bundle congelado")
+    sub.add_argument("--verify", action="store_true", help="Solo verifica y ejecuta el linter sobre la plantilla")
+    sub.set_defaults(func=cmd_render)
 
     # start
     sub = subparsers.add_parser("start", help="Inicia una instancia existente con sus parámetros de hardware")
