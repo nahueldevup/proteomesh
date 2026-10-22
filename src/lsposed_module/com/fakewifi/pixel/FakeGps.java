@@ -559,8 +559,8 @@ public class FakeGps {
 
             // L. GNSS hardware model & year (derivado del perfil activo)
             final String gnssModel = FakeWifiHook.ProfileConfig.getString("cpu", "gnss_model",
-                    FakeWifiHook.ProfileConfig.getString("cpu", "soc_manufacturer", "Qualcomm")
-                    + " " + FakeWifiHook.ProfileConfig.getString("cpu", "soc_model", "SM7250") + " GNSS");
+                    FakeWifiHook.ProfileConfig.getString("cpu", "soc_manufacturer", "OEM")
+                    + " " + FakeWifiHook.ProfileConfig.getString("cpu", "soc_model", "Hardware") + " GNSS");
             final int gnssYear = FakeWifiHook.ProfileConfig.getInt("device", "gnss_year", 2021);
             try {
                 XposedHelpers.findAndHookMethod(lmClass, "getGnssYearOfHardware", new XC_MethodHook() {

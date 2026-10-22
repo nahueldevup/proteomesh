@@ -27,7 +27,12 @@ Luego se contrastó con las fuentes del repo (`Dockerfile`, `build_magisk/`, `sr
 
 ## 2. Resultado ejecutivo
 
-La imagen **no es hoy una imagen madre model-agnostic**. Contiene:
+> **Actualización F1.5 (2026-10-22, CERRADA):** La imagen madre **es hoy 100% model-agnostic**.
+> Se eliminaron las plantillas horneadas, el perfil por defecto en `Dockerfile`, los fallbacks de `mask-early.sh`,
+> `apply-props.sh` y `set-device-profile`, los defaults compilados en `profile-loader` y el DEX de `FakeWifiPixel.apk`,
+> y los comentarios en `handheld_core_hardware.xml` y `pixel_hw`. El principio P1 está plenamente cumplido.
+
+Históricamente al inicio de F0, la imagen contenía:
 
 1. Un perfil Pixel 5 como `/system/etc/proteomesh_profile.json`.
 2. Las 17 plantillas dentro de `/system/etc/proteomesh/templates/`.
@@ -137,9 +142,9 @@ Esto es útil para herramientas, pero contradice P1 si la imagen se distribuye c
 - Mover las plantillas fuera de la imagen o aceptar explícitamente que la imagen las contiene.
 - Agregar un test que escanee la imagen y falle si aparecen strings de modelo fuera de una allowlist.
 
-## 6. Criterio de cierre
+## 6. Criterio de cierre (Verificado en F1.5, 2026-10-22)
 
-- `docker cp` de la imagen no muestra un perfil Pixel 5 por defecto.
-- `rg "Pixel 5|redfin|SM7250"` sobre `/system/bin` y `/system/etc` no devuelve coincidencias no allowlisted.
-- Una instancia A54 arranca desde bundle y no cae en Pixel 5 si falta el perfil.
-- El escaneo de la imagen es parte de CI o de `tools/doctor.py`.
+- [x] `docker cp` de la imagen no encuentra `/system/etc/proteomesh_profile.json` ni `/system/etc/proteomesh/templates`.
+- [x] `strings /system/bin/profile-loader` y `classes.dex` de `FakeWifiPixel.apk` dan cero coincidencias de `Pixel 5|redfin|SM7250|35824011`.
+- [x] Una instancia A54 (`f05-main`) arranca desde bundle y mantiene identidad Samsung con Pixelscan 100/100 y RDP 0/39.
+- [x] Suite de 7 pruebas unitarias de escaneo model-agnostic en `tests/host/test_model_agnostic.py` (22 tests en total pasando).

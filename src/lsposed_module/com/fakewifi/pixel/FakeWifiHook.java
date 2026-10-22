@@ -147,11 +147,11 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         public static String getImei() {
-            return getProp("persist.sys.fake.imei", "358240118392141");
+            return getProp("persist.sys.fake.imei", "");
         }
 
         public static String getMeid() {
-            return getProp("persist.sys.fake.meid", "A0000083921410");
+            return getProp("persist.sys.fake.meid", "");
         }
 
         public static String getSerial() {
@@ -903,20 +903,20 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "SUPPORTED_32_BIT_ABIS", new String[]{"armeabi-v7a", "armeabi"});
             XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI", "arm64-v8a");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "CPU_ABI2", "");
-            String devHw = ProfileConfig.getString("device", "hardware", "qcom");
-            String devBoard = ProfileConfig.getString("device", "board", "redfin");
-            String devFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
-            String devBrand = ProfileConfig.getString("device", "brand", "google");
-            String devManuf = ProfileConfig.getString("device", "manufacturer", "Google");
-            String devModel = ProfileConfig.getString("device", "model", "Pixel 5");
-            String devDevice = ProfileConfig.getString("device", "device", "redfin");
-            String devProduct = ProfileConfig.getString("device", "product", "redfin");
-            String devBuildId = ProfileConfig.getString("device", "build_id", "TQ3A.230901.001.C2");
-            String devIncremental = ProfileConfig.getString("device", "incremental", "10750268");
+            String devHw = ProfileConfig.getString("device", "hardware", "");
+            String devBoard = ProfileConfig.getString("device", "board", "");
+            String devFp = ProfileConfig.getString("device", "fingerprint", "");
+            String devBrand = ProfileConfig.getString("device", "brand", "");
+            String devManuf = ProfileConfig.getString("device", "manufacturer", "");
+            String devModel = ProfileConfig.getString("device", "model", "");
+            String devDevice = ProfileConfig.getString("device", "device", "");
+            String devProduct = ProfileConfig.getString("device", "product", "");
+            String devBuildId = ProfileConfig.getString("device", "build_id", "");
+            String devIncremental = ProfileConfig.getString("device", "incremental", "");
             String devRelease = ProfileConfig.getString("device", "release", "13");
             String devSecPatch = ProfileConfig.getString("device", "security_patch", "2023-11-01");
-            String devBootloader = ProfileConfig.getString("device", "bootloader", "b1c1-0.5-9876543");
-            String devBuildHost = ProfileConfig.getString("device", "build_host", "google.com");
+            String devBootloader = ProfileConfig.getString("device", "bootloader", "");
+            String devBuildHost = ProfileConfig.getString("device", "build_host", "android-build");
 
             XposedHelpers.setStaticObjectField(android.os.Build.class, "HARDWARE", devHw);
             XposedHelpers.setStaticObjectField(android.os.Build.class, "BOARD", devBoard);
@@ -932,8 +932,8 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             XposedHelpers.setStaticObjectField(android.os.Build.class, "USER", "android-build");
             XposedHelpers.setStaticObjectField(android.os.Build.class, "BOOTLOADER", devBootloader);
 
-            String socManuf = ProfileConfig.getString("cpu", "soc_manufacturer", "Qualcomm");
-            String socModel = ProfileConfig.getString("cpu", "soc_model", "SM7250");
+            String socManuf = ProfileConfig.getString("cpu", "soc_manufacturer", "");
+            String socModel = ProfileConfig.getString("cpu", "soc_model", "");
             try {
                 XposedHelpers.setStaticObjectField(android.os.Build.class, "SOC_MANUFACTURER", socManuf);
             } catch (Throwable ignored) {}
@@ -984,17 +984,17 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
 
         try {
             Class<?> spClass = XposedHelpers.findClass("android.os.SystemProperties", lpparam.classLoader);
-            final String fPlatform = ProfileConfig.getString("device", "platform", "sm7250");
-            final String fHw = ProfileConfig.getString("device", "hardware", "qcom");
-            final String fDesc = ProfileConfig.getString("device", "description", "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
-            final String fBrand = ProfileConfig.getString("device", "brand", "google");
-            final String fManuf = ProfileConfig.getString("device", "manufacturer", "Google");
-            final String fModel = ProfileConfig.getString("device", "model", "Pixel 5");
-            final String fDevice = ProfileConfig.getString("device", "device", "redfin");
-            final String fProduct = ProfileConfig.getString("device", "product", "redfin");
-            final String fFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
-            final String fBuildId = ProfileConfig.getString("device", "build_id", "TQ3A.230901.001.C2");
-            final String fIncremental = ProfileConfig.getString("device", "incremental", "10750268");
+            final String fPlatform = ProfileConfig.getString("device", "platform", "");
+            final String fHw = ProfileConfig.getString("device", "hardware", "");
+            final String fDesc = ProfileConfig.getString("device", "description", "");
+            final String fBrand = ProfileConfig.getString("device", "brand", "");
+            final String fManuf = ProfileConfig.getString("device", "manufacturer", "");
+            final String fModel = ProfileConfig.getString("device", "model", "");
+            final String fDevice = ProfileConfig.getString("device", "device", "");
+            final String fProduct = ProfileConfig.getString("device", "product", "");
+            final String fFp = ProfileConfig.getString("device", "fingerprint", "");
+            final String fBuildId = ProfileConfig.getString("device", "build_id", "");
+            final String fIncremental = ProfileConfig.getString("device", "incremental", "");
             final String fCarrier = "samsung".equalsIgnoreCase(fBrand) ? "unknown" : ProfileConfig.getString("telephony", "carrier_name", "Personal");
 
             XC_MethodHook propHook = new XC_MethodHook() {
@@ -1602,7 +1602,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 3. Hook SensorManager & SystemSensorManager (Pixel 5 Sensors)
+        // 3. Hook SensorManager & SystemSensorManager
         // ==========================================
         try {
             FakeSensors.initSensors();
@@ -1693,7 +1693,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 4. Hook CameraManager & Camera (Pixel 5 Cameras)
+        // 4. Hook CameraManager & Camera
         // ==========================================
         try {
             // A. CameraManager getCameraIdList
@@ -1860,7 +1860,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         }
 
         // ==========================================
-        // 5. Hook LocationManager & GPS (Pixel 5 GNSS)
+        // 5. Hook LocationManager & GPS
         // ==========================================
         try {
             FakeGps.hook(lpparam);
@@ -2198,7 +2198,7 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                 final int fSilverCount = silverCount;
                 final int fGoldCount = goldCount;
                 final int fPrimeCount = primeCount;
-                final String fFp = ProfileConfig.getString("device", "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
+                final String fFp = ProfileConfig.getString("device", "fingerprint", "");
                 XC_MethodHook textHook = new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {

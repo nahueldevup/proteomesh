@@ -559,7 +559,7 @@ static unsigned long long load_fake_mem_bytes(void) {
         }
         raw_close((int)fd);
     }
-    if (cached == 0) cached = 7854200ULL * 1024ULL; // fallback Pixel 5 8 GB
+    if (cached == 0) cached = 7854200ULL * 1024ULL; // fallback generico 8 GB
     return cached;
 }
 

@@ -14,12 +14,12 @@
      limitations under the License.
 -->
 
-<!-- Google Pixel 5 (redfin) Hardware Features Spec -->
+<!-- ProteoMesh Handheld Core Hardware Features Spec -->
 <permissions>
     <feature name="android.software.cts" />
     <feature name="android.hardware.audio.output" />
 
-    <!-- Camera Features (Pixel 5 Dual Rear + Front Camera Spec) -->
+    <!-- Camera Features -->
     <feature name="android.hardware.camera" />
     <feature name="android.hardware.camera.any" />
     <feature name="android.hardware.camera.front" />
@@ -31,7 +31,7 @@
     <feature name="android.hardware.camera.capability.raw" />
     <feature name="android.hardware.camera.level.full" />
 
-    <!-- Location & Sensors (Pixel 5 Hardware Sensors) -->
+    <!-- Location & Sensors -->
     <feature name="android.hardware.location" />
     <feature name="android.hardware.location.gps" />
     <feature name="android.hardware.location.network" />

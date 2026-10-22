@@ -670,6 +670,19 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Rebuild y validación viva en `f05-main`:** Imagen actualizada `proteomesh:latest` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`; rollback `proteomesh:pre-f1`). `f05-main` arrancó limpiamente reportando `Samsung Galaxy A54 5G` (`SM-A546M`) y mantuvo **100/100 Low Risk** en Pixelscan con overrides `1080x2340 @450`.
 * **Estado:** Fase 1 **cerrada el 2026-10-22**. Próximo hito: Fase 1.5 (Model-agnostic).
 
+### 52. F1.5 — Imagen madre Model-Agnostic y desacoplamiento de templates (2026-10-22)
+
+* **Desacoplamiento de catálogo en la imagen madre (P1 cumplido):** Se eliminó la copia de `templates/` y del perfil por defecto `pixel5_redfin.json` en `Dockerfile`. La imagen madre es ahora un runtime genérico estricto y no un catálogo de hardware.
+* **Erradicación de fallbacks residuales a Pixel 5:**
+  - `build_magisk/system/bin/set-device-profile`: transformado en un wrapper directo de `profile-loader` sin fallbacks a modelos específicos.
+  - `build_magisk/system/bin/mask-early.sh`: eliminados los fallbacks a `Qualcomm Technologies, Inc SM7250`, kernel de Pixel 5 y `Google Pixel 5 Camera HAL`.
+  - `src/profile_loader/main.c`: eliminados todos los defaults fijos (`Pixel 5`, `redfin`, `sm7250`, `SM7250`, `35824011`, Adreno 620). Binario estático `profile-loader` recompilado (`strings` da 0 coincidencias de patrones de modelo).
+  - `src/lsposed_module/`: desacoplados fallbacks en `FakeWifiHook.java`, `FakeSensors.java` y `FakeGps.java`. Módulo `modules/FakeWifiPixel.apk` recompilado y firmado (`strings classes.dex` da 0 coincidencias).
+  - Saneados comentarios de modelo en `handheld_core_hardware.xml` y `pixel_hw64.c`/`pixel_hw32.c`.
+* **Test suite model-agnostic (7 tests nuevos, 22/22 OK):** Creado `tests/host/test_model_agnostic.py` verificando ausencia de strings prohibidos (`Pixel 5`, `redfin`, `SM7250`, `35824011`) en `Dockerfile`, scripts de runtime, XML de permisos, fuentes C, fuentes Java, binario estático y DEX.
+* **Rebuild y validación viva en `f05-main`:** Imagen actualizada `proteomesh:latest` (`sha256:74bd2563fa533458ceb9a39b5d0e58c9385a378e98477f1d1a80ee7372ec97f6`; rollback `proteomesh:pre-f15`). Revalidado en vivo: `f05-main` arranca reportando `Samsung Galaxy A54 5G` (`SM-A546M`), **100/100 Low Risk** en Pixelscan y **0/39** en Root Detection Plus sin paywall.
+* **Estado:** Fase 1.5 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 2 (Renderizador puro).
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

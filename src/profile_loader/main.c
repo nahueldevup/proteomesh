@@ -118,7 +118,17 @@ static void rand_digits(char *out, int count) {
 }
 
 static cJSON *load_profile(const char *path) {
-    const char *p = (path && access(path, R_OK) == 0) ? path : DEFAULT_PROFILE_PATH;
+    const char *p = path;
+    if (!p) {
+        if (access("/proteomesh/bundle/profile.json", R_OK) == 0) {
+            p = "/proteomesh/bundle/profile.json";
+        } else if (access(DEFAULT_PROFILE_PATH, R_OK) == 0) {
+            p = DEFAULT_PROFILE_PATH;
+        } else {
+            fprintf(stderr, "Error: No profile found at /proteomesh/bundle/profile.json or %s\n", DEFAULT_PROFILE_PATH);
+            return NULL;
+        }
+    }
     if (access(p, R_OK) != 0) {
         fprintf(stderr, "Error: Profile file not found: %s\n", p);
         return NULL;
@@ -221,13 +231,21 @@ static void generate_identity(cJSON *json) {
     }
 
     cJSON *id_tmpl = cJSON_GetObjectItem(json, "identity_template");
-    const char *tac = json_get_str(id_tmpl, "tac", "35824011");
-    const char *serial_pfx = json_get_str(id_tmpl, "serial_prefix", "1A181F");
-    const char *wifi_oui = json_get_str(id_tmpl, "wifi_mac_oui", "3c:28:6d");
-    const char *bt_oui = json_get_str(id_tmpl, "bt_mac_oui", "3c:28:6d");
-    const char *imsi_pfx = json_get_str(id_tmpl, "imsi_prefix", "72234");
-    const char *iccid_pfx = json_get_str(id_tmpl, "iccid_prefix", "895434");
-    const char *phone_pfx = json_get_str(id_tmpl, "phone_prefix", "+54911");
+    if (!id_tmpl) {
+        fprintf(stderr, "Error: Profile lacks both 'generated_identity' and 'identity_template'\n");
+        return;
+    }
+    const char *tac = json_get_str(id_tmpl, "tac", NULL);
+    if (!tac) {
+        fprintf(stderr, "Error: identity_template lacks 'tac'\n");
+        return;
+    }
+    const char *serial_pfx = json_get_str(id_tmpl, "serial_prefix", "SN");
+    const char *wifi_oui = json_get_str(id_tmpl, "wifi_mac_oui", "00:11:22");
+    const char *bt_oui = json_get_str(id_tmpl, "bt_mac_oui", "00:11:22");
+    const char *imsi_pfx = json_get_str(id_tmpl, "imsi_prefix", "00101");
+    const char *iccid_pfx = json_get_str(id_tmpl, "iccid_prefix", "8901");
+    const char *phone_pfx = json_get_str(id_tmpl, "phone_prefix", "+1");
 
     // 1. IMEI
     char base_imei[32];
@@ -396,7 +414,7 @@ static void apply_cpuinfo(cJSON *cpu) {
             }
         }
     }
-    const char *hw_line = json_get_str(cpu, "hardware_line", "Qualcomm Technologies, Inc SM7250");
+    const char *hw_line = json_get_str(cpu, "hardware_line", "");
     fprintf(fp, "Hardware\t: %s\n", hw_line);
     fprintf(fp, "Revision\t: 0000\n");
     fprintf(fp, "Serial\t\t: 0000000000000000\n");
@@ -539,9 +557,9 @@ static void apply_cmdline_and_version(cJSON *dev, cJSON *kernel) {
 static void apply_gpuinfo(cJSON *gpu) {
     mkdir(FAKEDIR, 0755);
     char path[256];
-    const char *renderer = json_get_str(gpu, "renderer", "Adreno (TM) 620");
-    const char *vendor = json_get_str(gpu, "vendor", "Qualcomm");
-    const char *version = json_get_str(gpu, "version", "OpenGL ES 3.2 V@0502.0 (GIT@b843336, I155baec6fc, 1618349272) (Date:04/13/21)");
+    const char *renderer = json_get_str(gpu, "renderer", "");
+    const char *vendor = json_get_str(gpu, "vendor", "");
+    const char *version = json_get_str(gpu, "version", "OpenGL ES 3.2");
 
     snprintf(path, sizeof(path), "%s/gpu_renderer", FAKEDIR);
     FILE *fp = fopen(path, "w");
@@ -613,7 +631,7 @@ static void apply_camera_dump(cJSON *json) {
     if (!fp) return;
 
     cJSON *tmpl = cJSON_GetObjectItem(json, "template");
-    const char *dev_name = json_get_str(tmpl, "name", "Pixel 5");
+    const char *dev_name = json_get_str(tmpl, "name", "ProteoMesh Device");
     cJSON *cams = cJSON_GetObjectItem(json, "cameras");
     int count = (cams && cJSON_IsArray(cams)) ? cJSON_GetArraySize(cams) : 3;
 
@@ -664,7 +682,7 @@ static void apply_meminfo(cJSON *dev) {
     if (ram_mb <= 0) ram_mb = 8192;
     unsigned long total_kb = (unsigned long)ram_mb * 1024UL;
 
-    // Referencia base: 8 GB Pixel 5 (7854200 kB). Se escala todo proporcionalmente.
+    // Referencia base: 8 GB (7854200 kB). Se escala todo proporcionalmente.
     double r = (double)total_kb / 7854200.0;
     if (r <= 0.0) r = 1.0;
     #define MK(x) ((unsigned long)((double)(x) * r))
@@ -813,10 +831,10 @@ static void apply_graphics_hal(cJSON *json) {
     cJSON *cpu = cJSON_GetObjectItem(json, "cpu");
     cJSON *gpu = cJSON_GetObjectItem(json, "gpu");
 
-    const char *brand = json_get_str(dev, "brand", "google");
-    const char *platform = json_get_str(dev, "platform", "sm7250");
-    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
-    const char *gpu_vendor = json_get_str(gpu, "vendor", "Qualcomm");
+    const char *brand = json_get_str(dev, "brand", "");
+    const char *platform = json_get_str(dev, "platform", "");
+    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "");
+    const char *gpu_vendor = json_get_str(gpu, "vendor", "");
 
     char brand_l[32], manuf_l[48], gpu_l[48];
     lower_copy(brand_l, brand, sizeof(brand_l));
@@ -859,30 +877,30 @@ static void apply_build_props(cJSON *json) {
     cJSON *cpu = cJSON_GetObjectItem(json, "cpu");
     cJSON *tel = cJSON_GetObjectItem(json, "telephony");
 
-    const char *brand = json_get_str(dev, "brand", "google");
-    const char *manuf = json_get_str(dev, "manufacturer", "Google");
-    const char *model = json_get_str(dev, "model", "Pixel 5");
-    const char *device = json_get_str(dev, "device", "redfin");
-    const char *product = json_get_str(dev, "product", "redfin");
-    const char *board = json_get_str(dev, "board", "redfin");
-    const char *hardware = json_get_str(dev, "hardware", "qcom");
-    const char *platform = json_get_str(dev, "platform", "sm7250");
-    const char *build_id = json_get_str(dev, "build_id", "TQ3A.230901.001.C2");
-    const char *incremental = json_get_str(dev, "incremental", "10750268");
+    const char *brand = json_get_str(dev, "brand", "");
+    const char *manuf = json_get_str(dev, "manufacturer", "");
+    const char *model = json_get_str(dev, "model", "");
+    const char *device = json_get_str(dev, "device", "");
+    const char *product = json_get_str(dev, "product", "");
+    const char *board = json_get_str(dev, "board", "");
+    const char *hardware = json_get_str(dev, "hardware", "");
+    const char *platform = json_get_str(dev, "platform", "");
+    const char *build_id = json_get_str(dev, "build_id", "");
+    const char *incremental = json_get_str(dev, "incremental", "");
     const char *sec_patch = json_get_str(dev, "security_patch", "2023-11-01");
     const char *release = json_get_str(dev, "release", "13");
     const char *sdk = json_get_str(dev, "sdk", "33");
-    const char *fp_str = json_get_str(dev, "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
-    const char *desc = json_get_str(dev, "description", "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
-    const char *flavor = json_get_str(dev, "flavor", "redfin-user");
-    const char *build_host = json_get_str(dev, "build_host", strcmp(brand, "samsung") == 0 ? "se-corp.samsung.com" : "google.com");
+    const char *fp_str = json_get_str(dev, "fingerprint", "");
+    const char *desc = json_get_str(dev, "description", "");
+    const char *flavor = json_get_str(dev, "flavor", "");
+    const char *build_host = json_get_str(dev, "build_host", strcmp(brand, "samsung") == 0 ? "se-corp.samsung.com" : "android-build");
     const char *carrier = json_get_str(tel, "carrier_name", "Personal");
     const char *carrier_prop = strcmp(brand, "samsung") == 0 ? "unknown" : carrier;
     const char *abilist = json_get_str(cpu, "abilist", "arm64-v8a,armeabi-v7a,armeabi");
     const char *abilist32 = json_get_str(cpu, "abilist32", "armeabi-v7a,armeabi");
     const char *abilist64 = json_get_str(cpu, "abilist64", "arm64-v8a");
-    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
-    const char *soc_model = json_get_str(cpu, "soc_model", "SM7250");
+    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "");
+    const char *soc_model = json_get_str(cpu, "soc_model", "");
 
     // 1. system_build.prop
     char path[256];
@@ -1087,25 +1105,25 @@ static void apply_props(cJSON *json) {
     cJSON *kernel = cJSON_GetObjectItem(json, "kernel");
     cJSON *tel = cJSON_GetObjectItem(json, "telephony");
 
-    const char *brand = json_get_str(dev, "brand", "google");
-    const char *manuf = json_get_str(dev, "manufacturer", "Google");
-    const char *model = json_get_str(dev, "model", "Pixel 5");
-    const char *device = json_get_str(dev, "device", "redfin");
-    const char *product = json_get_str(dev, "product", "redfin");
-    const char *board = json_get_str(dev, "board", "redfin");
-    const char *hardware = json_get_str(dev, "hardware", "qcom");
-    const char *platform = json_get_str(dev, "platform", "sm7250");
-    const char *build_id = json_get_str(dev, "build_id", "TQ3A.230901.001.C2");
-    const char *incremental = json_get_str(dev, "incremental", "10750268");
+    const char *brand = json_get_str(dev, "brand", "");
+    const char *manuf = json_get_str(dev, "manufacturer", "");
+    const char *model = json_get_str(dev, "model", "");
+    const char *device = json_get_str(dev, "device", "");
+    const char *product = json_get_str(dev, "product", "");
+    const char *board = json_get_str(dev, "board", "");
+    const char *hardware = json_get_str(dev, "hardware", "");
+    const char *platform = json_get_str(dev, "platform", "");
+    const char *build_id = json_get_str(dev, "build_id", "");
+    const char *incremental = json_get_str(dev, "incremental", "");
     const char *sec_patch = json_get_str(dev, "security_patch", "2023-11-01");
     const char *release = json_get_str(dev, "release", "13");
     const char *sdk = json_get_str(dev, "sdk", "33");
-    const char *fp = json_get_str(dev, "fingerprint", "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys");
-    const char *desc = json_get_str(dev, "description", "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys");
-    const char *flavor = json_get_str(dev, "flavor", "redfin-user");
+    const char *fp = json_get_str(dev, "fingerprint", "");
+    const char *desc = json_get_str(dev, "description", "");
+    const char *flavor = json_get_str(dev, "flavor", "");
     const char *type = json_get_str(dev, "type", "user");
     const char *tags = json_get_str(dev, "tags", "release-keys");
-    const char *bootloader = json_get_str(dev, "bootloader", "b1c1-0.5-9876543");
+    const char *bootloader = json_get_str(dev, "bootloader", "");
     if (!bootloader || strlen(bootloader) == 0 || strcmp(bootloader, "unknown") == 0) {
         if (strcmp(brand, "xiaomi") == 0 || strcmp(brand, "Xiaomi") == 0 || strcmp(brand, "redmi") == 0 || strcmp(brand, "Redmi") == 0) {
             bootloader = incremental;
@@ -1115,8 +1133,8 @@ static void apply_props(cJSON *json) {
             bootloader = incremental;
         }
     }
-    const char *sku = json_get_str(dev, "sku", "GTT9Q");
-    const char *color = json_get_str(dev, "color", "just_black");
+    const char *sku = json_get_str(dev, "sku", "");
+    const char *color = json_get_str(dev, "color", "");
 
     const char *def_bb = (strstr(platform, "exynos") != NULL) ? "s5100" : ((strstr(platform, "mt") != NULL) ? platform : "msm");
     const char *baseband = json_get_str(dev, "baseband", def_bb);
@@ -1124,7 +1142,7 @@ static void apply_props(cJSON *json) {
 
     const char *baseband_ver = json_get_str(dev, "baseband_version", bootloader);
     if (!baseband_ver || strlen(baseband_ver) == 0 || strcmp(baseband_ver, "unknown") == 0) baseband_ver = bootloader;
-    const char *build_host = json_get_str(dev, "build_host", strcmp(brand, "samsung") == 0 ? "se-corp.samsung.com" : "google.com");
+    const char *build_host = json_get_str(dev, "build_host", strcmp(brand, "samsung") == 0 ? "se-corp.samsung.com" : "android-build");
 
     const char *parts[] = {"", "system.", "vendor.", "product.", "system_ext.", "odm.", "vendor_dlkm."};
     int num_parts = sizeof(parts) / sizeof(parts[0]);
@@ -1192,8 +1210,8 @@ static void apply_props(cJSON *json) {
     set_prop("ro.kernel.version", "5.10");
 
     // SoC properties
-    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "Qualcomm");
-    const char *soc_model = json_get_str(cpu, "soc_model", "SM7250");
+    const char *soc_manuf = json_get_str(cpu, "soc_manufacturer", "");
+    const char *soc_model = json_get_str(cpu, "soc_model", "");
     set_prop("ro.soc.manufacturer", soc_manuf);
     set_prop("ro.soc.model", soc_model);
     set_prop("ro.hardware.chipname", platform);
@@ -1216,7 +1234,7 @@ static void apply_props(cJSON *json) {
     set_prop("ro.com.android.mobiledata", "true");
 
     // Telefonía dinámica para apply-props.sh (telephony.db) y servicios RIL
-    const char *op_num = json_get_str(tel, "operator_numeric", "72234");
+    const char *op_num = json_get_str(tel, "operator_numeric", "");
     const char *country = json_get_str(tel, "country_iso", "ar");
     const char *apn = json_get_str(tel, "apn", "internet");
     char mcc[8] = "";
@@ -1232,8 +1250,8 @@ static void apply_props(cJSON *json) {
 
     // GPU properties
     if (gpu) {
-        const char *gpu_rend = json_get_str(gpu, "renderer", "Adreno (TM) 620");
-        const char *gpu_vend = json_get_str(gpu, "vendor", "Qualcomm");
+        const char *gpu_rend = json_get_str(gpu, "renderer", "");
+        const char *gpu_vend = json_get_str(gpu, "vendor", "");
         const char *gpu_vers = json_get_str(gpu, "version", "OpenGL ES 3.2");
         set_prop("persist.sys.fake.gpu_renderer", gpu_rend);
         set_prop("persist.sys.fake.gpu_vendor", gpu_vend);
@@ -1281,16 +1299,16 @@ static void show_status(cJSON *json) {
     printf("                PROTEOMESH HARDWARE PROFILE & IDENTITY                \n");
     printf("======================================================================\n");
     printf("  [PLANTILLA DE DISPOSITIVO]\n");
-    printf("  Dispositivo         : %s (%s)\n", json_get_str(tmpl, "name", "Pixel 5"), json_get_str(dev, "model", "Pixel 5"));
-    printf("  Fabricante / Marca  : %s / %s\n", json_get_str(dev, "manufacturer", "Google"), json_get_str(dev, "brand", "google"));
-    printf("  Board / Plataforma  : %s / %s\n", json_get_str(dev, "board", "redfin"), json_get_str(dev, "platform", "sm7250"));
-    printf("  Baseband / Modem    : %s (v: %s)\n", json_get_str(dev, "baseband", "msm"), json_get_str(dev, "baseband_version", ""));
+    printf("  Dispositivo         : %s (%s)\n", json_get_str(tmpl, "name", "Desconocido"), json_get_str(dev, "model", "Desconocido"));
+    printf("  Fabricante / Marca  : %s / %s\n", json_get_str(dev, "manufacturer", "Desconocido"), json_get_str(dev, "brand", "Desconocido"));
+    printf("  Board / Plataforma  : %s / %s\n", json_get_str(dev, "board", "Desconocido"), json_get_str(dev, "platform", "Desconocido"));
+    printf("  Baseband / Modem    : %s (v: %s)\n", json_get_str(dev, "baseband", "Desconocido"), json_get_str(dev, "baseband_version", ""));
     printf("  Bootloader          : %s\n", json_get_str(dev, "bootloader", ""));
     printf("  Build Fingerprint   : %s\n", json_get_str(dev, "fingerprint", ""));
     printf("  Patch de Seguridad  : %s (Android %s, API %s)\n", json_get_str(dev, "security_patch", ""), json_get_str(dev, "release", "13"), json_get_str(dev, "sdk", "33"));
     printf("\n  [HARDWARE & SOC]\n");
     printf("  Procesador SoC      : %s %s\n", json_get_str(cpu, "soc_manufacturer", ""), json_get_str(cpu, "soc_model", ""));
-    printf("  GPU / Acelerador    : %s (%s)\n", json_get_str(gpu, "renderer", "Adreno (TM) 620"), json_get_str(gpu, "vendor", "Qualcomm"));
+    printf("  GPU / Acelerador    : %s (%s)\n", json_get_str(gpu, "renderer", "Desconocido"), json_get_str(gpu, "vendor", "Desconocido"));
     printf("  Resolución Pantalla : %dx%d @ %d fps (DPI: %d)\n", json_get_int(disp, "width", 1080), json_get_int(disp, "height", 2340), json_get_int(disp, "fps", 90), json_get_int(disp, "dpi", 440));
     printf("  Operadora Móvil     : %s (MCC/MNC: %s, País: %s)\n", json_get_str(tel, "carrier_name", ""), json_get_str(tel, "operator_numeric", ""), json_get_str(tel, "country_iso", ""));
     printf("\n  [IDENTIDAD DINÁMICA DE HARDWARE]\n");

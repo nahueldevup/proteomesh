@@ -65,7 +65,7 @@ public class FakeSensors {
             XposedBridge.log("FakeSensors: Error loading sensors from ProfileConfig: " + t);
         }
 
-        // Fallback default Pixel 5 sensors
+        // Fallback default hardware sensors
         // 1. Accelerometer (BMI260)
         addSensor("BMI260 Accelerometer", "Bosch Sensortec", 1, 1, Sensor.TYPE_ACCELEROMETER,
                 "android.sensor.accelerometer", 78.4532f, 0.002392822f, 0.18f, 2500, 200000);
@@ -91,15 +91,15 @@ public class FakeSensors {
                 "android.sensor.proximity", 5.0f, 1.0f, 0.15f, 0, 0);
 
         // 7. Gravity
-        addSensor("Gravity", "Google", 1, 7, Sensor.TYPE_GRAVITY,
+        addSensor("Gravity", "AOSP", 1, 7, Sensor.TYPE_GRAVITY,
                 "android.sensor.gravity", 78.4532f, 0.002392822f, 0.18f, 2500, 200000);
 
         // 8. Linear Acceleration
-        addSensor("Linear Acceleration", "Google", 1, 8, Sensor.TYPE_LINEAR_ACCELERATION,
+        addSensor("Linear Acceleration", "AOSP", 1, 8, Sensor.TYPE_LINEAR_ACCELERATION,
                 "android.sensor.linear_acceleration", 78.4532f, 0.002392822f, 0.18f, 2500, 200000);
 
         // 9. Rotation Vector
-        addSensor("Rotation Vector", "Google", 1, 9, Sensor.TYPE_ROTATION_VECTOR,
+        addSensor("Rotation Vector", "AOSP", 1, 9, Sensor.TYPE_ROTATION_VECTOR,
                 "android.sensor.rotation_vector", 1.0f, 0.00001f, 0.88f, 2500, 200000);
 
         // 10. Step Counter

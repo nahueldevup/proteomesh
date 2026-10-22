@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Micro-dinámica química de batería para Pixel 5
+# Micro-dinámica química de batería para ProteoMesh
 while true; do
     sleep 40
     if [ -f /sys/class/power_supply/battery/voltage_now ]; then

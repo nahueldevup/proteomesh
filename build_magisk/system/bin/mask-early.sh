@@ -144,16 +144,16 @@ CPU variant	: 0x4
 CPU part	: 0xd0b
 CPU revision	: 0
 
-Hardware	: Qualcomm Technologies, Inc SM7250
+Hardware	: ProteoMesh Virtual Platform
 Revision	: 0000
 Serial		: 0000000000000000
 EOF
 
-# 2. /proc/cmdline oficial
-echo "console=null androidboot.hardware=qcom androidboot.verifiedbootstate=green androidboot.flash.locked=1 androidboot.veritymode=enforcing androidboot.bootdevice=1d84000.ufshc buildvariant=user" > "$FAKEDIR/cmdline"
+# 2. /proc/cmdline genérico
+echo "console=null androidboot.verifiedbootstate=green androidboot.flash.locked=1 androidboot.veritymode=enforcing buildvariant=user" > "$FAKEDIR/cmdline"
 
-# 3. /proc/version oficial Pixel 5 Android 13
-echo "Linux version 4.19.282-g9e27c0faec01-ab10532298 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023" > "$FAKEDIR/version"
+# 3. /proc/version genérico Android 13
+echo "Linux version 5.10.0-android13-generic (android-build@google.com) (clang version 14.0.6) #1 SMP PREEMPT" > "$FAKEDIR/version"
 fi
 
 # 3b. SELinux enforce mock file
@@ -333,7 +333,7 @@ if ! grep -q " /sys/class/power_supply " /proc/mounts 2>/dev/null; then
     ) &
 fi
 
-# 6. Mocks de SELinux enforce y Mounts limpios (Pixel 5)
+# 6. Mocks de SELinux enforce y Mounts limpios
 echo '1' > "$FAKEDIR/selinux_enforce"
 
 cat << 'EOF' > "$FAKEDIR/mountinfo"
@@ -389,7 +389,7 @@ fi
 chmod 644 "$FAKEDIR/partitions" 2>/dev/null || true
 mount --bind "$FAKEDIR/partitions" /proc/partitions 2>/dev/null || true
 
-# 7. Wrapper de dumpsys para sensorservice (Pixel 5 Oficial)
+# 7. Wrapper de dumpsys para sensorservice
 if [ -f /system/bin/dumpsys ]; then
     if [ ! -f /data/local/tmp/dumpsys.orig ]; then
         cp /system/bin/dumpsys /data/local/tmp/dumpsys.orig
@@ -492,7 +492,7 @@ SOF_WIFI
         cat << 'SOF_CAM'
 Camera module HAL API version: 0x204
 Camera module API version: 0x204
-Camera module name: Google Pixel 5 Camera HAL
+Camera module name: Camera HAL
 Number of camera devices: 3
 Number of normal camera devices: 3
 Number of public camera devices visible to API1: 2
@@ -518,7 +518,7 @@ EOF
     mount --bind /data/local/tmp/fake_dumpsys.sh /system/bin/dumpsys
 fi
 
-# 8. Wrapper de /system/bin/mount y formato de montajes de Pixel 5
+# 8. Wrapper de /system/bin/mount y formato de montajes
 awk '{print $1 " on " $2 " type " $3 " (" $4 ")"}' "$FAKEDIR/mounts" > "$FAKEDIR/mounts_formatted"
 chmod 644 "$FAKEDIR/mounts_formatted" 2>/dev/null || true
 
