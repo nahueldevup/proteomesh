@@ -1,0 +1,336 @@
+{
+  "cameras": [
+    {
+      "aperture": 1.73,
+      "facing": "BACK",
+      "focal_length": 4.38,
+      "id": "0",
+      "orientation": 90,
+      "pixel_array": [
+        4032,
+        3024
+      ],
+      "sensor_size_mm": [
+        5.64,
+        4.23
+      ]
+    },
+    {
+      "aperture": 2.0,
+      "facing": "FRONT",
+      "focal_length": 2.74,
+      "id": "1",
+      "orientation": 270,
+      "pixel_array": [
+        3264,
+        2448
+      ],
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ]
+    },
+    {
+      "aperture": 2.2,
+      "facing": "BACK",
+      "focal_length": 2.22,
+      "id": "2",
+      "orientation": 90,
+      "pixel_array": [
+        4656,
+        3496
+      ],
+      "sensor_size_mm": [
+        4.6,
+        3.45
+      ]
+    }
+  ],
+  "cpu": {
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "chipname": "Qualcomm\u00ae Snapdragon\u2122 765G",
+    "clusters": [
+      {
+        "count": 6,
+        "implementer": "0x41",
+        "max_freq": 1804800,
+        "min_freq": 576000,
+        "name": "Kryo Silver (A55)",
+        "part": "0xd05",
+        "revision": "0",
+        "variant": "0x1"
+      },
+      {
+        "count": 1,
+        "implementer": "0x41",
+        "max_freq": 2208000,
+        "min_freq": 844800,
+        "name": "Kryo Gold (A76)",
+        "part": "0xd0b",
+        "revision": "0",
+        "variant": "0x4"
+      },
+      {
+        "count": 1,
+        "implementer": "0x41",
+        "max_freq": 2400000,
+        "min_freq": 844800,
+        "name": "Kryo Prime (A76)",
+        "part": "0xd0b",
+        "revision": "0",
+        "variant": "0x4"
+      }
+    ],
+    "driver": "qcom-cpufreq",
+    "governor": "schedutil",
+    "hardware_line": "Qualcomm Technologies, Inc SM7250",
+    "soc_manufacturer": "Qualcomm",
+    "soc_model": "SM7250"
+  },
+  "device": {
+    "baseband": "msm",
+    "baseband_version": "g7250-00247-230911-B-10825225",
+    "board": "redfin",
+    "bootloader": "b1c1-0.5-9876543",
+    "brand": "google",
+    "build_host": "google.com",
+    "build_id": "TQ3A.230901.001.C2",
+    "color": "just_black",
+    "description": "redfin-user 13 TQ3A.230901.001.C2 10750268 release-keys",
+    "device": "redfin",
+    "fingerprint": "google/redfin/redfin:13/TQ3A.230901.001.C2/10750268:user/release-keys",
+    "flavor": "redfin-user",
+    "hardware": "qcom",
+    "incremental": "10750268",
+    "manufacturer": "Google",
+    "model": "Pixel 5",
+    "platform": "sm7250",
+    "product": "redfin",
+    "ram_mb": 8192,
+    "release": "13",
+    "sdk": "33",
+    "security_patch": "2023-11-01",
+    "sku": "GTT9Q",
+    "storage_gb": 128,
+    "storage_type": "ufs",
+    "tags": "release-keys",
+    "type": "user"
+  },
+  "display": {
+    "dpi": 440,
+    "fps": 90,
+    "height": 2340,
+    "ppi": 432,
+    "width": 1080
+  },
+  "generated_identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "3c:28:6d:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "358240111043329",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "1A181F06D7E8",
+    "wifi_bssid": "f4:ec:38:e4:84:78",
+    "wifi_mac": "3c:28:6d:e3:c2:9b",
+    "wifi_ssid": "Personal-A6FC"
+  },
+  "gpu": {
+    "renderer": "Adreno (TM) 620",
+    "vendor": "Qualcomm",
+    "version": "OpenGL ES 3.2 V@0502.0 (GIT@b843336, I155baec6fc, 1618349272) (Date:04/13/21)"
+  },
+  "identity_template": {
+    "bt_mac_oui": "3c:28:6d",
+    "iccid_prefix": "895434",
+    "imsi_prefix": "72234",
+    "phone_prefix": "+54911",
+    "serial_prefix": "1A181F",
+    "tac": "35824011",
+    "wifi_mac_oui": "3c:28:6d"
+  },
+  "instance": {
+    "name": "pixel5-golden",
+    "seed": 42,
+    "template_source": "templates/google/pixel5_redfin.json"
+  },
+  "kernel": {
+    "full_version": "Linux version 4.19.282-g9e27c0faec01-ab10532298 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023",
+    "version": "4.19.282-g9e27c0faec01"
+  },
+  "network": {
+    "bssid_oui": "F4:EC:38",
+    "ssid_prefix": "Personal"
+  },
+  "sensors": [
+    {
+      "fifo_max": 3000,
+      "fifo_reserved": 3000,
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "BMI260 Accelerometer",
+      "power": 0.18,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.accelerometer",
+      "type": 1,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "fifo_max": 600,
+      "fifo_reserved": 600,
+      "max_delay": 200000,
+      "max_range": 4912.0,
+      "min_delay": 10000,
+      "name": "AK09918 Magnetometer",
+      "power": 1.1,
+      "resolution": 0.15,
+      "string_type": "android.sensor.magnetic_field",
+      "type": 2,
+      "vendor": "Asahi Kasei Microdevices",
+      "version": 1
+    },
+    {
+      "fifo_max": 3000,
+      "fifo_reserved": 3000,
+      "max_delay": 200000,
+      "max_range": 34.906586,
+      "min_delay": 2500,
+      "name": "BMI260 Gyroscope",
+      "power": 0.7,
+      "resolution": 0.0010681,
+      "string_type": "android.sensor.gyroscope",
+      "type": 4,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "fifo_max": 0,
+      "fifo_reserved": 0,
+      "max_delay": 1000000,
+      "max_range": 65535.0,
+      "min_delay": 100000,
+      "name": "TMD3702 Ambient Light Sensor",
+      "power": 0.15,
+      "resolution": 1.0,
+      "string_type": "android.sensor.light",
+      "type": 5,
+      "vendor": "AMS AG",
+      "version": 1
+    },
+    {
+      "fifo_max": 300,
+      "fifo_reserved": 300,
+      "max_delay": 1000000,
+      "max_range": 1250.0,
+      "min_delay": 20000,
+      "name": "BMP380 Pressure Sensor",
+      "power": 0.0032,
+      "resolution": 0.01,
+      "string_type": "android.sensor.pressure",
+      "type": 6,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "fifo_max": 0,
+      "fifo_reserved": 0,
+      "max_delay": 0,
+      "max_range": 5.0,
+      "min_delay": 0,
+      "name": "TMD3702 Proximity Sensor",
+      "power": 0.15,
+      "resolution": 1.0,
+      "string_type": "android.sensor.proximity",
+      "type": 8,
+      "vendor": "AMS AG",
+      "version": 1
+    },
+    {
+      "fifo_max": 0,
+      "fifo_reserved": 0,
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "Gravity",
+      "power": 0.18,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.gravity",
+      "type": 9,
+      "vendor": "Google",
+      "version": 1
+    },
+    {
+      "fifo_max": 0,
+      "fifo_reserved": 0,
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "Linear Acceleration",
+      "power": 0.18,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.linear_acceleration",
+      "type": 10,
+      "vendor": "Google",
+      "version": 1
+    },
+    {
+      "fifo_max": 0,
+      "fifo_reserved": 0,
+      "max_delay": 200000,
+      "max_range": 1.0,
+      "min_delay": 2500,
+      "name": "Rotation Vector",
+      "power": 0.88,
+      "resolution": 1e-05,
+      "string_type": "android.sensor.rotation_vector",
+      "type": 11,
+      "vendor": "Google",
+      "version": 1
+    },
+    {
+      "fifo_max": 100,
+      "fifo_reserved": 100,
+      "max_delay": 0,
+      "max_range": 4294967295.0,
+      "min_delay": 0,
+      "name": "BMI260 Step Counter",
+      "power": 0.02,
+      "resolution": 1.0,
+      "string_type": "android.sensor.step_counter",
+      "type": 19,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "fifo_max": 100,
+      "fifo_reserved": 100,
+      "max_delay": 0,
+      "max_range": 1.0,
+      "min_delay": 0,
+      "name": "BMI260 Step Detector",
+      "power": 0.02,
+      "resolution": 1.0,
+      "string_type": "android.sensor.step_detector",
+      "type": 18,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    }
+  ],
+  "telephony": {
+    "carrier_name": "Personal",
+    "country_iso": "ar",
+    "network_type": "13",
+    "operator_numeric": "72234",
+    "phone_type": "1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "template": {
+    "market_name": "Pixel 5",
+    "name": "Google Pixel 5"
+  },
+  "version": "1.0"
+}

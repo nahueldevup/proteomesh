@@ -1,0 +1,25 @@
+{
+  "carrier": "ar_personal",
+  "display": {
+    "dpi": 440,
+    "fps": 90,
+    "height": 2340,
+    "width": 1080
+  },
+  "identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "3c:28:6d:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "358240111043329",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "1A181F06D7E8",
+    "wifi_bssid": "f4:ec:38:e4:84:78",
+    "wifi_mac": "3c:28:6d:e3:c2:9b",
+    "wifi_ssid": "Personal-A6FC"
+  },
+  "instance_name": "pixel5-golden",
+  "seed": 42,
+  "template": "templates/google/pixel5_redfin.json"
+}

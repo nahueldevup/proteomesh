@@ -1,0 +1,25 @@
+{
+  "carrier": "ar_personal",
+  "display": {
+    "dpi": 405,
+    "fps": 120,
+    "height": 2400,
+    "width": 1080
+  },
+  "identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "e4:90:7e:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "358793211043326",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "ZY2206D7E8",
+    "wifi_bssid": "50:c7:bf:e4:84:78",
+    "wifi_mac": "e4:90:7e:e3:c2:9b",
+    "wifi_ssid": "Fibertel-A6FC"
+  },
+  "instance_name": "cancunf-golden",
+  "seed": 42,
+  "template": "templates/motorola/cancunf.json"
+}

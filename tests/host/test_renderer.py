@@ -49,22 +49,32 @@ class PureRendererTest(unittest.TestCase):
             b2 = (out2 / fname).read_bytes()
             self.assertEqual(b1, b2, f"Discrepancia en {fname} entre dos ejecuciones con mismo seed")
 
-    def test_render_matches_golden_file(self):
-        self.assertTrue(self.golden_dir.exists(), "Directorio golden no encontrado")
+    GOLDEN_CASES = [
+        ("samsung/a54x.json", "a54x_personal_seed42", "a54x-golden"),
+        ("google/pixel5_redfin.json", "pixel5_personal_seed42", "pixel5-golden"),
+        ("motorola/cancunf.json", "cancunf_personal_seed42", "cancunf-golden"),
+        ("xiaomi/tapas.json", "tapas_personal_seed42", "tapas-golden"),
+    ]
 
-        out = self.temp_dir / "golden_verify"
-        t_path = TEMPLATES_DIR / "samsung" / "a54x.json"
+    def test_render_matches_golden_files(self):
         c_path = CARRIERS_DIR / "ar_personal.json"
+        for tmpl_rel, golden_name, inst_name in self.GOLDEN_CASES:
+            with self.subTest(template=tmpl_rel, golden=golden_name):
+                golden_dir = REPO_ROOT / "tests" / "golden" / "bundles" / golden_name
+                self.assertTrue(golden_dir.exists(), f"Directorio golden no encontrado: {golden_dir}")
 
-        res = render_bundle(t_path, c_path, seed=42, instance_name="a54x-golden", out_dir=out)
+                out = self.temp_dir / f"golden_verify_{golden_name}"
+                t_path = TEMPLATES_DIR / tmpl_rel
 
-        golden_manifest = json.loads((self.golden_dir / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(res["sha256"], golden_manifest["profile_sha256"])
+                res = render_bundle(t_path, c_path, seed=42, instance_name=inst_name, out_dir=out)
 
-        for fname in ("profile.json", "manifest.json", "meta.json"):
-            rendered_bytes = (out / fname).read_bytes()
-            golden_bytes = (self.golden_dir / fname).read_bytes()
-            self.assertEqual(rendered_bytes, golden_bytes, f"Discrepancia con golden file en {fname}")
+                golden_manifest = json.loads((golden_dir / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(res["sha256"], golden_manifest["profile_sha256"])
+
+                for fname in ("profile.json", "manifest.json", "meta.json"):
+                    rendered_bytes = (out / fname).read_bytes()
+                    golden_bytes = (golden_dir / fname).read_bytes()
+                    self.assertEqual(rendered_bytes, golden_bytes, f"Discrepancia con golden file en {golden_name}/{fname}")
 
     def test_linter_rejects_gpu_mismatch(self):
         t_path = TEMPLATES_DIR / "samsung" / "a54x.json"

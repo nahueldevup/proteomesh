@@ -1,0 +1,25 @@
+{
+  "carrier": "ar_personal",
+  "display": {
+    "dpi": 395,
+    "fps": 120,
+    "height": 2400,
+    "width": 1080
+  },
+  "identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "34:80:0d:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "860472061043329",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "0x06D7E8",
+    "wifi_bssid": "00:e0:fc:e4:84:78",
+    "wifi_mac": "34:80:0d:e3:c2:9b",
+    "wifi_ssid": "Claro-A6FC"
+  },
+  "instance_name": "tapas-golden",
+  "seed": 42,
+  "template": "templates/xiaomi/tapas.json"
+}

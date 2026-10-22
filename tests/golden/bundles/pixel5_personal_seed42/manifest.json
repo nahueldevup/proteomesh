@@ -1,0 +1,10 @@
+{
+  "bundle_format": 1,
+  "carrier": "ar_personal",
+  "created_at": "1970-01-01T00:00:00Z",
+  "instance_name": "pixel5-golden",
+  "profile_sha256": "a3bef4cb1f76dc8831bbdc49ddcfa8d718c6ef11751e0900210ba383485b2ebc",
+  "runtime_min": "1.0",
+  "seed": 42,
+  "template": "templates/google/pixel5_redfin.json"
+}

@@ -1,0 +1,232 @@
+{
+  "cameras": [
+    {
+      "aperture": 1.8,
+      "facing": "BACK",
+      "focal_length": 4.22,
+      "id": "0",
+      "orientation": 90,
+      "pixel_array": [
+        8160,
+        6120
+      ],
+      "sensor_size_mm": [
+        5.76,
+        4.32
+      ]
+    },
+    {
+      "aperture": 2.4,
+      "facing": "FRONT",
+      "focal_length": 3.4,
+      "id": "1",
+      "orientation": 270,
+      "pixel_array": [
+        4608,
+        3456
+      ],
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ]
+    },
+    {
+      "aperture": 2.4,
+      "facing": "BACK",
+      "focal_length": 1.75,
+      "id": "2",
+      "orientation": 90,
+      "pixel_array": [
+        1600,
+        1200
+      ],
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ]
+    }
+  ],
+  "cpu": {
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "chipname": "MediaTek Dimensity 7020",
+    "clusters": [
+      {
+        "count": 6,
+        "implementer": "0x41",
+        "max_freq": 2000000,
+        "min_freq": 500000,
+        "name": "Cortex-A55",
+        "part": "0xd05",
+        "revision": "0",
+        "variant": "0x1"
+      },
+      {
+        "count": 2,
+        "implementer": "0x41",
+        "max_freq": 2200000,
+        "min_freq": 800000,
+        "name": "Cortex-A78",
+        "part": "0xd41",
+        "revision": "0",
+        "variant": "0x1"
+      }
+    ],
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "hardware_line": "MediaTek MT6855",
+    "soc_manufacturer": "MediaTek",
+    "soc_model": "MT6855"
+  },
+  "device": {
+    "baseband": "mt6855",
+    "baseband_version": "MOLY.NR15.R3.MP.V80.P2",
+    "board": "mt6855",
+    "bootloader": "MBM-3.0-mt6855-80.2",
+    "brand": "motorola",
+    "build_host": "build",
+    "build_id": "T3TDC33.16-27-3",
+    "color": "blue",
+    "description": "cancunf_g-user 13 T3TDC33.16-27-3 16b7f release-keys",
+    "device": "cancunf",
+    "fingerprint": "motorola/cancunf_g/cancunf:13/T3TDC33.16-27-3/16b7f:user/release-keys",
+    "flavor": "cancunf_g-user",
+    "hardware": "mt6855",
+    "incremental": "16b7f",
+    "manufacturer": "motorola",
+    "model": "XT2343-1",
+    "platform": "mt6855",
+    "product": "cancunf_g",
+    "ram_mb": 8192,
+    "release": "13",
+    "sdk": "33",
+    "security_patch": "2023-11-01",
+    "sku": "XT2343-1",
+    "storage_gb": 256,
+    "storage_type": "ufs",
+    "tags": "release-keys",
+    "type": "user"
+  },
+  "display": {
+    "dpi": 405,
+    "fps": 120,
+    "height": 2400,
+    "ppi": 405,
+    "width": 1080
+  },
+  "generated_identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "e4:90:7e:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "358793211043326",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "ZY2206D7E8",
+    "wifi_bssid": "50:c7:bf:e4:84:78",
+    "wifi_mac": "e4:90:7e:e3:c2:9b",
+    "wifi_ssid": "Fibertel-A6FC"
+  },
+  "gpu": {
+    "renderer": "IMG BXM-8-256",
+    "vendor": "Imagination Technologies",
+    "version": "OpenGL ES 3.2"
+  },
+  "identity_template": {
+    "bt_mac_oui": "E4:90:7E",
+    "iccid_prefix": "895434",
+    "imsi_prefix": "72231",
+    "phone_prefix": "+54911",
+    "serial_prefix": "ZY22",
+    "tac": "35879321",
+    "wifi_mac_oui": "E4:90:7E"
+  },
+  "instance": {
+    "name": "cancunf-golden",
+    "seed": 42,
+    "template_source": "templates/motorola/cancunf.json"
+  },
+  "kernel": {
+    "full_version": "Linux version 5.10.149-android12-9-00001-ge5f3ba2132a1 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023",
+    "version": "5.10.149-android12-9-00001-ge5f3ba2132a1"
+  },
+  "network": {
+    "bssid_oui": "50:C7:BF",
+    "ssid_prefix": "Fibertel"
+  },
+  "sensors": [
+    {
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "BMI260 Accelerometer",
+      "power": 0.18,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.accelerometer",
+      "type": 1,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "max_delay": 200000,
+      "max_range": 34.906586,
+      "min_delay": 2500,
+      "name": "BMI260 Gyroscope",
+      "power": 0.55,
+      "resolution": 0.0010681,
+      "string_type": "android.sensor.gyroscope",
+      "type": 4,
+      "vendor": "Bosch Sensortec",
+      "version": 1
+    },
+    {
+      "max_delay": 100000,
+      "max_range": 3000.0,
+      "min_delay": 10000,
+      "name": "MMC5603 Magnetometer",
+      "power": 0.4,
+      "resolution": 0.0625,
+      "string_type": "android.sensor.magnetic_field",
+      "type": 2,
+      "vendor": "MEMSIC",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 65535.0,
+      "min_delay": 0,
+      "name": "STK3331 Light Sensor",
+      "power": 0.05,
+      "resolution": 1.0,
+      "string_type": "android.sensor.light",
+      "type": 5,
+      "vendor": "Sensortek",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 5.0,
+      "min_delay": 0,
+      "name": "STK3331 Proximity Sensor",
+      "power": 0.75,
+      "resolution": 5.0,
+      "string_type": "android.sensor.proximity",
+      "type": 8,
+      "vendor": "Sensortek",
+      "version": 1
+    }
+  ],
+  "telephony": {
+    "carrier_name": "Personal",
+    "country_iso": "ar",
+    "network_type": "13",
+    "operator_numeric": "72234",
+    "phone_type": "1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "template": {
+    "market_name": "Moto G54 5G",
+    "name": "Motorola Moto G54 5G"
+  },
+  "version": "1.0"
+}

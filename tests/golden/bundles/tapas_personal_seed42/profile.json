@@ -1,0 +1,247 @@
+{
+  "cameras": [
+    {
+      "aperture": 1.8,
+      "facing": "BACK",
+      "focal_length": 4.22,
+      "id": "0",
+      "orientation": 90,
+      "pixel_array": [
+        8160,
+        6120
+      ],
+      "sensor_size_mm": [
+        5.76,
+        4.32
+      ]
+    },
+    {
+      "aperture": 2.45,
+      "facing": "FRONT",
+      "focal_length": 3.1,
+      "id": "1",
+      "orientation": 270,
+      "pixel_array": [
+        4160,
+        3120
+      ],
+      "sensor_size_mm": [
+        3.6,
+        2.7
+      ]
+    },
+    {
+      "aperture": 2.2,
+      "facing": "BACK",
+      "focal_length": 1.66,
+      "id": "2",
+      "orientation": 90,
+      "pixel_array": [
+        3264,
+        2448
+      ],
+      "sensor_size_mm": [
+        4.0,
+        3.0
+      ]
+    },
+    {
+      "aperture": 2.4,
+      "facing": "BACK",
+      "focal_length": 1.75,
+      "id": "3",
+      "orientation": 90,
+      "pixel_array": [
+        1600,
+        1200
+      ],
+      "sensor_size_mm": [
+        1.6,
+        1.2
+      ]
+    }
+  ],
+  "cpu": {
+    "abi": "arm64-v8a",
+    "abilist": "arm64-v8a,armeabi-v7a,armeabi",
+    "chipname": "Qualcomm Snapdragon 685",
+    "clusters": [
+      {
+        "count": 4,
+        "implementer": "0x41",
+        "max_freq": 1900800,
+        "min_freq": 300000,
+        "name": "Kryo 265 Silver",
+        "part": "0xd03",
+        "revision": "0",
+        "variant": "0x1"
+      },
+      {
+        "count": 4,
+        "implementer": "0x41",
+        "max_freq": 2800000,
+        "min_freq": 600000,
+        "name": "Kryo 265 Gold",
+        "part": "0xd04",
+        "revision": "0",
+        "variant": "0x1"
+      }
+    ],
+    "driver": "cpufreq",
+    "governor": "schedutil",
+    "hardware_line": "Qualcomm Technologies, Inc SM6225-AD",
+    "soc_manufacturer": "Qualcomm",
+    "soc_model": "SM6225"
+  },
+  "device": {
+    "baseband": "bengal",
+    "baseband_version": "HA18_V14.0.14.0.TMTMIXM",
+    "board": "bengal",
+    "bootloader": "V14.0.14.0.TMTMIXM",
+    "brand": "Xiaomi",
+    "build_host": "build",
+    "build_id": "TKQ1.221114.001",
+    "color": "black",
+    "description": "tapas_global-user 13 TKQ1.221114.001 V14.0.14.0.TMTMIXM release-keys",
+    "device": "tapas",
+    "fingerprint": "Xiaomi/tapas_global/tapas:13/TKQ1.221114.001/V14.0.14.0.TMTMIXM:user/release-keys",
+    "flavor": "tapas_global-user",
+    "hardware": "qcom",
+    "incremental": "V14.0.14.0.TMTMIXM",
+    "manufacturer": "Xiaomi",
+    "model": "23028RA60L",
+    "platform": "bengal",
+    "product": "tapas_global",
+    "ram_mb": 8192,
+    "release": "13",
+    "sdk": "33",
+    "security_patch": "2023-09-01",
+    "sku": "23028RA60L",
+    "storage_gb": 256,
+    "storage_type": "ufs",
+    "tags": "release-keys",
+    "type": "user"
+  },
+  "display": {
+    "dpi": 395,
+    "fps": 120,
+    "height": 2400,
+    "ppi": 395,
+    "width": 1080
+  },
+  "generated_identity": {
+    "android_id": "05da846a32c3bb81",
+    "bt_mac": "34:80:0d:62:17:92",
+    "iccid": "8954344192832764835",
+    "imei": "860472061043329",
+    "imsi": "722343164752553",
+    "meid": "A0000032D10267",
+    "phone_number": "+5491103056413",
+    "serial": "0x06D7E8",
+    "wifi_bssid": "00:e0:fc:e4:84:78",
+    "wifi_mac": "34:80:0d:e3:c2:9b",
+    "wifi_ssid": "Claro-A6FC"
+  },
+  "gpu": {
+    "renderer": "Adreno (TM) 610",
+    "vendor": "Qualcomm",
+    "version": "OpenGL ES 3.2"
+  },
+  "identity_template": {
+    "bt_mac_oui": "34:80:0D",
+    "iccid_prefix": "895434",
+    "imsi_prefix": "72231",
+    "phone_prefix": "+54911",
+    "serial_prefix": "0x",
+    "tac": "86047206",
+    "wifi_mac_oui": "34:80:0D"
+  },
+  "instance": {
+    "name": "tapas-golden",
+    "seed": 42,
+    "template_source": "templates/xiaomi/tapas.json"
+  },
+  "kernel": {
+    "full_version": "Linux version 5.10.149-android12-9-00001-ge5f3ba2132a1 (android-build@google.com) (Android (8490178, based on r450784d) clang version 14.0.6) #1 SMP PREEMPT Wed Oct 18 10:14:02 UTC 2023",
+    "version": "5.10.149-android12-9-00001-ge5f3ba2132a1"
+  },
+  "network": {
+    "bssid_oui": "00:E0:FC",
+    "ssid_prefix": "Claro"
+  },
+  "sensors": [
+    {
+      "max_delay": 200000,
+      "max_range": 78.4532,
+      "min_delay": 2500,
+      "name": "LSM6DSO Accelerometer",
+      "power": 0.17,
+      "resolution": 0.0023928,
+      "string_type": "android.sensor.accelerometer",
+      "type": 1,
+      "vendor": "STMicroelectronics",
+      "version": 1
+    },
+    {
+      "max_delay": 200000,
+      "max_range": 34.906586,
+      "min_delay": 2500,
+      "name": "LSM6DSO Gyroscope",
+      "power": 0.55,
+      "resolution": 0.0010681,
+      "string_type": "android.sensor.gyroscope",
+      "type": 4,
+      "vendor": "STMicroelectronics",
+      "version": 1
+    },
+    {
+      "max_delay": 100000,
+      "max_range": 3000.0,
+      "min_delay": 10000,
+      "name": "MMC5603 Magnetometer",
+      "power": 0.4,
+      "resolution": 0.0625,
+      "string_type": "android.sensor.magnetic_field",
+      "type": 2,
+      "vendor": "MEMSIC",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 65535.0,
+      "min_delay": 0,
+      "name": "STK3331 Light Sensor",
+      "power": 0.05,
+      "resolution": 1.0,
+      "string_type": "android.sensor.light",
+      "type": 5,
+      "vendor": "Sensortek",
+      "version": 1
+    },
+    {
+      "max_delay": 0,
+      "max_range": 5.0,
+      "min_delay": 0,
+      "name": "Virtual Proximity Sensor",
+      "power": 0.1,
+      "resolution": 5.0,
+      "string_type": "android.sensor.proximity",
+      "type": 8,
+      "vendor": "Xiaomi",
+      "version": 1
+    }
+  ],
+  "telephony": {
+    "carrier_name": "Personal",
+    "country_iso": "ar",
+    "network_type": "13",
+    "operator_numeric": "72234",
+    "phone_type": "1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "template": {
+    "market_name": "Redmi Note 12",
+    "name": "Xiaomi Redmi Note 12 4G"
+  },
+  "version": "1.0"
+}
