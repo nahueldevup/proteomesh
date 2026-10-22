@@ -699,7 +699,22 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Protocolo de verificación post-arranque (`verify-health`):** Subcomando CLI y flag `--verify-health` en `start` que ejecuta 7 comprobaciones automáticas: contenedor Docker en ejecución, datapath de red host $\rightarrow$ contenedor, `sys.boot_completed=1`, marcador `.proteomesh_boot_done`, overrides de pantalla, propiedades de modelo y DenyList de Magisk activa.
 * **Suite de tests ampliada (42/42 OK):** Creado `tests/host/test_manager_f3.py` (12 tests) verificando validación de memoria/CPUs/PIDs, persistencia de límites en `meta.json`, inyección de límites a Docker, importación de bundle y rechazo de bundles incompatibles.
 * **Validación viva en `f05-main`:** Con límites aplicados (4 GB RAM, 2.0 CPUs, 2048 PIDs), `f05-main` revalidó **100/100 Low Risk** en Pixelscan y **0/39** en Root Detection Plus sin paywall.
-* **Estado:** Fase 3 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 4 (Dependencias cerradas y reproducibilidad end-to-end).
+* **Estado:** Fase 3 **cerrada el 2026-10-22** (commits `98a3a72` y `95e9868`). Próximo hito: Fase 4 (Dependencias cerradas y reproducibilidad end-to-end).
+
+### 55. F4 — Dependencias cerradas y reproducibilidad end-to-end (2026-10-22)
+
+* **Lockfile integral (`modules.lock`):** Todas las dependencias externas quedaron fijadas con URLs de releases oficiales y hashes SHA-256 inmutables:
+  - `redroid_base`: `redroid/redroid:13.0.0_mindthegapps_magisk_widevine@sha256:9a22d28e69d8...` fijada en `Dockerfile`.
+  - `nohello`: v0.0.7 (MIT) fijado con URL de GitHub Releases y SHA-256.
+  - `magisk`: v30.6 (GPL-3.0) fijado con URL de release oficial y SHA-256.
+  - `lsposed`: v1.9.2-7024 (GPL-3.0) fijado con URL de GitHub Releases y SHA-256.
+  - Se eliminó completamente la sección `manual` de `modules.lock`; cero dependencias huérfanas en el proyecto.
+* **Herramientas de descarga y bootstrap reproducibles:**
+  - `tools/deps_fetch.py`: extendido para verificar imágenes base por digest y gestionar `lsposed`. Comandos `list`, `fetch` y `verify` 100% operativos.
+  - `tools/bootstrap_data_clean.sh`: aprovisiona tanto NoHello 0.0.7 como LSPosed 1.9.2 directamente desde los zips verificados en `.cache/deps/`, permitiendo reconstruir `data-clean` desde cero en una máquina limpia sin depender de instancias existentes (`hide-test`).
+* **Suite de tests ampliada (47/47 OK):** Creado `tests/host/test_deps_f4.py` (5 tests) comprobando la estructura de `modules.lock`, el digest de `Dockerfile`, los formatos de URLs/hashes, la integridad de los 5 artefactos locales compilados y el éxito del comando `deps_fetch.py verify`.
+* **Cierre de la migración arquitectónica ADR-001:** Con F4 cerrada, los principios P1 a P7 y las fases F0 a F4 de ADR-001 han sido completados en su totalidad.
+* **Estado:** Fase 4 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Plataforma de Gestión (Panel Web / Orquestador multi-contenedor / Proxies).
 
 ---
 

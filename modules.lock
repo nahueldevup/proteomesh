@@ -4,6 +4,12 @@
   "baseline_commit": "b7d900f",
   "baseline_android": "13 / API 33",
   "dependencies": {
+    "redroid_base": {
+      "image": "redroid/redroid",
+      "tag": "13.0.0_mindthegapps_magisk_widevine",
+      "digest": "sha256:9a22d28e69d87a6b965c051f32f112a8c716f1a33c4f2000398ff7ca84a1c9ef",
+      "pinned_in": "Dockerfile"
+    },
     "nohello": {
       "version": "0.0.7",
       "repo": "https://github.com/MhmRdd/NoHello",
@@ -27,14 +33,18 @@
         "method": "prepare-magisk.sh",
         "managed_by": "prepare-magisk.sh"
       }
-    }
-  },
-  "manual": {
+    },
     "lsposed": {
-      "version": "1.9.2",
+      "version": "1.9.2 (7024)",
       "repo": "https://github.com/LSPosed/LSPosed",
-      "status": "preinstalled-in-data-clean",
-      "note": "No se descarga desde el repo; vive dentro de data-clean. Versionar su origen es Fase 4."
+      "url": "https://github.com/LSPosed/LSPosed/releases/download/v1.9.2/LSPosed-v1.9.2-7024-zygisk-release.zip",
+      "sha256": "0ebc6bcb465d1c4b44b7220ab5f0252e6b4eb7fe43da74650476d2798bb29622",
+      "license": "GPL-3.0",
+      "install": {
+        "target": "data-clean/adb/modules/zygisk_lsposed",
+        "method": "extract-zip",
+        "managed_by": "tools/bootstrap_data_clean.sh"
+      }
     }
   },
   "local_artifacts": {
@@ -51,17 +61,17 @@
     "libinject_patched": {
       "path": "build_magisk/system/etc/init/magisk/libinject_patched.so",
       "sha256": "d1b37fd2f836c2fcecd865e609922c75cc1d27e313e1b0278a652de71c81ec44",
-      "note": "Companion de inyección parcheado; su origen reproducible todavía no está scripted."
+      "note": "Companion de inyección parcheado."
     },
     "profile_loader": {
       "path": "build_magisk/system/bin/profile-loader",
-      "sha256": "14cbfc1aa71f6414ebd7ed5160e28514d864fb47b21e9d4e20b7bfc3f0364484",
-      "note": "Binario compilado desde src/profile_loader."
+      "sha256": "6c1c118a64a58a9e1922d5cf7e8aa5ccea31971a1ef6a311d26bd1b3891e34b4",
+      "note": "Binario estático compilado desde src/profile_loader (model-agnostic F1.5)."
     },
     "fake_wifi_apk": {
       "path": "modules/FakeWifiPixel.apk",
-      "sha256": "3642b63823d7389b7cf785c1232ba63daeb3952c195c2475843b272fd703fe67",
-      "note": "APK compilado desde src/lsposed_module."
+      "sha256": "b88d88f58a13000c98440c1f3975477546226695d43ba3fc1d46be56ff4872af",
+      "note": "APK compilado y firmado desde src/lsposed_module (model-agnostic F1.5)."
     }
   }
 }

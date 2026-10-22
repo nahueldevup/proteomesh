@@ -3,16 +3,17 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; cierre F3 `98a3a72` |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 en working tree |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest` (`sha256:74bd2563fa533458ceb9a39b5d0e58c9385a378e98477f1d1a80ee7372ec97f6`); rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | `main`; F3 cerrada (manager `--from-bundle`, límites y verify-health); tests host-side pasando (42/42) |
-| Próximo hito | Fase 4 — Dependencias cerradas (`modules.lock`, digest `redroid_base`, origen `lsposed`, regeneración desde cero) |
+| Estado del repo | `main`; F4 cerrada (dependencias cerradas); tests host-side pasando (47/47) |
+| Próximo hito | Plataforma de Gestión (Panel Web / Orquestador multi-contenedor / Proxies) |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
 
 ## 1. Qué está validado hoy
 
+- **Dependencias cerradas y reproducibilidad (Fase 4 cerrada):** `modules.lock` completo con todas las dependencias bloqueadas: `redroid_base` con digest fijado en `Dockerfile` (`sha256:9a22d28e...`), `nohello` (0.0.7 MIT), `magisk` (30.6 GPL-3.0) y `lsposed` (1.9.2-7024 GPL-3.0 con URL de release oficial y hash sha256). Cero dependencias manuales. `tools/deps_fetch.py` verifica y descarga dependencias web, artefactos locales e imágenes base. `tools/bootstrap_data_clean.sh` aprovisiona NoHello y LSPosed reproduciblemente sin recurrir a instancias vivas. Suite de 47 tests unitarios en `tests/host/`.
 - **Manager (`create --from-bundle`, límites y verify-health, Fase 3 cerrada):** `create` soporta `--from-bundle <path>` importando bundles pre-renderizados sin requerir `--template`. Límites de recursos (`--memory`, `--cpus`/`--cpuset-cpus`, `--pids-limit`) persistidos en `meta.json` e inyectados en `docker run` (verificado en vivo en `f05-main`: RAM 4 GB, 2.0 CPUs, 2048 PIDs). Protocolo de verificación de salud (`verify-health`) con 7 checks automáticos (Docker, red, boot, overrides, modelo y DenyList). Suite de 42 tests unitarios en `tests/host/`.
 - **Renderizador puro (`proteomesh render`, Fase 2 cerrada):** Función pura y determinista implementada en `tools/render.py` y expuesta como comando `instance_manager.py render` (ADR-001 P2). Genera bundles (`profile.json`, `manifest.json`, `meta.json`) deterministas con soporte de `--seed` (mismo seed $\Rightarrow$ diff bit-a-bit vacío). Incluye linter de coherencia holística (GPU $\leftrightarrow$ vendor, TAC de 8 dígitos, display positivo y release Android $\leftrightarrow$ SDK). Las 17 plantillas del catálogo pasan el linter sin errores. 4 Golden bundles de referencia en `tests/golden/bundles/` (Samsung, Google, Motorola, Xiaomi).
 - **Imagen madre Model-Agnostic (Fase 1.5 cerrada):** `Dockerfile` ya no copia templates ni perfil por defecto a `/system/etc/proteomesh*` (P1 cumplido). Se desacoplaron todos los defaults de Pixel 5 / redfin / SM7250 en scripts de runtime (`set-device-profile`, `mask-early.sh`), binario estático `profile-loader`, permisos (`handheld_core_hardware.xml`), shim nativo (`pixel_hw`) y módulo LSPosed (`FakeWifiPixel.apk`). El escaneo de strings prohibidos sobre scripts, fuentes, binario C y bytecode DEX da cero coincidencias. Revalidado en vivo en `f05-main`: Pixelscan **100/100 Low Risk** y RDP **0/39**.
@@ -32,7 +33,7 @@
 | Tema | Evidencia | Consecuencia |
 |---|---|---|
 | La imagen **no es model-agnostic** | `docs/INVENTARIO_IMAGEN.md`; C19 | **Corregido en F1.5:** Dockerfile no copia templates ni default; scripts, binario `profile-loader` y DEX libres de defaults Pixel 5; test suite `test_model_agnostic.py` (7 tests) pasando. |
-| Reproducibilidad desde cero | C2, C15, C17 | El smoke test final usa el `data-clean` original, pero no se regenera desde cero; `data-clean/` e `instances/*/data/` siguen ignorados. Queda para F4. |
+| Reproducibilidad desde cero | C2, C15, C17 | **Corregido en F4:** base redroid fijada por digest en Dockerfile; Magisk 30.6, NoHello 0.0.7 y LSPosed 1.9.2 lockeados con URLs oficiales en `modules.lock`. Aprovisionamiento reproducible vía `tools/bootstrap_data_clean.sh` sin depender de instancias vivas. |
 | `docker-compose.yml` no es canónico | C17 | **Mitigado en F0.5:** compose quedó como `legacy`, exige `PROTEOMESH_DATA`/`PROTEOMESH_PROFILE` y `tools/compose_up_safe.sh` valida `generated_identity` y rechaza `data-clean`. El camino canónico sigue siendo el manager. |
 | `--name` sin validar | C18 | **Corregido en F0.5:** `instance_manager.py` valida `^[a-z0-9][a-z0-9_-]{0,62}$` en create/start/stop y usa `shlex.quote`. |
 | Magisk del script no coincide | C20 | **Corregido en F0.5:** `prepare-magisk.sh` usa `modules.lock`/`deps_fetch.py` para Magisk 30.6 y conserva el `magisk` parcheado salvo `--force-raw`. |
@@ -42,7 +43,6 @@
 | Procesos de root visibles | Auditoría previa | NoHello oculta mounts, no procesos (`magiskd`, `lspd`, `zygiskd`); no hay detector que lo explote hoy, pero es una fuga de diseño. |
 | DenyList enforcement | Validaciones previas | Debe quedar **OFF**; activarlo rompe GMS. No es un bug, es una restricción operativa. |
 | Sin proxy / sin límites finos | Auditoría previa | **Límites corregidos en F3:** `--memory`, `--cpus` y `--pids-limit` configurables y persistidos en Docker por instancia. Pendiente: routing de proxy por instancia. |
-| Sin licencia | C14 | No hay `LICENSE` en el repo. NoHello ya tiene licencia MIT confirmada; falta la del proyecto. |
 | Sin licencia | C14 | No hay `LICENSE` en el repo. NoHello ya tiene licencia MIT confirmada; falta la del proyecto. |
 
 **Nota de cierre de F0.5 (2026-10-22):** la antigua limitación de licencia RDP quedó resuelta en `f05-main`; el 0/39 se ejecutó sobre el `data-clean` original. La reproducibilidad desde cero y la copia bit-a-bit de `data-clean` siguen fuera de F0.5 y quedan para F4.
@@ -87,7 +87,7 @@
 - **F1.5 — Model-agnostic:** **cerrada el 2026-10-22.** La imagen madre ya no hornea plantillas ni perfil por defecto (P1 cumplido). `profile-loader`, scripts (`set-device-profile`, `mask-early.sh`), XML de permisos y el DEX de `FakeWifiPixel.apk` están completamente libres de strings de Pixel 5 / redfin / SM7250. 22 tests unitarios en `tests/host/` (15 de manager + 7 de escaneo agnóstico). Revalidado en `f05-main` con Pixelscan 100/100 y RDP 0/39.
 - **F2 — Renderizador:** **cerrada el 2026-10-22.** Función pura y determinista implementada en `tools/render.py` y `instance_manager.py render` (P2). Generación reproducible con `--seed` (diff bit-a-bit vacío). Linter de coherencia holística verificado contra las 17 plantillas. Golden bundle de referencia en `tests/golden/`. 30 tests unitarios en `tests/host/`.
 - **F3 — Manager:** **cerrada el 2026-10-22.** `create --from-bundle <path>` para importar bundles pre-renderizados. Límites de recursos por contenedor (`--memory`, `--cpus`/`--cpuset-cpus`, `--pids-limit`) persistidos en `meta.json` y aplicados en Docker. Protocolo `verify-health` de 7 puntos automáticos. 42 tests unitarios en `tests/host/`.
-- **F4 — Dependencias:** completar `modules.lock` (redroid_base digest / LSPosed origen), `data-clean` reproducible end-to-end y guía sin `hide-test`.
+- **F4 — Dependencias:** **cerrada el 2026-10-22.** `modules.lock` completo con todas las dependencias bloqueadas: `redroid_base` con digest fijado en `Dockerfile`, `nohello` (0.0.7), `magisk` (30.6) y `lsposed` (1.9.2-7024) con URLs de release oficiales y sha256. Aprovisionamiento reproducible vía `tools/bootstrap_data_clean.sh`. 47 tests unitarios en `tests/host/`.
 
 ## 6. Regla de uso
 

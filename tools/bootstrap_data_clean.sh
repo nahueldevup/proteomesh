@@ -50,10 +50,13 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 NOHELLO_ZIP="$(python3 "${FETCH}" path nohello)"
+LSPOSED_ZIP="$(python3 "${FETCH}" path lsposed)"
 echo "[i] NoHello verificado: ${NOHELLO_ZIP}"
+echo "[i] LSPosed verificado: ${LSPOSED_ZIP}"
 
 if [ "${DRY_RUN}" -eq 1 ]; then
     echo "[dry-run] Se reemplazaría ${DATA_CLEAN}/adb/modules/zygisk_nohello"
+    echo "[dry-run] Se verificaría/aprovisionaría ${DATA_CLEAN}/adb/modules/zygisk_lsposed"
     echo "[dry-run] Se escribiría ${DATA_CLEAN}/adb/nohello/umount"
     if [ "${SANITIZE_IDENTITY}" -eq 1 ]; then
         echo "[dry-run] Se borrarían persistent_properties, fake_proc y mini_mountinfo"
@@ -65,6 +68,7 @@ docker run --rm \
     -e SANITIZE_IDENTITY="${SANITIZE_IDENTITY}" \
     -v "${DATA_CLEAN}:/data" \
     -v "${NOHELLO_ZIP}:/tmp/nohello.zip:ro" \
+    -v "${LSPOSED_ZIP}:/tmp/lsposed.zip:ro" \
     alpine:3.20 sh -eu -c '
         set -eu
 
@@ -89,6 +93,39 @@ docker run --rm \
         find "$MOD" -type d -exec chmod 0755 {} +
         find "$MOD" -type f -exec chmod 0644 {} +
         chmod 0755 "$MOD/post-fs-data.sh" "$MOD/service.sh" "$MOD/cleanup.sh"
+
+        # 1b. Extraer/asegurar el módulo LSPosed fijado en modules.lock.
+        if [ ! -f /data/adb/modules/zygisk_lsposed/module.prop ]; then
+            rm -rf /tmp/lsposed /data/adb/modules/zygisk_lsposed
+            mkdir -p /tmp/lsposed /data/adb/modules/zygisk_lsposed/zygisk /data/adb/modules/zygisk_lsposed/bin
+            busybox unzip -q /tmp/lsposed.zip -d /tmp/lsposed
+
+            LSP=/data/adb/modules/zygisk_lsposed
+            cp /tmp/lsposed/module.prop "$LSP/module.prop"
+            cp /tmp/lsposed/post-fs-data.sh "$LSP/post-fs-data.sh"
+            cp /tmp/lsposed/service.sh "$LSP/service.sh"
+            cp /tmp/lsposed/sepolicy.rule "$LSP/sepolicy.rule"
+            cp /tmp/lsposed/uninstall.sh "$LSP/uninstall.sh"
+            cp /tmp/lsposed/daemon "$LSP/daemon"
+            cp /tmp/lsposed/daemon.apk "$LSP/daemon.apk"
+            cp /tmp/lsposed/manager.apk "$LSP/manager.apk"
+            cp -r /tmp/lsposed/framework "$LSP/framework"
+
+            cp /tmp/lsposed/lib/x86/liblspd.so "$LSP/zygisk/x86.so"
+            cp /tmp/lsposed/lib/x86_64/liblspd.so "$LSP/zygisk/x86_64.so"
+            ln -sf x86_64.so "$LSP/zygisk/arm64-v8a.so"
+            ln -sf x86.so "$LSP/zygisk/armeabi-v7a.so"
+            ln -sf x86.so "$LSP/zygisk/armeabi.so"
+
+            cp /tmp/lsposed/bin/x86/dex2oat "$LSP/bin/dex2oat32"
+            cp /tmp/lsposed/bin/x86_64/dex2oat "$LSP/bin/dex2oat64"
+
+            chown -R 0:0 "$LSP"
+            find "$LSP" -type d -exec chmod 0755 {} +
+            find "$LSP" -type f -exec chmod 0644 {} +
+            chmod 0755 "$LSP/post-fs-data.sh" "$LSP/service.sh" "$LSP/daemon" "$LSP/uninstall.sh"
+            chmod 0755 "$LSP/bin/dex2oat32" "$LSP/bin/dex2oat64"
+        fi
 
         # 2. Reglas de umount usadas por la validación anti-root.
         mkdir -p /data/adb/nohello

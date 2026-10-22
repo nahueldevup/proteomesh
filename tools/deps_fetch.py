@@ -57,6 +57,11 @@ def download(url: str, dest: Path) -> None:
 
 
 def ensure_dep(dep_id: str, dep: dict, force: bool = False) -> Path:
+    if "url" not in dep:
+        if "digest" in dep:
+            print(f"[i] {dep_id}: imagen base fijada por digest ({dep['digest']})")
+            return BASE_DIR / dep.get("pinned_in", "Dockerfile")
+        raise SystemExit(f"[!] Dependencia {dep_id} no tiene URL ni digest.")
     dest = cache_path(dep_id, dep)
     expected = dep["sha256"]
     if dest.exists() and not force:
@@ -75,12 +80,15 @@ def ensure_dep(dep_id: str, dep: dict, force: bool = False) -> Path:
 def cmd_list(lock: dict, _args) -> None:
     print("Dependencias fijadas:")
     for dep_id, dep in lock.get("dependencies", {}).items():
-        print(f"  {dep_id:<10} {dep.get('version','?'):<8} {dep.get('license','?'):<10} {dep['url']}")
+        if "url" in dep:
+            print(f"  {dep_id:<14} {dep.get('version','?'):<12} {dep.get('license','?'):<10} {dep['url']}")
+        elif "digest" in dep:
+            print(f"  {dep_id:<14} {dep.get('tag','?'):<12} {'Docker':<10} {dep.get('image')}@{dep.get('digest')[:19]}...")
     manual = lock.get("manual", {})
     if manual:
         print("Dependencias manuales:")
         for dep_id, dep in manual.items():
-            print(f"  {dep_id:<10} {dep.get('version','?'):<8} {dep.get('status','?')}")
+            print(f"  {dep_id:<14} {dep.get('version','?'):<12} {dep.get('status','?')}")
 
 
 def cmd_fetch(lock: dict, args) -> None:
@@ -89,7 +97,10 @@ def cmd_fetch(lock: dict, args) -> None:
     for dep_id in ids:
         if dep_id not in dependencies:
             raise SystemExit(f"[!] Dependencia desconocida: {dep_id}")
-        path = ensure_dep(dep_id, dependencies[dep_id], force=args.force)
+        dep = dependencies[dep_id]
+        if "url" not in dep:
+            continue
+        path = ensure_dep(dep_id, dep, force=args.force)
         print(f"[✓] {dep_id}: {path} ({sha256_file(path)})")
 
 
@@ -104,6 +115,19 @@ def cmd_path(lock: dict, args) -> None:
 def cmd_verify(lock: dict, _args) -> None:
     failed = False
     for dep_id, dep in lock.get("dependencies", {}).items():
+        if "digest" in dep:
+            pinned_file = BASE_DIR / dep.get("pinned_in", "Dockerfile")
+            if not pinned_file.exists():
+                print(f"[!] {dep_id}: no existe {pinned_file}")
+                failed = True
+            else:
+                df_text = pinned_file.read_text(encoding="utf-8")
+                if dep["digest"] in df_text:
+                    print(f"[✓] {dep_id}: digest fijado en {dep.get('pinned_in', 'Dockerfile')} ({dep['digest'][:19]}...)")
+                else:
+                    print(f"[!] {dep_id}: digest no encontrado en {dep.get('pinned_in', 'Dockerfile')}")
+                    failed = True
+            continue
         path = cache_path(dep_id, dep)
         if not path.exists():
             print(f"[!] {dep_id}: no está en caché ({path})")
