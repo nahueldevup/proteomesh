@@ -468,10 +468,23 @@ def apply_runtime_defaults(adb_s, meta):
     w = disp.get("width", 1080)
     h = disp.get("height", 2340)
     dpi = disp.get("dpi", 440)
-    _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
-         timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
-         timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    display_ok = False
+    for _ in range(5):
+        _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        size_check = _run(["adb", "-s", adb_s, "shell", "wm", "size"],
+                          timeout=20, capture_output=True, text=True)
+        density_check = _run(["adb", "-s", adb_s, "shell", "wm", "density"],
+                             timeout=20, capture_output=True, text=True)
+        if (f"Override size: {w}x{h}" in (size_check.stdout or "")
+                and f"Override density: {dpi}" in (density_check.stdout or "")):
+            display_ok = True
+            break
+        time.sleep(2)
+    if not display_ok:
+        print("[!] No se pudo confirmar el override de pantalla; revisar 'wm size' y 'wm density'.")
     disabled_count = 0
     for pkg in DISABLE_PACKAGES:
         res = _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
@@ -481,7 +494,7 @@ def apply_runtime_defaults(adb_s, meta):
     for setting_cmd, value in BG_PROCESS_SETTINGS.items():
         _run(["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
              timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return w, h, dpi, disabled_count
+    return w, h, dpi, disabled_count, display_ok
 
 
 def cmd_start_instance(args):
@@ -660,32 +673,13 @@ def cmd_start_instance(args):
     # ── Optimización post-boot ───────────────────────────────────────────────
 
     def post_boot():
-        # 1. Sobrescribir resolución/densidad lógica con valores reales del perfil.
-        #    Así las apps leen la pantalla del dispositivo genuino aunque SurfaceFlinger
-        #    renderice internamente a 720x1280@30fps.
-        _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
-             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
-             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
-
-        # 2. Desactivar paquetes inútiles en CloudPhone para liberar RAM y servicios.
-        disabled_count = 0
-        for pkg in DISABLE_PACKAGES:
-            res_d = _run(
-                ["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
-                timeout=20, capture_output=True, text=True
-            )
-            if "disabled" in res_d.stdout.lower() or "new state" in res_d.stdout.lower():
-                disabled_count += 1
+        # 1-3. Overrides de pantalla, paquetes y límites de background.
+        #    Se verifica el override real: si WindowManager todavía no está
+        #    listo, se reintenta para no reportar un falso éxito.
+        _, _, _, disabled_count, display_ok = apply_runtime_defaults(adb_s, meta)
+        if display_ok:
+            print(f"[✓] Display lógico: {w}x{h} @ {dpi}dpi (renderizado real: {rw}x{rh}@{rfps}fps)")
         print(f"[✓] Paquetes desactivados: {disabled_count}/{len(DISABLE_PACKAGES)} (bluetooth, impresión, galería, etc.)")
-
-        # 3. Limitar procesos background para reducir footprint de RAM.
-        for setting_cmd, value in BG_PROCESS_SETTINGS.items():
-            _run(
-                ["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
-                timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
         print("[✓] Límites de procesos background configurados (max_cached=4)")
 
     if not wait_for_boot(inst_name):
@@ -737,6 +731,12 @@ def cmd_start_instance(args):
             return
         post_boot()
         print("[✓] Módulo/scope LSPosed recargados desde el arranque.")
+
+    # Verificación final: un reinicio tardío de WindowManager puede descartar
+    # el override aplicado en post_boot. Reaplicarlo antes de devolver el control.
+    _, _, _, _, display_ok = apply_runtime_defaults(adb_s, meta)
+    if display_ok:
+        print("[✓] Overrides finales de pantalla verificados.")
 
     net_ok, net_msg = container_network_ok(inst_name)
     if net_ok:
@@ -800,9 +800,10 @@ def cmd_sync_scope(args):
             print("[!] Timeout esperando el reinicio; revisar: docker logs " + inst_name)
             raise SystemExit(1)
         _run(["adb", "connect", adb_s], timeout=10, capture_output=True, text=True)
-        w, h, dpi, disabled_count = apply_runtime_defaults(adb_s, meta)
+        w, h, dpi, disabled_count, display_ok = apply_runtime_defaults(adb_s, meta)
         print(f"[✓] Reinicio completado; apply-props.sh volvió a sincronizar el scope.")
-        print(f"[✓] Overrides restaurados: {w}x{h} @ {dpi}dpi; paquetes desactivados: {disabled_count}")
+        if display_ok:
+            print(f"[✓] Overrides restaurados: {w}x{h} @ {dpi}dpi; paquetes desactivados: {disabled_count}")
 
     if args.package:
         in_scope = False
