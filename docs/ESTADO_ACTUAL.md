@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 (en curso) |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
 | Estado del repo | `main`; F4 cerrada; OPT-001 aplicado (optimización de latencia, Bionic shim y hot-paths); tests host-side pasando (47/47) |
