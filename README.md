@@ -148,25 +148,41 @@ python3 -m unittest discover -s tests/host -v
 ```
 
 ### 3. Gestionar Instancias con `instance_manager.py`
+
+El gestor admite dos modalidades operativas según el objetivo:
+
+#### Modo A: Instancias Únicas para Granjas Masivas (`--template`)
+Cada invocación genera un IMEI (Luhn válido), MAC Wi-Fi, MAC Bluetooth, Serial y Android ID **completamente aleatorios y únicos**. Ninguna instancia comparte huella:
 ```bash
 # 1. Listar plantillas de hardware y operadoras disponibles
 python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 
-# 2. Previsualizar identidad aleatoria válida en rango para un modelo
-python3 tools/instance_manager.py randomize --template samsung/a54x --carrier ar_personal
+# 2. Crear una nueva instancia con identidad única y límites de recursos (RAM, CPUs, PIDs)
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 4g --cpus 2.0 --pids-limit 2048 --start
+```
 
-# 3. Crear una nueva instancia (clona data-clean con blindaje anti-root preinstalado)
-python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --start
+#### Modo B: Congelamiento de Hardware y Migración sin Alertas de Fraude (`--from-bundle`)
+Diseñado para cuentas enroladas de alto valor (MercadoPago, banca móvil, WhatsApp). Permite "congelar" la identidad de un teléfono en un **bundle** reproducible: si el contenedor se daña o se migra de servidor físico, se recrea con **exactamente el mismo hardware** (mismo IMEI, MAC y Android ID), evitando que los sistemas antifraude bloqueen la cuenta por "cambio inesperado de dispositivo":
+```bash
+# 1. Renderizar determinísticamente un bundle congelado (mismo seed = misma huella bit-a-bit)
+python3 tools/render.py --template samsung/a54x --carrier ar_personal --seed 42 --name mi-a54 --out bundles/mi-a54
 
-# 4. Visualizar la pantalla del dispositivo mediante scrcpy
+# 2. Crear la instancia importando el bundle congelado (respeta la identidad al 100%)
+python3 tools/instance_manager.py create --name mi-a54-prod --from-bundle bundles/mi-a54 --port 5586 --start
+```
+
+#### Operación, Salud y Verificación
+```bash
+# Visualizar la pantalla del dispositivo mediante scrcpy
 scrcpy -s 127.0.0.1:5584
 
-# 5. Detener o reiniciar la instancia
+# Detener, reiniciar o comprobar salud post-arranque (7 checks automáticos)
 python3 tools/instance_manager.py stop mi-a54-01
-python3 tools/instance_manager.py start mi-a54-01
+python3 tools/instance_manager.py start mi-a54-01 --verify-health
+python3 tools/instance_manager.py verify-health mi-a54-01
 
-# 6. Tras instalar una app, sincronizar scope LSPosed + DenyList y reiniciar
+# Tras instalar una app, sincronizar scope LSPosed + DenyList y reiniciar
 python3 tools/instance_manager.py sync-scope mi-a54-01 --package <paquete>
 ```
 

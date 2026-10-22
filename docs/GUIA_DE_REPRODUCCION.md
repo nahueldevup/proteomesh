@@ -103,19 +103,33 @@ python3 tools/instance_manager.py randomize --template samsung/a54x --carrier ar
 ```
 
 ### C. Crear una Nueva Instancia Aislada
-Crea la instancia clonando la base limpia (`data-clean/`), congelando el perfil en `instances/<nombre>/profile.json` y asignando un puerto ADB único:
+
+El gestor ofrece dos modalidades según el caso de uso:
+
+#### 1. Modo Directo: Instancias Únicas para Granjas Masivas (`--template`)
+Cada invocación genera un conjunto único y aleatorio de identificadores de hardware (IMEI, MEID, MACs, Serial, Android ID, SIM). Ninguna instancia comparte huella:
 ```bash
-# Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584
-python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584
+# Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584 con límites de recursos Docker
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 4g --cpus 2.0 --pids-limit 2048
 
 # Ejemplo: Crear un Xiaomi Redmi 12 en puerto 5586
 python3 tools/instance_manager.py create --name redmi-12-01 --template xiaomi/fire --carrier ar_personal --port 5586
 ```
 
-### D. Iniciar la Instancia
-Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), conecta ADB, sincroniza la zona horaria de la operadora y asegura el stub de la tienda oficial de la marca (verificando su versión y actualizándolo si corresponde):
+#### 2. Modo Bundle: Congelamiento de Hardware y Migración sin Alertas de Fraude (`--from-bundle`)
+Diseñado para cuentas valiosas (bancos, MercadoPago, WhatsApp) donde se requiere un **"backup de hardware"**:
+- **Renderizado previo:** `python3 tools/render.py --template samsung/a54x --carrier ar_personal --seed 42 --name mi-perfil --out bundles/mi-a54` congela el hardware de forma pura y determinista.
+- **Creación exacta:** `python3 tools/instance_manager.py create --name mi-a54-prod --from-bundle bundles/mi-a54 --port 5588` aprovisiona la instancia respetando **al 100% y bit a bit** ese hardware (mismo IMEI, MAC, Android ID).
+- **Utilidad:** Si el contenedor se daña o se migra a otro host físico, se recrea con la misma huella congelada sin que los algoritmos antifraude bancarios detecten un "nuevo dispositivo".
+
+### D. Iniciar y Verificar la Instancia
+Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), aplica los límites de recursos de Docker (`--memory`, `--cpuset-cpus`, `--pids-limit`), conecta ADB, sincroniza la zona horaria y verifica la salud:
 ```bash
-python3 tools/instance_manager.py start mi-a54-01
+python3 tools/instance_manager.py start mi-a54-01 --verify-health
+```
+*Protocolo de verificación post-arranque (`verify-health`):* Ejecuta 7 pruebas automáticas (contenedor Docker vivo, datapath de red, `sys.boot_completed=1`, marcador `.proteomesh_boot_done`, overrides de pantalla, propiedades de modelo y DenyList de Magisk activa). Se puede invocar independientemente:
+```bash
+python3 tools/instance_manager.py verify-health mi-a54-01
 ```
 *Nota:* En el **primer arranque** de una instancia clonada de `data-clean/`, el gestor puede reiniciar automáticamente el contenedor una vez (pipeline de despliegue del módulo LSPosed): el primer boot detecta el APK desactualizado y lo instala, y el segundo lo precarga con `lspd` limpio. Es un comportamiento esperado (~2x el tiempo de arranque normal); no interrumpirlo.
 

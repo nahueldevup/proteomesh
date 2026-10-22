@@ -688,9 +688,18 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Renderizador puro (`tools/render.py` y `instance_manager.py render`):** Implementada la función pura `render_bundle` según el principio P2 de ADR-001. No requiere Docker, demonios ni llamadas de red.
 * **Determinismo estricto con `--seed`:** El renderizado con semilla numérica inicializa el PRNG de manera aislada produciendo identificadores matemáticamente consistentes (IMEI con Luhn, MEID, Serial, MACs, Android ID, IMSI/ICCID, WiFi SSID/BSSID) y congelando `profile_sha256` idéntico bit-a-bit en cada ejecución (`diff` vacío comprobado).
 * **Linter de coherencia holística (`lint_template`):** Valida antes de emitir cualquier bundle la coherencia técnica entre fabricante y GPU (ARM $\rightarrow$ Mali, Qualcomm $\rightarrow$ Adreno, Imagination $\rightarrow$ PowerVR), formato del TAC (8 dígitos), parámetros de pantalla positivos y concordancia Android Release $\leftrightarrow$ SDK (ej. Android 13 $\rightarrow$ SDK 33). Las 17 plantillas del catálogo fueron auditadas y superan el linter sin observaciones.
-* **Golden files de referencia:** Generado bundle golden versionable en `tests/golden/bundles/a54x_personal_seed42/` para control de regresión y derivación determinista.
+* **Golden files de referencia:** Generados 4 bundles golden versionables en `tests/golden/bundles/` (Samsung, Google, Motorola, Xiaomi) para control de regresión y derivación determinista.
 * **Suite de tests ampliada (30/30 OK):** Creado `tests/host/test_renderer.py` (8 tests) verificando pureza sin Docker/red, determinismo bit-a-bit con seed, comparación exacta con golden files, rechazo de incoherencias en GPU/TAC/display/SDK y linter de las 17 plantillas.
-* **Estado:** Fase 2 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 3 (Manager `--from-bundle`, validación y límites).
+* **Estado:** Fase 2 **cerrada el 2026-10-22** (commits `8c87f5a` y `222efef`). Próximo hito: Fase 3 (Manager `--from-bundle`, validación y límites).
+
+### 54. F3 — Manager: create --from-bundle, límites de recursos y verify-health (2026-10-22)
+
+* **Creación desde bundle (`create --from-bundle`):** `instance_manager.py create` ahora permite aprovisionar instancias directamente desde un bundle pre-renderizado (ADR-001 §3.4). Importa y valida `profile.json` y `manifest.json`, congelando la identidad sin requerir especificar `--template`.
+* **Aislamiento y límites finos de recursos (Docker):** Implementados parámetros `--memory` (ej. `4g`, `2048m`), `--cpus`/`--cpuset-cpus` (ej. `2.0`, `0-3`) y `--pids-limit` (ej. `2048`). Los límites se validan sintácticamente, se persisten en `meta.json` y se aplican en `docker run` en cada arranque. Verificado en vivo en `f05-main`: Docker reporta `Memory=4294967296`, `NanoCPUs=2000000000`, `PidsLimit=2048`.
+* **Protocolo de verificación post-arranque (`verify-health`):** Subcomando CLI y flag `--verify-health` en `start` que ejecuta 7 comprobaciones automáticas: contenedor Docker en ejecución, datapath de red host $\rightarrow$ contenedor, `sys.boot_completed=1`, marcador `.proteomesh_boot_done`, overrides de pantalla, propiedades de modelo y DenyList de Magisk activa.
+* **Suite de tests ampliada (42/42 OK):** Creado `tests/host/test_manager_f3.py` (12 tests) verificando validación de memoria/CPUs/PIDs, persistencia de límites en `meta.json`, inyección de límites a Docker, importación de bundle y rechazo de bundles incompatibles.
+* **Validación viva en `f05-main`:** Con límites aplicados (4 GB RAM, 2.0 CPUs, 2048 PIDs), `f05-main` revalidó **100/100 Low Risk** en Pixelscan y **0/39** en Root Detection Plus sin paywall.
+* **Estado:** Fase 3 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Fase 4 (Dependencias cerradas y reproducibilidad end-to-end).
 
 ---
 

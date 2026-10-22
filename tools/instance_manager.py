@@ -34,8 +34,49 @@ INSTANCES_DIR = BASE_DIR / "instances"
 CLEAN_DATA_DIR = BASE_DIR / "data-clean"
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 MAC_RE = re.compile(r"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
+RESOURCE_MEM_RE = re.compile(r"^\d+[bkmgBKMG]$")
+RESOURCE_CPUS_RE = re.compile(r"^(\d+(\.\d+)?|\d+-\d+(,\d+-\d+)*)$")
 BUNDLE_FORMAT_VERSION = 1
 RUNTIME_VERSION = "1.0"
+
+
+def validate_limits(
+    memory: Optional[str] = None,
+    cpus: Optional[str] = None,
+    pids_limit: Optional[int] = None
+) -> dict:
+    """Valida y normaliza los límites de recursos de Docker (ADR-001 Fase 3)."""
+    limits = {}
+    if memory:
+        mem = str(memory).strip()
+        if not RESOURCE_MEM_RE.fullmatch(mem):
+            raise SystemExit(
+                f"[!] Error: Formato de --memory inválido: {memory!r} "
+                "(ejemplos válidos: 4g, 2048m, 512m)."
+            )
+        limits["memory"] = mem.lower()
+
+    if cpus:
+        c = str(cpus).strip()
+        if not RESOURCE_CPUS_RE.fullmatch(c):
+            raise SystemExit(
+                f"[!] Error: Formato de --cpus inválido: {cpus!r} "
+                "(ejemplos válidos: 2.0, 1, 0-3)."
+            )
+        limits["cpus"] = c
+
+    if pids_limit is not None:
+        try:
+            pl = int(pids_limit)
+            if pl < 100:
+                raise ValueError()
+            limits["pids_limit"] = pl
+        except (ValueError, TypeError):
+            raise SystemExit(
+                f"[!] Error: --pids-limit debe ser un entero >= 100 (recibido: {pids_limit!r})."
+            )
+
+    return limits
 
 # ── Optimización de renderizado ──────────────────────────────────────────────
 # SurfaceFlinger renderiza a resolución/fps reducidos para ahorrar CPU/RAM.
@@ -402,19 +443,96 @@ def validate_bundle(inst_dir: Path) -> tuple[dict, dict]:
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
     inst_name = validate_instance_name(args.name)
-    t_path = find_template(args.template)
-    with open(t_path, "r") as f:
-        t_data = json.load(f)
+    limits = validate_limits(
+        getattr(args, "memory", None),
+        getattr(args, "cpus", None),
+        getattr(args, "pids_limit", None)
+    )
 
-    c_data = None
-    if args.carrier:
-        c_path = find_carrier(args.carrier)
-        with open(c_path, "r") as f:
-            c_data = json.load(f)
+    from_bundle_path = getattr(args, "from_bundle", None)
+    if from_bundle_path:
+        bundle_dir = Path(from_bundle_path)
+        if not bundle_dir.exists():
+            raise SystemExit(f"[!] Error: El directorio bundle '{bundle_dir}' no existe.")
+        src_profile = bundle_dir / "profile.json"
+        if not src_profile.exists():
+            raise SystemExit(f"[!] Error: El bundle '{bundle_dir}' no contiene profile.json.")
+        try:
+            with open(src_profile, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+        except Exception as e:
+            raise SystemExit(f"[!] Error al leer profile.json del bundle: {e}")
 
-    seed = getattr(args, "seed", None)
-    rng = random.Random(seed) if seed is not None else None
-    identity = generate_identity(t_data, c_data, rng=rng)
+        validate_profile(profile, source_label=f"bundle:{bundle_dir}")
+
+        src_manifest = bundle_dir / "manifest.json"
+        manifest_data = {}
+        if src_manifest.exists():
+            try:
+                with open(src_manifest, "r", encoding="utf-8") as f:
+                    manifest_data = json.load(f)
+            except Exception as e:
+                raise SystemExit(f"[!] Error al leer manifest.json del bundle: {e}")
+            fmt = manifest_data.get("bundle_format", 0)
+            if fmt != BUNDLE_FORMAT_VERSION:
+                raise SystemExit(f"[!] Error: bundle_format={fmt} no soportado (esperado: {BUNDLE_FORMAT_VERSION}).")
+
+        src_meta = bundle_dir / "meta.json"
+        meta_data = {}
+        if src_meta.exists():
+            try:
+                with open(src_meta, "r", encoding="utf-8") as f:
+                    meta_data = json.load(f)
+            except Exception:
+                pass
+
+        identity = profile.get("generated_identity") or profile.get("identity")
+        t_src = profile.get("instance", {}).get("template_source") or manifest_data.get("template", "bundle")
+        carrier_id = manifest_data.get("carrier") or meta_data.get("carrier", "default")
+        seed = manifest_data.get("seed", getattr(args, "seed", None))
+        if "instance" not in profile:
+            profile["instance"] = {}
+        profile["instance"]["name"] = inst_name
+        profile["instance"]["adb_port"] = args.port
+    else:
+        if not getattr(args, "template", None):
+            raise SystemExit("[!] Error: Se requiere especificar --template o --from-bundle.")
+        t_path = find_template(args.template)
+        with open(t_path, "r", encoding="utf-8") as f:
+            t_data = json.load(f)
+
+        c_data = None
+        if getattr(args, "carrier", None):
+            c_path = find_carrier(args.carrier)
+            with open(c_path, "r", encoding="utf-8") as f:
+                c_data = json.load(f)
+
+        seed = getattr(args, "seed", None)
+        rng = random.Random(seed) if seed is not None else None
+        identity = generate_identity(t_data, c_data, rng=rng)
+        t_src = str(t_path.relative_to(BASE_DIR))
+        carrier_id = (c_data or {}).get("id", "default")
+
+        # Crear perfil congelado combinando plantilla + operadora + identidad generada
+        profile = json.loads(json.dumps(t_data))
+        profile["instance"] = {
+            "name": inst_name,
+            "adb_port": args.port,
+            "template_source": t_src
+        }
+
+        if c_data:
+            profile["telephony"] = {
+                "carrier_name": c_data.get("carrier_name", profile.get("telephony", {}).get("carrier_name")),
+                "operator_numeric": c_data.get("operator_numeric", profile.get("telephony", {}).get("operator_numeric")),
+                "country_iso": c_data.get("country_iso", profile.get("telephony", {}).get("country_iso")),
+                "phone_type": c_data.get("phone_type", "1"),
+                "network_type": c_data.get("network_type", "13"),
+                "timezone": c_data.get("timezone", "America/Argentina/Buenos_Aires")
+            }
+
+        profile["generated_identity"] = identity
+
     inst_dir = INSTANCES_DIR / inst_name
     inst_dir.mkdir(parents=True, exist_ok=True)
     inst_data_dir = inst_dir / "data"
@@ -444,37 +562,16 @@ def cmd_create_instance(args):
         else:
             print(f"[!] Aviso al clonar data: {res.stderr.decode().strip()}")
 
-    # Crear perfil congelado combinando plantilla + operadora + identidad generada
-    profile = json.loads(json.dumps(t_data))  # Copia profunda
-    profile["instance"] = {
-        "name": inst_name,
-        "adb_port": args.port,
-        "template_source": str(t_path.relative_to(BASE_DIR))
-    }
-
-    if c_data:
-        profile["telephony"] = {
-            "carrier_name": c_data.get("carrier_name", profile.get("telephony", {}).get("carrier_name")),
-            "operator_numeric": c_data.get("operator_numeric", profile.get("telephony", {}).get("operator_numeric")),
-            "country_iso": c_data.get("country_iso", profile.get("telephony", {}).get("country_iso")),
-            "phone_type": c_data.get("phone_type", "1"),
-            "network_type": c_data.get("network_type", "13"),
-            "timezone": c_data.get("timezone", "America/Argentina/Buenos_Aires")
-        }
-
-    # Inyectar identidad generada
-    profile["generated_identity"] = identity
-
     # Guardar en instances/<name>/profile.json
     profile_out = inst_dir / "profile.json"
-    with open(profile_out, "w") as f:
+    with open(profile_out, "w", encoding="utf-8") as f:
         json.dump(profile, f, indent=2)
 
     # Validar que el perfil generado cumpla el contrato de Fase 1
     validate_profile(profile, source_label=f"profile.json de '{inst_name}'")
 
     # Generar manifest.json del bundle formalizando ADR-001 §3.3
-    create_bundle_manifest(inst_dir, str(t_path.relative_to(BASE_DIR)), inst_name, seed=seed)
+    create_bundle_manifest(inst_dir, t_src, inst_name, seed=seed)
 
     # Guardar metadata de instancia
     disp = profile.get("display", {})
@@ -485,10 +582,11 @@ def cmd_create_instance(args):
 
     meta = {
         "instance_name": inst_name,
-        "template": str(t_path.relative_to(BASE_DIR)),
-        "carrier": (c_data or {}).get("id", "default"),
+        "template": t_src,
+        "carrier": carrier_id,
         "adb_port": args.port,
         "seed": seed,
+        "limits": limits,
         "display": {
             "width": w,
             "height": h,
@@ -497,10 +595,17 @@ def cmd_create_instance(args):
         },
         "identity": identity
     }
-    with open(inst_dir / "meta.json", "w") as f:
+    with open(inst_dir / "meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"\n[✓] Instancia '{inst_name}' creada exitosamente en: {inst_dir.relative_to(BASE_DIR)}")
+    try:
+        inst_dir_disp = inst_dir.relative_to(BASE_DIR)
+        profile_out_disp = profile_out.relative_to(BASE_DIR)
+    except ValueError:
+        inst_dir_disp = inst_dir
+        profile_out_disp = profile_out
+
+    print(f"\n[✓] Instancia '{inst_name}' creada exitosamente en: {inst_dir_disp}")
     print(f"  • Modelo      : {profile.get('template', {}).get('name')}")
     print(f"  • Pantalla    : {w}x{h} @ {dpi}dpi ({fps}Hz)")
     print(f"  • Puerto ADB  : {args.port}")
@@ -508,8 +613,8 @@ def cmd_create_instance(args):
     print(f"  • Serial      : {identity['serial']}")
     print(f"  • Wi-Fi MAC   : {identity['wifi_mac']}")
     print(f"  • Wi-Fi SSID  : {identity['wifi_ssid']} ({identity['wifi_bssid']})")
-    print(f"  • Perfil JSON : {profile_out.relative_to(BASE_DIR)}")
-    print(f"  • Directorio  : {inst_dir.relative_to(BASE_DIR)}/data/")
+    print(f"  • Perfil JSON : {profile_out_disp}")
+    print(f"  • Directorio  : {inst_dir_disp}/data/")
     print(f"\nPara levantar el contenedor con el gestor:")
     print(f"  python3 tools/instance_manager.py start {inst_name}")
     print(f"\nO con Docker directamente (renderizado optimizado 720x1280@30fps):")
@@ -649,6 +754,15 @@ def cmd_start_instance(args):
     # Detener contenedor previo si ya existía
     subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    # Límites de recursos (de meta.json o flags CLI)
+    limits = dict(meta.get("limits") or {})
+    cli_limits = validate_limits(
+        getattr(args, "memory", None),
+        getattr(args, "cpus", None),
+        getattr(args, "pids_limit", None)
+    )
+    limits.update(cli_limits)
+
     print(f"[*] Iniciando contenedor '{inst_name}' en puerto {port}...")
     run_cmd = [
         "docker", "run", "-d",
@@ -656,6 +770,20 @@ def cmd_start_instance(args):
         "--privileged",
         "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
         "--sysctl", "net.ipv6.conf.default.disable_ipv6=1",
+    ]
+
+    if limits.get("memory"):
+        run_cmd.extend(["--memory", limits["memory"]])
+    if limits.get("cpus"):
+        cpus_val = str(limits["cpus"])
+        if "-" in cpus_val or "," in cpus_val:
+            run_cmd.extend(["--cpuset-cpus", cpus_val])
+        else:
+            run_cmd.extend(["--cpus", cpus_val])
+    if limits.get("pids_limit"):
+        run_cmd.extend(["--pids-limit", str(limits["pids_limit"])])
+
+    run_cmd.extend([
         "-v", f"{inst_dir.resolve()}/data:/data",
         "-v", f"{profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro",
         "-v", f"{inst_dir.resolve()}:/proteomesh/bundle:ro",
@@ -667,7 +795,7 @@ def cmd_start_instance(args):
         f"androidboot.redroid_height={rh}",
         f"androidboot.redroid_dpi={rdpi}",
         f"androidboot.redroid_fps={rfps}"
-    ]
+    ])
 
     res = subprocess.run(run_cmd, capture_output=True, text=True)
     if res.returncode != 0:
@@ -874,6 +1002,9 @@ def cmd_start_instance(args):
     print(f"\nPara ver la pantalla ejecuta:")
     print(f"  scrcpy -s 127.0.0.1:{port}\n")
 
+    if getattr(args, "verify_health", False):
+        cmd_verify_health(args)
+
 
 def cmd_stop_instance(args):
     """Detiene y elimina el contenedor Docker de la instancia."""
@@ -989,6 +1120,103 @@ def cmd_list_instances(args):
     print("====================================================================================================")
 
 
+def verify_instance_health(inst_name: str) -> tuple[bool, list[str]]:
+    """Protocolo de verificación post-arranque de ProteoMesh (ADR-001 Fase 3)."""
+    reports = []
+    all_ok = True
+
+    inst_dir = INSTANCES_DIR / inst_name
+    meta_path = inst_dir / "meta.json"
+    if not meta_path.exists():
+        return False, [f"[!] Instancia '{inst_name}' no existe en {INSTANCES_DIR}"]
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    port = meta.get("adb_port", 5580)
+    adb_s = f"127.0.0.1:{port}"
+
+    # 1. Estado del contenedor Docker
+    run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
+                     timeout=10, capture_output=True, text=True)
+    if run_state.stdout.strip() == "true":
+        reports.append("[✓] Contenedor Docker: en ejecución")
+    else:
+        reports.append("[!] Contenedor Docker: detenido o ausente")
+        return False, reports
+
+    # 2. Red host -> contenedor
+    net_ok, net_msg = container_network_ok(inst_name)
+    if net_ok:
+        reports.append(f"[✓] Red host→contenedor: OK ({net_msg})")
+    else:
+        reports.append(f"[!] Red host→contenedor: FALLA ({net_msg})")
+        all_ok = False
+
+    # 3. Conexión ADB y sys.boot_completed
+    _run(["adb", "connect", adb_s], timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    boot_res = _run(["adb", "-s", adb_s, "shell", "getprop", "sys.boot_completed"],
+                    timeout=15, capture_output=True, text=True)
+    if boot_res.stdout.strip() == "1":
+        reports.append("[✓] Estado de boot: completado (sys.boot_completed=1)")
+    else:
+        reports.append(f"[!] Estado de boot: incompleto ({boot_res.stdout.strip()!r})")
+        all_ok = False
+
+    # 4. Marcador de arranque ProteoMesh
+    marker = _run(["docker", "exec", inst_name, "ls", "/data/local/tmp/.proteomesh_boot_done"],
+                  timeout=10, capture_output=True, text=True)
+    if ".proteomesh_boot_done" in marker.stdout:
+        reports.append("[✓] Inicialización ProteoMesh: completada (.proteomesh_boot_done)")
+    else:
+        reports.append("[!] Inicialización ProteoMesh: marcador .proteomesh_boot_done ausente")
+        all_ok = False
+
+    # 5. Overrides de pantalla
+    disp = meta.get("display", {})
+    w, h, dpi = disp.get("width", 1080), disp.get("height", 2340), disp.get("dpi", 440)
+    size_out = _run(["adb", "-s", adb_s, "shell", "wm", "size"], timeout=10, capture_output=True, text=True).stdout or ""
+    dens_out = _run(["adb", "-s", adb_s, "shell", "wm", "density"], timeout=10, capture_output=True, text=True).stdout or ""
+    if f"Override size: {w}x{h}" in size_out and f"Override density: {dpi}" in dens_out:
+        reports.append(f"[✓] Overrides de pantalla: confirmados ({w}x{h} @ {dpi}dpi)")
+    else:
+        reports.append(f"[!] Overrides de pantalla: discrepancia (size: {size_out.strip()!r}, density: {dens_out.strip()!r})")
+        all_ok = False
+
+    # 6. Identidad de modelo inyectada
+    model_out = (_run(["adb", "-s", adb_s, "shell", "getprop", "ro.product.model"], timeout=10, capture_output=True, text=True).stdout or "").strip()
+    brand_out = (_run(["adb", "-s", adb_s, "shell", "getprop", "ro.product.brand"], timeout=10, capture_output=True, text=True).stdout or "").strip()
+    if model_out and brand_out:
+        reports.append(f"[✓] Perfil de hardware: {brand_out} {model_out}")
+    else:
+        reports.append("[!] Perfil de hardware: props de modelo vacías")
+        all_ok = False
+
+    # 7. DenyList de Magisk
+    dl_out = _run(["adb", "-s", adb_s, "shell", "su -c '/sbin/magisk --denylist ls'"], timeout=15, capture_output=True, text=True).stdout or ""
+    if "net.pixelscan.check" in dl_out or "at.persie0.root_detection_app" in dl_out or "com.google.android.verifier" in dl_out:
+        reports.append(f"[✓] Magisk DenyList: activa ({len(dl_out.strip().splitlines())} paquetes protegidos)")
+    elif dl_out.strip():
+        reports.append(f"[✓] Magisk DenyList: activa ({len(dl_out.strip().splitlines())} paquetes)")
+    else:
+        reports.append("[!] Magisk DenyList: vacía o inaccesible")
+
+    return all_ok, reports
+
+
+def cmd_verify_health(args):
+    """Comando CLI para ejecutar el protocolo de verificación post-arranque."""
+    inst_name = validate_instance_name(args.name)
+    print(f"[*] Ejecutando protocolo de verificación de salud para '{inst_name}'...")
+    ok, lines = verify_instance_health(inst_name)
+    for line in lines:
+        print(f"  {line}")
+    if ok:
+        print(f"\n[✓] Health-check de '{inst_name}' COMPLETADO EXITOSAMENTE.")
+    else:
+        print(f"\n[!] Health-check de '{inst_name}' PRESENTÓ ADVERTENCIAS O FALLOS.", file=sys.stderr)
+        raise SystemExit(1)
+
+
 def cmd_render(args):
     """Comando CLI para renderizar un bundle determinista según ADR-001 (Fase 2)."""
     from render import render_bundle, lint_template
@@ -1048,10 +1276,14 @@ def main():
     # create
     sub = subparsers.add_parser("create", help="Crea una nueva instancia")
     sub.add_argument("--name", "-n", required=True, help="Nombre único de la instancia (ej: inst-a54-01)")
-    sub.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
+    sub.add_argument("--template", "-t", required=False, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
+    sub.add_argument("--from-bundle", "-b", required=False, help="Ruta al bundle pre-renderizado (ADR-001 Fase 3)")
     sub.add_argument("--carrier", "-c", required=False, default="ar_personal", help="Operadora (default: ar_personal)")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
+    sub.add_argument("--memory", "-m", required=False, help="Límite de memoria RAM para el contenedor (ej: 4g, 3072m)")
+    sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 2.0, 0-3)")
+    sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs para el contenedor (ej: 2048)")
     sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
     sub.set_defaults(func=cmd_create_instance)
 
@@ -1068,7 +1300,16 @@ def main():
     # start
     sub = subparsers.add_parser("start", help="Inicia una instancia existente con sus parámetros de hardware")
     sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
+    sub.add_argument("--memory", "-m", required=False, help="Override temporal de memoria RAM (ej: 4g)")
+    sub.add_argument("--cpus", required=False, help="Override temporal de CPU (ej: 2.0, 0-3)")
+    sub.add_argument("--pids-limit", type=int, required=False, help="Override temporal de PIDs")
+    sub.add_argument("--verify-health", action="store_true", help="Ejecuta protocolo de salud post-arranque")
     sub.set_defaults(func=cmd_start_instance)
+
+    # verify-health (Fase 3 ADR-001)
+    sub = subparsers.add_parser("verify-health", help="Verifica el estado y salud post-arranque de la instancia")
+    sub.add_argument("name", help="Nombre de la instancia (ej: f05-main)")
+    sub.set_defaults(func=cmd_verify_health)
 
     # stop
     sub = subparsers.add_parser("stop", help="Detiene una instancia existente")
