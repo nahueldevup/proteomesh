@@ -714,7 +714,41 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - `tools/bootstrap_data_clean.sh`: aprovisiona tanto NoHello 0.0.7 como LSPosed 1.9.2 directamente desde los zips verificados en `.cache/deps/`, permitiendo reconstruir `data-clean` desde cero en una máquina limpia sin depender de instancias existentes (`hide-test`).
 * **Suite de tests ampliada (47/47 OK):** Creado `tests/host/test_deps_f4.py` (5 tests) comprobando la estructura de `modules.lock`, el digest de `Dockerfile`, los formatos de URLs/hashes, la integridad de los 5 artefactos locales compilados y el éxito del comando `deps_fetch.py verify`.
 * **Cierre de la migración arquitectónica ADR-001:** Con F4 cerrada, los principios P1 a P7 y las fases F0 a F4 de ADR-001 han sido completados en su totalidad.
-* **Estado:** Fase 4 **completada el 2026-10-22**. Pendiente de validación del usuario antes de commitear y pushear. Próximo hito: Plataforma de Gestión (Panel Web / Orquestador multi-contenedor / Proxies).
+* **Estado:** Fase 4 **completada el 2026-10-22** (commit `accbea1`).
+
+### 56. OPT-001 — Optimización Integral de Rendimiento y Fluidez sin Pérdida de Genuinidad (2026-10-22)
+
+* **Contexto y Problemática:** Tras el cierre de las Fases F1–F4 del ADR-001, todas las suites de integridad y tests unitarios pasaban al 100%, pero el contenedor se percibía pesado, con alto consumo de memoria RAM y latencia notable en el uso interactivo vía `scrcpy`.
+* **Diagnóstico Profundo (Runbook OPT-001):**
+  1. **Spam Crítico de Logs en Rutas Calientes (Java):** `FakeWifiHook.java` emitía un log `Log.i("FakeWifiPixel", "hidePkgHook checking: " + pkg + ...)` en cada resolución de paquetes (`getPackageInfo`/`getApplicationInfo`). En 5 horas de sesión acumuló **1,839 llamadas a logcat**, sumado a llamadas repetidas a `toLowerCase()` y 23 evaluaciones de substring sobre `Build.BRAND` y `isSuspectPackage` en el camino crítico de GMS y el sistema.
+  2. **Sobrecarga por Syscall en Shim Bionic C (`libpixel_hw.so`):** Cada llamada a `open`, `stat`, `access`, `fstatat`, `statx`, `readlink`, `opendir` de cualquier proceso cliente pasaba por cadenas lineales de hasta 12 comparaciones de paths en `redirect_path()` y 13 en `is_root_artifact()`, además de 4 búsquedas completas de substring (`str_contains`) en `mark_net_fd()`, afectando incluso a directorios privados y assets de apps (`/data/...`, `/storage/...`, `/apex/...`). En `__system_property_get()`, `get_fake_prop()` evaluaba secuencialmente 27 cadenas para cualquier propiedad ajena.
+  3. **Tasa de Refresco Reducida a 30 FPS en SurfaceFlinger:** El renderizado interno estaba fijado a 30 Hz (`RENDER_FPS = 30`), generando una latencia táctil de 33.3ms entre cuadros, lo que provocaba una percepción inmediata de lag o lentitud al interactuar con el dispositivo.
+  4. **Procesos Innecesarios Consumiendo RAM:** Android Auto (`com.google.android.projection.gearhead`) ejecutaba 2 procesos persistentes en background (`:car` y `:shared`) acumulando ~210 MB de RAM.
+  5. **Reflexión Repetitiva en GPS y Sensores:** `FakeGps.java` resolvía por reflexión `setIsFromMockProvider`, `setMock` y `SystemProperties.get` en cada tick de ubicación. `FakeSensors.java` instanciaba `SensorEvent` vía reflexión en cada evento (25-75 Hz). `ProcessEnvironment.getenv()` clonaba el mapa de variables en cada consulta.
+* **Soluciones Implementadas (3 Fases):**
+  1. **Fase 1 (Limpieza de Hot Paths y Cero Asignaciones en Java):**
+     - Se erradicó el logging en rutas calientes (`hidePkgHook`, `MainActivity.s`, `createFromParcel`, `DhcpInfo`). Total de logs de FakeWifiPixel reducido de 1,876 a solo 60 de inicialización (-96.8%).
+     - `getExpectedBrandStorePackage()` se cacheó en una variable estática inmutable (`sCachedBrandStore`), evitando la regeneración de strings en cada consulta.
+     - `isSuspectPackage()` implementó un fast-path que verifica si existen mayúsculas antes de invocar `toLowerCase()`; para paquetes estándar Android (100% minúsculas), la asignación de objetos String es **cero**.
+  2. **Fase 2 (Optimizaciones Bionic C nativas y Fluidez a 60 FPS):**
+     - Early-out en `redirect_path()`: se evalúa `path[1]` en 2-4 instrucciones de CPU; cualquier ruta que no sea `/sys/` o `/proc/` retorna al instante, acelerando más del 95% de las llamadas de sistema de archivos.
+     - Prefix gate en `mark_net_fd()`: descarta inmediatamente rutas que no comiencen con `/proc/`, evitando 4 escaneos O(n*m).
+     - Fast dispatch en `is_root_artifact()`: bifurcación por primer carácter (`d`, `s`, `v`), evaluando únicamente el subárbol relevante.
+     - Grouping por prefijo en `get_fake_prop()`: propiedades ajenas se descartan con 1 sola comparación en lugar de 27.
+     - `RENDER_FPS = 60`: SurfaceFlinger configurado a 60 Hz nativo (16.6ms por cuadro), entregando respuesta táctil fluida e inmediata en `scrcpy`.
+     - Inclusión de `com.google.android.projection.gearhead` en `DISABLE_PACKAGES` (~210 MB de RAM liberados).
+  3. **Fase 3 (Cacheo de Reflexión y Estado Inmutable):**
+     - `FakeGps.java`: métodos de `Location` y `SystemProperties` cacheados estáticamente.
+     - `FakeWifiHook.java`: mapas limpios de `ProcessEnvironment.getenv()` y `Os.environ()` cacheados por proceso.
+     - `FakeSensors.java`: constructor `SensorEvent(int)` pre-resuelto estáticamente.
+* **Verificación y Puerta de Regresión:**
+  - Tests unitarios host: **47 / 47 tests OK** en 1.38s.
+  - Tests ashmem: **48 / 48 assertions OK**.
+  - **Pixelscan:** **100 / 100 Low Risk** verificado en vivo en `f05-main`.
+  - **Root Detection Plus:** **0 / 39 Detecciones (100% Not Detected)** en vivo en `f05-main` (`0/9`, `0/7`, `0/3`, `0/13`, `0/5`, `0/2`).
+  - Cold start de Pixelscan: reducción de ~450ms+ a **335–346ms** (~24% más rápido).
+  - Fork/exec: 100 subshells en **0.33s** (3.3ms / fork).
+* **Estado:** Optimización OPT-001 **completada el 2026-10-22**. Todas las premisas de genuinidad, unicidad y funcionamiento intactas.
 
 ---
 

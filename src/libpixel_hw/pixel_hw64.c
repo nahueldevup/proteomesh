@@ -977,21 +977,37 @@ static int str_ends_with(const char *str, const char *suffix) {
 }
 
 static int is_root_artifact(const char *path) {
-    if (!path) return 0;
-    if (str_starts_with(path, "/data/adb/lspd")) return 0;
-    if (str_eq(path, "/sbin/su") ||
-        str_eq(path, "/system/bin/su") ||
-        str_eq(path, "/system/xbin/su") ||
-        str_eq(path, "/vendor/bin/su") ||
-        str_eq(path, "/data/local/su") ||
-        str_eq(path, "/data/local/bin/su") ||
-        str_eq(path, "/data/local/xbin/su") ||
-        str_eq(path, "/sbin/.magisk") ||
-        str_eq(path, "/system/app/Superuser.apk") ||
-        str_eq(path, "/system/app/Magisk.apk") ||
-        str_starts_with(path, "/data/adb") ||
-        str_starts_with(path, "/sbin/.magisk/")) {
-        return 1;
+    if (!path || path[0] != '/') return 0;
+    char c = path[1];
+    if (c != 's' && c != 'v' && c != 'd') return 0;
+
+    if (c == 'd') {
+        if (str_starts_with(path, "/data/adb/lspd")) return 0;
+        if (str_starts_with(path, "/data/adb") ||
+            str_eq(path, "/data/local/su") ||
+            str_eq(path, "/data/local/bin/su") ||
+            str_eq(path, "/data/local/xbin/su")) {
+            return 1;
+        }
+        return 0;
+    }
+    if (c == 's') {
+        if (str_eq(path, "/sbin/su") ||
+            str_eq(path, "/sbin/.magisk") ||
+            str_starts_with(path, "/sbin/.magisk/") ||
+            str_eq(path, "/system/bin/su") ||
+            str_eq(path, "/system/xbin/su") ||
+            str_eq(path, "/system/app/Superuser.apk") ||
+            str_eq(path, "/system/app/Magisk.apk")) {
+            return 1;
+        }
+        return 0;
+    }
+    if (c == 'v') {
+        if (str_eq(path, "/vendor/bin/su")) {
+            return 1;
+        }
+        return 0;
     }
     return 0;
 }
@@ -1044,7 +1060,15 @@ static const char *const s_wlan_attr_map[][2] = {
 };
 
 static const char *redirect_path(const char *path) {
-    if (!path) return path;
+    if (!path || path[0] != '/') return path;
+    if (path[1] == 's') {
+        if (path[2] != 'y' || path[3] != 's' || path[4] != '/') return path;
+    } else if (path[1] == 'p') {
+        if (path[2] != 'r' || path[3] != 'o' || path[4] != 'c' || path[5] != '/') return path;
+    } else {
+        return path;
+    }
+
     if (str_eq(path, "/sys/fs/selinux/enforce")) {
         return "/data/local/tmp/fake_proc/selinux_enforce";
     }
@@ -1124,33 +1148,49 @@ static const char *get_fake_prop(const char *name) {
     if (!name) return (void *)0;
     if (my_getuid() < 10000) return (void *)0;
 
-    if (str_eq(name, "ro.hardware.hwcomposer")) { load_fake_hal(); return s_hal_hwc; }
-    if (str_eq(name, "ro.hardware.gralloc")) { load_fake_hal(); return s_hal_gralloc; }
-    if (str_eq(name, "init.svc.adbd")) return "stopped";
-    if (str_eq(name, "sys.usb.config")) return "none";
-    if (str_eq(name, "sys.usb.state")) return "none";
-    if (str_eq(name, "persist.sys.usb.config")) return "none";
-    if (str_eq(name, "ro.product.cpu.abi")) return "arm64-v8a";
-    if (str_eq(name, "ro.product.cpu.abilist")) return "arm64-v8a,armeabi-v7a,armeabi";
-    if (str_eq(name, "ro.product.cpu.abilist64")) return "arm64-v8a";
-    if (str_eq(name, "ro.product.cpu.abilist32")) return "armeabi-v7a,armeabi";
-    if (str_eq(name, "ro.dalvik.vm.native.bridge")) return "0";
-    if (str_eq(name, "ro.enable.native.bridge.exec")) return "";
-    if (str_eq(name, "ro.dalvik.vm.isa.arm64")) return "arm64";
-    if (str_eq(name, "ro.dalvik.vm.isa.arm")) return "arm";
-    if (str_eq(name, "ro.dalvik.vm.isa.x86")) return "";
-    if (str_eq(name, "ro.dalvik.vm.isa.x86_64")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86_64")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86.variant")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86_64.variant")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86.features")) return "";
-    if (str_eq(name, "dalvik.vm.isa.x86_64.features")) return "";
-    if (str_eq(name, "ro.build.type")) return "user";
-    if (str_eq(name, "ro.build.tags")) return "release-keys";
-    if (str_eq(name, "ro.boot.flash.locked")) return "1";
-    if (str_eq(name, "ro.boot.verifiedbootstate")) return "green";
-    if (str_eq(name, "ro.boot.veritymode")) return "enforcing";
+    char c = name[0];
+    if (c == 'r') {
+        if (str_eq(name, "ro.hardware.hwcomposer")) { load_fake_hal(); return s_hal_hwc; }
+        if (str_eq(name, "ro.hardware.gralloc")) { load_fake_hal(); return s_hal_gralloc; }
+        if (str_eq(name, "ro.product.cpu.abi")) return "arm64-v8a";
+        if (str_eq(name, "ro.product.cpu.abilist")) return "arm64-v8a,armeabi-v7a,armeabi";
+        if (str_eq(name, "ro.product.cpu.abilist64")) return "arm64-v8a";
+        if (str_eq(name, "ro.product.cpu.abilist32")) return "armeabi-v7a,armeabi";
+        if (str_eq(name, "ro.dalvik.vm.native.bridge")) return "0";
+        if (str_eq(name, "ro.enable.native.bridge.exec")) return "";
+        if (str_eq(name, "ro.dalvik.vm.isa.arm64")) return "arm64";
+        if (str_eq(name, "ro.dalvik.vm.isa.arm")) return "arm";
+        if (str_eq(name, "ro.dalvik.vm.isa.x86")) return "";
+        if (str_eq(name, "ro.dalvik.vm.isa.x86_64")) return "";
+        if (str_eq(name, "ro.build.type")) return "user";
+        if (str_eq(name, "ro.build.tags")) return "release-keys";
+        if (str_eq(name, "ro.boot.flash.locked")) return "1";
+        if (str_eq(name, "ro.boot.verifiedbootstate")) return "green";
+        if (str_eq(name, "ro.boot.veritymode")) return "enforcing";
+        return (void *)0;
+    }
+    if (c == 'd') {
+        if (str_eq(name, "dalvik.vm.isa.x86")) return "";
+        if (str_eq(name, "dalvik.vm.isa.x86_64")) return "";
+        if (str_eq(name, "dalvik.vm.isa.x86.variant")) return "";
+        if (str_eq(name, "dalvik.vm.isa.x86_64.variant")) return "";
+        if (str_eq(name, "dalvik.vm.isa.x86.features")) return "";
+        if (str_eq(name, "dalvik.vm.isa.x86_64.features")) return "";
+        return (void *)0;
+    }
+    if (c == 's') {
+        if (str_eq(name, "sys.usb.config")) return "none";
+        if (str_eq(name, "sys.usb.state")) return "none";
+        return (void *)0;
+    }
+    if (c == 'i') {
+        if (str_eq(name, "init.svc.adbd")) return "stopped";
+        return (void *)0;
+    }
+    if (c == 'p') {
+        if (str_eq(name, "persist.sys.usb.config")) return "none";
+        return (void *)0;
+    }
     return (void *)0;
 }
 
@@ -1740,6 +1780,7 @@ static int proc_snapshot(const char *path, int fd) {
 
 static void mark_net_fd(const char *path, int fd) {
     if (my_getuid() < 10000 || !path || fd < 0) return;
+    if (path[0] != '/' || path[1] != 'p' || !str_starts_with(path, "/proc/")) return;
     if (str_contains(path, "/net/tcp")) fd_mark(s_tcp_fds, fd);
     else if (str_contains(path, "/net/dev")) fd_mark(s_dev_fds, fd);
     else if (str_contains(path, "/net/route")) fd_mark(s_route_fds, fd);

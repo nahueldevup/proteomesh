@@ -519,41 +519,49 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
         return null;
     }
 
+    private static volatile String sCachedBrandStore = null;
+    private static volatile boolean sBrandStoreCached = false;
+
     private static String getExpectedBrandStorePackage() {
-        String brand = android.os.Build.BRAND != null ? android.os.Build.BRAND.toLowerCase() : "";
-        String mf = android.os.Build.MANUFACTURER != null ? android.os.Build.MANUFACTURER.toLowerCase() : "";
-        if (brand.contains("samsung") || mf.contains("samsung")) {
-            return "com.sec.android.app.samsungapps";
+        if (!sBrandStoreCached) {
+            String brand = android.os.Build.BRAND != null ? android.os.Build.BRAND.toLowerCase() : "";
+            String mf = android.os.Build.MANUFACTURER != null ? android.os.Build.MANUFACTURER.toLowerCase() : "";
+            if (brand.contains("samsung") || mf.contains("samsung")) {
+                sCachedBrandStore = "com.sec.android.app.samsungapps";
+            } else if (brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco") || mf.contains("xiaomi")) {
+                sCachedBrandStore = "com.xiaomi.mipicks";
+            } else if (brand.contains("huawei") || brand.contains("honor") || mf.contains("huawei")) {
+                sCachedBrandStore = "com.huawei.appmarket";
+            } else {
+                sCachedBrandStore = null;
+            }
+            sBrandStoreCached = true;
         }
-        if (brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco") || mf.contains("xiaomi")) {
-            return "com.xiaomi.mipicks";
-        }
-        if (brand.contains("huawei") || brand.contains("honor") || mf.contains("huawei")) {
-            return "com.huawei.appmarket";
-        }
-        return null;
+        return sCachedBrandStore;
     }
 
+    private static final String[] SUSPECT_KEYWORDS = {
+        "magisk", "lsposed", "xposed", "kernelsu", "apatch",
+        "kingroot", "kingo", "supersu", "superuser", "rootcloak",
+        "hideroot", "hidemyroot", "hidemyapp", "rootcheck",
+        "fakewifi", "temprootremove", "chainfire"
+    };
+
     private static boolean isSuspectPackage(String pkg) {
-        if (pkg == null) return false;
-        String p = pkg.toLowerCase();
-        return p.contains("magisk") ||
-               p.contains("lsposed") ||
-               p.contains("xposed") ||
-               p.contains("kernelsu") ||
-               p.contains("apatch") ||
-               p.contains("kingroot") ||
-               p.contains("kingo") ||
-               p.contains("supersu") ||
-               p.contains("superuser") ||
-               p.contains("rootcloak") ||
-               p.contains("hideroot") ||
-               p.contains("hidemyroot") ||
-               p.contains("hidemyapp") ||
-               p.contains("rootcheck") ||
-               p.contains("fakewifi") ||
-               p.contains("temprootremove") ||
-               p.contains("chainfire");
+        if (pkg == null || pkg.isEmpty()) return false;
+        boolean hasUpper = false;
+        for (int i = 0; i < pkg.length(); i++) {
+            char c = pkg.charAt(i);
+            if (c >= 'A' && c <= 'Z') {
+                hasUpper = true;
+                break;
+            }
+        }
+        String p = hasUpper ? pkg.toLowerCase() : pkg;
+        for (String kw : SUSPECT_KEYWORDS) {
+            if (p.contains(kw)) return true;
+        }
+        return false;
     }
 
     private static android.content.pm.PackageInfo createMockBrandStorePackageInfo(String pkg) {
@@ -604,19 +612,23 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             try {
                 Class<?> peCls = Class.forName("java.lang.ProcessEnvironment");
                 XposedHelpers.findAndHookMethod(peCls, "getenv", new XC_MethodHook() {
+                    private volatile Map<?, ?> cachedClean = null;
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         Map<?, ?> map = (Map<?, ?>) param.getResult();
                         if (map != null && (map.containsKey("LD_PRELOAD") || map.containsKey("PIXEL_HW__"))) {
-                            Map<Object, Object> clean = new HashMap<>(map);
-                            clean.remove("LD_PRELOAD");
-                            clean.remove("PIXEL_HW__");
-                            clean.remove("MAGISK_VER");
-                            clean.remove("KSU");
-                            clean.remove("APATCH_VER");
-                            clean.remove("RIRU");
-                            clean.remove("ZYGISK_ENABLED");
-                            param.setResult(Collections.unmodifiableMap(clean));
+                            if (cachedClean == null) {
+                                Map<Object, Object> clean = new HashMap<>(map);
+                                clean.remove("LD_PRELOAD");
+                                clean.remove("PIXEL_HW__");
+                                clean.remove("MAGISK_VER");
+                                clean.remove("KSU");
+                                clean.remove("APATCH_VER");
+                                clean.remove("RIRU");
+                                clean.remove("ZYGISK_ENABLED");
+                                cachedClean = Collections.unmodifiableMap(clean);
+                            }
+                            param.setResult(cachedClean);
                         }
                     }
                 });
@@ -628,21 +640,25 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
             try {
                 Class<?> osCls = Class.forName("android.system.Os");
                 XposedHelpers.findAndHookMethod(osCls, "environ", new XC_MethodHook() {
+                    private volatile String[] cachedEnviron = null;
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         String[] arr = (String[]) param.getResult();
                         if (arr != null) {
-                            List<String> clean = new ArrayList<>();
-                            for (String s : arr) {
-                                if (s != null && (s.startsWith("LD_PRELOAD=") || s.startsWith("PIXEL_HW__=") ||
-                                                  s.startsWith("MAGISK_VER=") || s.startsWith("KSU=") ||
-                                                  s.startsWith("APATCH_VER=") || s.startsWith("RIRU=") ||
-                                                  s.startsWith("ZYGISK_ENABLED="))) {
-                                    continue;
+                            if (cachedEnviron == null) {
+                                List<String> clean = new ArrayList<>();
+                                for (String s : arr) {
+                                    if (s != null && (s.startsWith("LD_PRELOAD=") || s.startsWith("PIXEL_HW__=") ||
+                                                      s.startsWith("MAGISK_VER=") || s.startsWith("KSU=") ||
+                                                      s.startsWith("APATCH_VER=") || s.startsWith("RIRU=") ||
+                                                      s.startsWith("ZYGISK_ENABLED="))) {
+                                        continue;
+                                    }
+                                    clean.add(s);
                                 }
-                                clean.add(s);
+                                cachedEnviron = clean.toArray(new String[0]);
                             }
-                            param.setResult(clean.toArray(new String[0]));
+                            param.setResult(cachedEnviron);
                         }
                     }
                 });
@@ -695,7 +711,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String pkg = (String) param.args[0];
-                        android.util.Log.i("FakeWifiPixel", "MainActivity.s hooked for: " + pkg);
                         if ("com.sec.android.app.samsungapps".equals(pkg) ||
                             "com.xiaomi.mipicks".equals(pkg) ||
                             "com.xiaomi.market".equals(pkg) ||
@@ -704,7 +719,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                             "com.heytap.market".equals(pkg) ||
                             "com.oppo.market".equals(pkg) ||
                             "com.bbk.appstore".equals(pkg)) {
-                            android.util.Log.i("FakeWifiPixel", "MainActivity.s FORCING TRUE for brand store: " + pkg);
                             param.setResult(true);
                         }
                     }
@@ -751,7 +765,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                                     try {
                                         XposedHelpers.setBooleanField(obj, "b", true);
                                         XposedHelpers.setObjectField(obj, "c", null);
-                                        android.util.Log.i("FakeWifiPixel", "createFromParcel: FORCED isCompliant=true, pendingIntent=null!");
                                     } catch (Throwable ignored) {}
                                 }
                             }
@@ -819,13 +832,11 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         }
                         String pkg = (String) param.args[0];
                         String expectedStore = getExpectedBrandStorePackage();
-                        android.util.Log.i("FakeWifiPixel", "hidePkgHook checking: " + pkg + ", expected=" + expectedStore);
                         if (isSuspectPackage(pkg)) {
                             param.setThrowable(new PackageManager.NameNotFoundException(pkg));
                             return;
                         }
                         if (expectedStore != null && expectedStore.equals(pkg)) {
-                            android.util.Log.i("FakeWifiPixel", ">>> INTERCEPTED: returning mock BrandStore for " + pkg);
                             String mName = param.method != null ? param.method.getName() : "";
                             if (mName.startsWith("getApplicationInfo")) {
                                 param.setResult(createMockBrandStoreAppInfo(pkg));
@@ -1368,8 +1379,6 @@ public class FakeWifiHook implements IXposedHookLoadPackage {
                         dhcp.dns2 = 0x08080808;      // 8.8.8.8
                         dhcp.serverAddress = IdentityManager.getFakeGateway();
                         dhcp.leaseDuration = 86400;
-                        XposedBridge.log("FakeWifiPixel: DhcpInfo LAN ficticia " +
-                                IdentityManager.getFakeIpString() + " gw 192.168.1.1");
                         param.setResult(dhcp);
                     } catch (Throwable ignored) {}
                 }

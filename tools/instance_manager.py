@@ -84,7 +84,7 @@ def validate_limits(
 RENDER_WIDTH = 720
 RENDER_HEIGHT = 1280
 RENDER_DPI = 270
-RENDER_FPS = 30
+RENDER_FPS = 60
 
 # Paquetes del sistema inútiles en un CloudPhone sin hardware real.
 # Se desactivan con pm disable (siguen reportados en packages.xml pero no
@@ -112,6 +112,8 @@ DISABLE_PACKAGES = [
     "com.google.ar.core",
     "com.google.android.apps.restore",
     "com.google.android.contactkeys",
+    # Android Auto (2 procesos background que consumen ~210MB)
+    "com.google.android.projection.gearhead",
     # Red sobrante (no hay hotspot, VPN nativa, ni tethering)
     "com.android.hotspot2.osulogin",
     "com.android.vpndialogs",

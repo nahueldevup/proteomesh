@@ -70,7 +70,7 @@
     },
     "fake_wifi_apk": {
       "path": "modules/FakeWifiPixel.apk",
-      "sha256": "b88d88f58a13000c98440c1f3975477546226695d43ba3fc1d46be56ff4872af",
+      "sha256": "ea0f936a60e9d1782cd65da5175495c215bd9d22d1c49a585b242e9ee7d15cf7",
       "note": "APK compilado y firmado desde src/lsposed_module (model-agnostic F1.5)."
     }
   }

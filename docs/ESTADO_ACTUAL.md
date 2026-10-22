@@ -3,10 +3,10 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; cierre F4 `accbea1` |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 (en curso) |
 | Baseline | Android 13 / API 33 |
-| Imagen | `proteomesh:latest` (`sha256:74bd2563fa533458ceb9a39b5d0e58c9385a378e98477f1d1a80ee7372ec97f6`); rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | `main`; F4 cerrada (dependencias cerradas); tests host-side pasando (47/47) |
+| Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
+| Estado del repo | `main`; F4 cerrada; OPT-001 aplicado (optimización de latencia, Bionic shim y hot-paths); tests host-side pasando (47/47) |
 | Próximo hito | Plataforma de Gestión (Panel Web / Orquestador multi-contenedor / Proxies) |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
@@ -88,6 +88,7 @@
 - **F2 — Renderizador:** **cerrada el 2026-10-22.** Función pura y determinista implementada en `tools/render.py` y `instance_manager.py render` (P2). Generación reproducible con `--seed` (diff bit-a-bit vacío). Linter de coherencia holística verificado contra las 17 plantillas. Golden bundle de referencia en `tests/golden/`. 30 tests unitarios en `tests/host/`.
 - **F3 — Manager:** **cerrada el 2026-10-22.** `create --from-bundle <path>` para importar bundles pre-renderizados. Límites de recursos por contenedor (`--memory`, `--cpus`/`--cpuset-cpus`, `--pids-limit`) persistidos en `meta.json` y aplicados en Docker. Protocolo `verify-health` de 7 puntos automáticos. 42 tests unitarios en `tests/host/`.
 - **F4 — Dependencias:** **cerrada el 2026-10-22.** `modules.lock` completo con todas las dependencias bloqueadas: `redroid_base` con digest fijado en `Dockerfile`, `nohello` (0.0.7), `magisk` (30.6) y `lsposed` (1.9.2-7024) con URLs de release oficiales y sha256. Aprovisionamiento reproducible vía `tools/bootstrap_data_clean.sh`. 47 tests unitarios en `tests/host/`.
+- **OPT-001 — Rendimiento y Fluidez:** **cerrada el 2026-10-22.** Eliminado spam de log en hot paths (-96.8% de logs en `FakeWifiHook`), fast-path sin asignaciones en `isSuspectPackage`, early-out por prefijo en `redirect_path` (Bionic C), prefix gate en `mark_net_fd`, grouping de props en `get_fake_prop`, SurfaceFlinger a 60 FPS (`RENDER_FPS = 60`), poda de Android Auto (`com.google.android.projection.gearhead`), y cacheo estático de métodos reflexivos en `FakeGps`, `FakeSensors` y `FakeWifiHook`. Revalidado en vivo en `f05-main`: Pixelscan 100/100 y RDP 0/39 intactos. 47 tests unitarios pasando.
 
 ## 6. Regla de uso
 

@@ -55,26 +55,51 @@ public class FakeGps {
         return sMainHandler;
     }
 
+    private static Method sSetIsFromMockProvider;
+    private static Method sSetMock;
+    private static Method sSpGetMethod;
+    private static boolean sMethodsResolved = false;
+
+    private static synchronized void ensureMethodsResolved() {
+        if (!sMethodsResolved) {
+            try {
+                sSetIsFromMockProvider = Location.class.getMethod("setIsFromMockProvider", boolean.class);
+                sSetIsFromMockProvider.setAccessible(true);
+            } catch (Throwable ignored) {}
+            try {
+                sSetMock = Location.class.getMethod("setMock", boolean.class);
+                sSetMock.setAccessible(true);
+            } catch (Throwable ignored) {}
+            try {
+                Class<?> spClass = Class.forName("android.os.SystemProperties");
+                sSpGetMethod = spClass.getMethod("get", String.class, String.class);
+                sSpGetMethod.setAccessible(true);
+            } catch (Throwable ignored) {}
+            sMethodsResolved = true;
+        }
+    }
+
     private static synchronized void reloadConfigIfNeeded() {
         long now = System.currentTimeMillis();
         if (now - sLastFileCheck < 1500) return;
         sLastFileCheck = now;
 
-        try {
-            Class<?> spClass = Class.forName("android.os.SystemProperties");
-            Method getMethod = spClass.getMethod("get", String.class, String.class);
-            String latStr = (String) getMethod.invoke(null, "persist.sys.location.lat", "");
-            String lonStr = (String) getMethod.invoke(null, "persist.sys.location.lon", "");
-            if (latStr != null && !latStr.isEmpty() && lonStr != null && !lonStr.isEmpty()) {
-                sLat = Double.parseDouble(latStr);
-                sLon = Double.parseDouble(lonStr);
-                String altStr = (String) getMethod.invoke(null, "persist.sys.location.alt", "");
-                if (altStr != null && !altStr.isEmpty()) sAlt = Double.parseDouble(altStr);
-                String accStr = (String) getMethod.invoke(null, "persist.sys.location.acc", "");
-                if (accStr != null && !accStr.isEmpty()) sAcc = Float.parseFloat(accStr);
-                return;
-            }
-        } catch (Throwable ignored) {}
+        ensureMethodsResolved();
+        if (sSpGetMethod != null) {
+            try {
+                String latStr = (String) sSpGetMethod.invoke(null, "persist.sys.location.lat", "");
+                String lonStr = (String) sSpGetMethod.invoke(null, "persist.sys.location.lon", "");
+                if (latStr != null && !latStr.isEmpty() && lonStr != null && !lonStr.isEmpty()) {
+                    sLat = Double.parseDouble(latStr);
+                    sLon = Double.parseDouble(lonStr);
+                    String altStr = (String) sSpGetMethod.invoke(null, "persist.sys.location.alt", "");
+                    if (altStr != null && !altStr.isEmpty()) sAlt = Double.parseDouble(altStr);
+                    String accStr = (String) sSpGetMethod.invoke(null, "persist.sys.location.acc", "");
+                    if (accStr != null && !accStr.isEmpty()) sAcc = Float.parseFloat(accStr);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
 
         File f = new File(GPS_FILE);
         if (!f.exists() || !f.canRead()) return;
@@ -154,17 +179,18 @@ public class FakeGps {
         loc.setExtras(extras);
 
         // Neutralizar marcas de mock nativas en el objeto Location
-        try {
-            Method m = Location.class.getMethod("setIsFromMockProvider", boolean.class);
-            m.setAccessible(true);
-            m.invoke(loc, false);
-        } catch (Throwable ignored) {}
+        ensureMethodsResolved();
+        if (sSetIsFromMockProvider != null) {
+            try {
+                sSetIsFromMockProvider.invoke(loc, false);
+            } catch (Throwable ignored) {}
+        }
 
-        try {
-            Method m2 = Location.class.getMethod("setMock", boolean.class);
-            m2.setAccessible(true);
-            m2.invoke(loc, false);
-        } catch (Throwable ignored) {}
+        if (sSetMock != null) {
+            try {
+                sSetMock.invoke(loc, false);
+            } catch (Throwable ignored) {}
+        }
 
         return loc;
     }

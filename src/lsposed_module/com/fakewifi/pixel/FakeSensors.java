@@ -27,6 +27,14 @@ public class FakeSensors {
     private static final ScheduledExecutorService sScheduler = Executors.newScheduledThreadPool(2);
     private static final Map<SensorEventListener, List<ScheduledFuture<?>>> sActiveTasks = new ConcurrentHashMap<>();
     private static Handler sMainHandler;
+    private static java.lang.reflect.Constructor<?> sSensorEventConstructor;
+
+    static {
+        try {
+            sSensorEventConstructor = SensorEvent.class.getDeclaredConstructor(int.class);
+            sSensorEventConstructor.setAccessible(true);
+        } catch (Throwable ignored) {}
+    }
 
     private static Handler getMainHandler() {
         if (sMainHandler == null) {
@@ -169,7 +177,12 @@ public class FakeSensors {
             @Override
             public void run() {
                 try {
-                    final SensorEvent event = (SensorEvent) XposedHelpers.newInstance(SensorEvent.class, 16);
+                    final SensorEvent event;
+                    if (sSensorEventConstructor != null) {
+                        event = (SensorEvent) sSensorEventConstructor.newInstance(16);
+                    } else {
+                        event = (SensorEvent) XposedHelpers.newInstance(SensorEvent.class, 16);
+                    }
                     event.sensor = sensor;
                     event.accuracy = 3; // SENSOR_STATUS_ACCURACY_HIGH
                     event.timestamp = SystemClock.elapsedRealtimeNanos();
