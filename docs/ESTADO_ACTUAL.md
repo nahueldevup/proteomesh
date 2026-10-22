@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 en working tree |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; cierre F2 `8c87f5a` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest` (`sha256:74bd2563fa533458ceb9a39b5d0e58c9385a378e98477f1d1a80ee7372ec97f6`); rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
 | Estado del repo | `main`; F2 cerrada (renderizador puro); tests host-side pasando (30/30) |
