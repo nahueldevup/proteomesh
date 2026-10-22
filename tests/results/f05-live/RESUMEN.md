@@ -58,7 +58,7 @@ Rollback: `proteomesh:pre-f05` `sha256:558f46f38ca78213d43220e54f9c301a719e39526
 
 ## Conclusión
 
-F0.5 queda **cerrada el 2026-10-22 con excepción aceptada**:
+F0.5 queda **cerrada el 2026-10-22 con excepción aceptada** (commit `c3cfeb6`):
 
 - Pixelscan 100/100 y C5 están validados en el clon limpio.
 - RDP 0/39 está validado solo en una instancia con licencia (`hide-test`); se aceptó esa excepción y no se declara RDP limpio en el clon sin cuenta.

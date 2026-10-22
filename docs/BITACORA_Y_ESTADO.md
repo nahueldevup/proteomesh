@@ -657,7 +657,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 * **Pixelscan:** **100/100 Low Risk** en `f05-live` limpio (`SM-A546M`, serial `R58RADFD3C`), con override `1080x2340 @450`. Evidencia: `tests/results/f05-live/f05-pixelscan-final-1080.png` (`sha256 38cc942e…`).
 * **RDP:** **0/39** en `hide-test` con licencia; el clon limpio no puede ejecutarlo porque PairIP abre `LicenseActivity` → Play Pass (`UnauthenticatedMainActivity`). Copiar app data, Vending y GMS/GSF no replicó la licencia. Evidencia: `f05-rdp-hidetest-02.png`/`.xml` y `f05-rdp-clean-license-blocked.png`/`.log`.
 * **C5:** validado en vivo con `su -c` para DenyList, reintentos tras reinicio y restauración de `wm size/density`, paquetes desactivados y BG processes. `net.pixelscan.check` quedó en scope y DenyList; scope total 20.
-* **Estado:** F0.5 **cerrada el 2026-10-22 con excepción aceptada**: RDP 0/39 se cita desde `hide-test` licenciado, no desde un clon limpio sin cuenta; la copia de `data-clean` sigue sin ser bit-a-bit (8 fuentes fscrypt). Evidencia y docs se versionan en el commit de cierre.
+* **Estado:** F0.5 **cerrada el 2026-10-22 con excepción aceptada**: RDP 0/39 se cita desde `hide-test` licenciado, no desde un clon limpio sin cuenta; la copia de `data-clean` sigue sin ser bit-a-bit (8 fuentes fscrypt). Evidencia y docs quedaron versionados en `c3cfeb6`.
 
 ---
 

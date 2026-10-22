@@ -3,10 +3,10 @@
 | Campo | Valor |
 |---|---|
 | Fecha de corte | 2026-10-22 |
-| Commit de referencia | `b7d900f` |
+| Commit de referencia | `b7d900f`; cierre F0.5 `c3cfeb6` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest` (`sha256:5cc1c1f9c61463131075154a6d51ec7e948df410e9a53fc4e50aa185db2800af`); rollback `proteomesh:pre-f05` (`sha256:558f46f38ca78213d43220e54f9c301a719e39526a7e1024c10048be44b77759`) |
-| Estado del repo | `main` con cambios F0.5 sin commit; evidencia local en `tests/results/f05-live/` sin commit |
+| Estado del repo | `main` con F0.5 commiteada; evidencia en `tests/results/f05-live/` (commit `c3cfeb6`) |
 | Próximo hito | Fase 1 — contrato de bundle (F0.5 cerrada con excepción RDP licenciada) |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
@@ -15,7 +15,7 @@
 
 - **Pixelscan en clon limpio:** **100/100 Low Risk** en `f05-live` (clon `redroid-f05-clean`), incluso tras `sync-scope` y reinicio. Override final `1080x2340 @450`.
 - **Root Detection Plus:** **0/39** reproducible en `hide-test` con licencia Play; **no** está validado en el clon limpio por el bloqueo PairIP/Play Pass. `f05-live` no deja RDP instalado.
-- **Evidencia:** `tests/results/f05-live/` con capturas, XML y logs; resumen en `tests/results/f05-live/RESUMEN.md`. Está local y sin commit (C13 parcialmente atendido).
+- **Evidencia:** `tests/results/f05-live/` con capturas, XML y logs; resumen en `tests/results/f05-live/RESUMEN.md`. Versionada en `c3cfeb6`; C13 sigue parcial por falta de CI.
 - **C5 validado en vivo:** `sync-scope` usa `su -c` para la DenyList, reintenta tras reinicio y `apply_runtime_defaults` restaura `wm size/density`, paquetes desactivados y BG processes. `net.pixelscan.check` queda en scope y DenyList.
 - **Stack verificado:** Magisk 30.6 bootless, LSPosed 1.9.2, NoHello v0.0.7, `libpixel_hw.so` 64/32, `FakeWifiPixel.apk`, `manage-spoof`.
 - **Entrega de perfil:** `instance_manager.py create` escribe `instances/<name>/profile.json` y lo monta read-only en `/system/etc/proteomesh_profile.json`; `/system/bin/profile-loader apply` lo consume. (C8/C9, confirmados.)
@@ -34,7 +34,7 @@
 | Magisk del script no coincide | C20 | **Corregido en F0.5:** `prepare-magisk.sh` usa `modules.lock`/`deps_fetch.py` para Magisk 30.6 y conserva el `magisk` parcheado salvo `--force-raw`. |
 | Apps instaladas post-boot | C5 | **Corregido y validado en vivo:** `sync-scope` consulta la DenyList con `su -c`, reintenta hasta 15×2s tras reiniciar y `apply_runtime_defaults` restaura `wm size/density` y paquetes desactivados. |
 | RDP en clon limpio | F0.5 | **Excepción aceptada (2026-10-22):** PairIP exige licencia Play Pass; el 0/39 se acepta desde `hide-test` licenciado. Copiar app data, Vending y GMS/GSF no alcanza; no se declara RDP limpio en clon sin cuenta. |
-| Evidencia on-device y CI | C13, C14 | Evidencia local en `tests/results/f05-live/` (untracked); hay tests host-side de nombres, pero no CI ni validación automática 100/100/0/39. |
+| Evidencia on-device y CI | C13, C14 | Evidencia versionada en `c3cfeb6`; hay tests host-side de nombres, pero no CI ni validación automática 100/100/0/39. |
 | Docs históricas contradictorias | C12, F0.5 | **Corregido en F0.5:** README, guías, arquitectura y tabla de bitácora dicen 100/100; los documentos históricos llevan banner. |
 | Procesos de root visibles | Auditoría previa | NoHello oculta mounts, no procesos (`magiskd`, `lspd`, `zygiskd`); no hay detector que lo explote hoy, pero es una fuga de diseño. |
 | DenyList enforcement | Validaciones previas | Debe quedar **OFF**; activarlo rompe GMS. No es un bug, es una restricción operativa. |
@@ -73,7 +73,7 @@
 ## 5. Fases
 
 - **F0 — Inventario y verificación:** completada al 2026-10-22 (`docs/INVENTARIO_IMAGEN.md`, C1-C20 documentados).
-- **F0.5 — Verdad documental y reproducibilidad:** **cerrada operativamente el 2026-10-22** con excepción RDP licenciada y copia `data-clean` no bit-a-bit (8 fuentes fscrypt). Incluye docs, `modules.lock`, `deps_fetch`, `bootstrap_data_clean`, Magisk 30.6, validación de `--name`, guardrail de compose, `sync-scope`, imagen nueva, `f05-live` y evidencia local. El commit de evidencia se hace al cerrar esta sesión.
+- **F0.5 — Verdad documental y reproducibilidad:** **cerrada operativamente el 2026-10-22** con excepción RDP licenciada y copia `data-clean` no bit-a-bit (8 fuentes fscrypt). Incluye docs, `modules.lock`, `deps_fetch`, `bootstrap_data_clean`, Magisk 30.6, validación de `--name`, guardrail de compose, `sync-scope`, imagen nueva, `f05-live` y evidencia. Todo versionado en `c3cfeb6`.
 - **F1 — Contrato de bundle:** perfil obligatorio, sin fallback, fallo explícito en `create`/`start`.
 - **F1.5 — Model-agnostic:** sacar defaults Pixel 5 de la imagen.
 - **F2 — Renderizador:** `proteomesh render` puro con schema y golden files.
