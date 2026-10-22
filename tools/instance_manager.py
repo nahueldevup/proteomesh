@@ -84,7 +84,7 @@ def validate_limits(
 RENDER_WIDTH = 720
 RENDER_HEIGHT = 1280
 RENDER_DPI = 270
-RENDER_FPS = 60
+RENDER_FPS = 30
 
 # Paquetes del sistema inútiles en un CloudPhone sin hardware real.
 # Se desactivan con pm disable (siguen reportados en packages.xml pero no

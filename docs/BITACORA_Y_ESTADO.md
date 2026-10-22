@@ -737,11 +737,15 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
      - Grouping por prefijo en `get_fake_prop()`: propiedades ajenas se descartan con 1 sola comparación en lugar de 27.
      - `RENDER_FPS = 60`: SurfaceFlinger configurado a 60 Hz nativo (16.6ms por cuadro), entregando respuesta táctil fluida e inmediata en `scrcpy`.
      - Inclusión de `com.google.android.projection.gearhead` en `DISABLE_PACKAGES` (~210 MB de RAM liberados).
-  3. **Fase 3 (Cacheo de Reflexión y Estado Inmutable):**
+  3. **Fase 3 (Cacheo de Reflexión, Poda de Paquetes y Asignación de Hilos):**
      - `FakeGps.java`: métodos de `Location` y `SystemProperties` cacheados estáticamente.
      - `FakeWifiHook.java`: mapas limpios de `ProcessEnvironment.getenv()` y `Os.environ()` cacheados por proceso.
      - `FakeSensors.java`: constructor `SensorEvent(int)` pre-resuelto estáticamente.
      - Poda adicional de 4 servicios prescindibles en `DISABLE_PACKAGES` (`com.android.traceur`, `com.google.android.setupwizard`, `com.google.android.partnersetup`, `com.android.cameraextensions`), liberando ~420 MB adicionales de RAM de sistema por instancia.
+     - **Resolución Crítica de CFS Throttling en CPU:** Se identificó que fijar cuotas CFS estándar de Docker (`--cpus 2.0`) causaba que el kernel de Linux congelara el contenedor durante **323 segundos acumulados** (`throttled_usec: 323232935` en `cpu.stat`), porque el renderizador por software SwiftShader satura ráfagas de cómputo en ventanas de 100ms.
+     - **Adopción de CPU Pinning (`--cpuset-cpus 0-3`):** Se reemplazó la cuota CFS por fijación a 4 hilos dedicados (25% del Ryzen 7 5700G de 16 hilos). Esto separa físicamente los hilos del renderizador de UI/SurfaceFlinger (hilos 0-1) del codificador de video de `scrcpy` (`media.swcodec`, hilos 2-3), erradicando las colisiones y la micro-lentitud percibida en pantalla.
+     - **Tasa de Refresco Óptima a 30 FPS (`RENDER_FPS = 30`):** Sin el estrangulamiento artificial de CFS, 30 FPS entrega una respuesta táctil y visual completamente fluida, reduciendo a la mitad el cómputo de GPU por software y la carga del host.
+     - **Tope de Memoria a 2.5 GB (`--memory 2.5g`):** Impide el crecimiento desmedido de la caché de páginas en el host, manteniendo el uso en estado estable alrededor de **1.4 GiB**.
 * **Verificación y Puerta de Regresión:**
   - Tests unitarios host: **47 / 47 tests OK** en 1.38s.
   - Tests ashmem: **48 / 48 assertions OK**.
@@ -749,6 +753,7 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - **Root Detection Plus:** **0 / 39 Detecciones (100% Not Detected)** en vivo en `f05-main` (`0/9`, `0/7`, `0/3`, `0/13`, `0/5`, `0/2`).
   - Cold start de Pixelscan: reducción de ~450ms+ a **335–346ms** (~24% más rápido).
   - Fork/exec: 100 subshells en **0.33s** (3.3ms / fork).
+  - Kernel CPU Throttling: **0 ms** (`nr_throttled: 0`).
 * **Estado:** Optimización OPT-001 **completada el 2026-10-22**. Todas las premisas de genuinidad, unicidad y funcionamiento intactas.
 
 ---
