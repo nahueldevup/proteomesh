@@ -1660,6 +1660,9 @@ def cmd_render(args):
     )
     print(f"[✓] Bundle renderizado exitosamente:")
     print(f"  • Modelo      : {res['profile'].get('template', {}).get('name')}")
+    if res['profile'].get('location'):
+        loc_r = res['profile']['location']
+        print(f"  • Ubicación   : {loc_r.get('city')} ({loc_r.get('latitude'):.4f}, {loc_r.get('longitude'):.4f}) [{loc_r.get('timezone')}]")
     print(f"  • SHA-256     : {res['sha256']}")
     print(f"  • IMEI        : {res['profile']['generated_identity']['imei']}")
     print(f"  • Serial      : {res['profile']['generated_identity']['serial']}")
