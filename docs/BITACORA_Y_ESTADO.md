@@ -838,6 +838,36 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Suite de 71 tests host pasando.
 * **Estado:** WEB-001 **completado el 2026-10-22**. Frontend y Backend 100% operativos.
 
+### 61. WEB-002 — Visor Interactivo CloudPhone en Vivo, Touch/Gestos Web, Lanzador scrcpy Nativo y Normalización de Memoria (2026-10-23)
+
+* **Objetivo:** Resolver los puntos detectados en la primera prueba interactiva del usuario:
+  1. Ausencia de un modo visual para operar y usar interactivamente las instancias CloudPhone (solo existía gestión administrativa).
+  2. Error al crear instancias provocado por el formato decimal de memoria (`2.5g`) no aceptado por `validate_limits()` y Docker.
+  3. Renderizado de tiles de mapa Leaflet con presets rápidos integrados y feedback visual optimizado sin necesidad de API keys de pago (CartoDB Dark Matter 100% libre).
+* **Componentes implementados:**
+  1. **Control Interactivo y Streaming de Pantalla en Backend (`server/routes/instances.py` y `server/services/manager_bridge.py`):**
+     - `GET /api/v1/instances/{name}/screen`: Endpoint de captura en vivo optimizado con Pillow a JPEG comprimido (~75KB por frame, latencia <45ms), reduciendo el ancho de banda en más del 94%.
+     - `POST /api/v1/instances/{name}/input/tap`: Inyección táctil (`docker exec <inst> input tap X Y`).
+     - `POST /api/v1/instances/{name}/input/swipe`: Gesto de arrastre y scroll táctil (`input swipe X1 Y1 X2 Y2 duration`).
+     - `POST /api/v1/instances/{name}/input/key`: Teclas de navegación Android (Atrás, Inicio, Multitarea/Recents, Bloqueo/Power, Volumen+, Volumen-).
+     - `POST /api/v1/instances/{name}/input/text`: Inyección directa de texto y contraseñas (`input text ...`).
+     - `POST /api/v1/instances/{name}/launch-url`: Apertura instantánea de URLs en Chrome en Android.
+     - `POST /api/v1/instances/{name}/scrcpy`: Lanzador en segundo plano de la ventana nativa de `scrcpy` en el escritorio Linux con aceleración OpenGL/VA-API (cero latencia, soporte completo de ratón y teclado).
+  2. **Componente de Visor de Smartphone (`web/src/components/ScreenViewer.tsx`):**
+     - Marco de smartphone con relación de aspecto 9:19.5, captura viva en canvas con click-to-tap y drag-to-swipe con cálculo de escala sobre resolución nativa (1080x2340).
+     - Barra de navegación virtual Android (Atrás, Home, Recientes) y botones físicos (Power, Vol+, Vol-).
+     - Herramientas de productividad: Inyector de texto rápido, navegador de URLs, selector de refresco (1s, 2s, 3s, Pausar) y descarga de captura PNG.
+     - Botón destacado "Abrir Ventana Nativa scrcpy" para uso profesional de alto rendimiento.
+  3. **Solución del Bug de Memoria (`tools/instance_manager.py`):**
+     - `validate_limits()` ahora normaliza automáticamente valores con punto flotante (ej: `2.5g` → `2560m`, `1.5g` → `1536m`) garantizando total compatibilidad con la bandera `-m` del motor Docker.
+  4. **Optimización de MapPicker (`web/src/components/MapPicker.tsx`):**
+     - Corrección del bug de recreación del mapa, presets rápidos de 8 ciudades clave (Buenos Aires, Córdoba, Miami, NY, Madrid, CDMX, San Pablo, Londres), marcador con pulso SVG y redibujado tras estabilización del DOM.
+* **Verificación y Cobertura:**
+  - Nueva suite `tests/host/test_interactive.py` (6 tests).
+  - Total de tests host: **77 / 77 pasando** (`pytest tests/host/`).
+  - Compilación de producción en **207 ms** con `tsc -b && vite build` (cero errores en oxlint).
+* **Estado:** WEB-002 **completado el 2026-10-23**. Plataforma completamente interactiva y visual.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

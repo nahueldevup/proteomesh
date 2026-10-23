@@ -1,13 +1,19 @@
 """
 Rutas para ciclo de vida de instancias (CloudPhones)
 """
-from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from server.models.schemas import (
     InstanceCreateRequest,
     InstanceResponse,
     HealthReport,
+    InputTapRequest,
+    InputSwipeRequest,
+    InputKeyRequest,
+    InputTextRequest,
+    LaunchUrlRequest,
+    ScrcpyLaunchResponse,
 )
 from server.services.manager_bridge import (
     get_instances_list,
@@ -16,6 +22,13 @@ from server.services.manager_bridge import (
     start_instance_async,
     stop_instance_async,
     check_health_sync,
+    launch_native_scrcpy,
+    get_instance_screenshot,
+    send_instance_tap,
+    send_instance_swipe,
+    send_instance_key,
+    send_instance_text,
+    launch_instance_url,
 )
 
 router = APIRouter(prefix="/instances", tags=["Instancias (CloudPhones)"])
@@ -73,4 +86,88 @@ def get_health(name: str):
     try:
         return check_health_sync(name)
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Rutas de Control Interactivo y Pantalla (Visor CloudPhone) ───────────────
+@router.post("/{name}/scrcpy", response_model=ScrcpyLaunchResponse, summary="Abrir ventana scrcpy nativa en el escritorio")
+def open_scrcpy(name: str):
+    """
+    Lanza la ventana nativa de scrcpy conectada al contenedor.
+    Aceleración OpenGL/VA-API directa, atajos de teclado y ratón sin latencia.
+    """
+    try:
+        res = launch_native_scrcpy(name)
+        return ScrcpyLaunchResponse(**res)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{name}/screen", summary="Obtener captura de pantalla en vivo (JPEG/PNG)")
+def get_screen(
+    name: str,
+    format: str = Query("jpeg", description="Formato de imagen ('jpeg' o 'png')"),
+    max_width: int = Query(540, description="Ancho máximo para optimizar ancho de banda"),
+):
+    """Retorna un frame de pantalla del CloudPhone para visualización interactiva en navegador."""
+    try:
+        img_bytes = get_instance_screenshot(name, format=format, max_width=max_width)
+        media_type = "image/jpeg" if format.lower() in ("jpeg", "jpg") else "image/png"
+        return Response(
+            content=img_bytes,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{name}/input/tap", response_model=Dict[str, Any], summary="Tocar pantalla (tap táctil)")
+def input_tap(name: str, req: InputTapRequest):
+    """Envía un toque táctil a las coordenadas X e Y en Android."""
+    try:
+        return send_instance_tap(name, req.x, req.y)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/input/swipe", response_model=Dict[str, Any], summary="Deslizar pantalla (swipe gesture)")
+def input_swipe(name: str, req: InputSwipeRequest):
+    """Envía un gesto de arrastre/deslizamiento entre dos puntos."""
+    try:
+        return send_instance_swipe(name, req.x1, req.y1, req.x2, req.y2, req.duration_ms)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/input/key", response_model=Dict[str, Any], summary="Pulsar tecla física o navegación Android")
+def input_key(name: str, req: InputKeyRequest):
+    """Envía teclas de navegación: 'back', 'home', 'recents', 'power', 'volup', 'voldown', 'enter'."""
+    try:
+        return send_instance_key(name, req.key)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/input/text", response_model=Dict[str, Any], summary="Escribir texto en Android")
+def input_text(name: str, req: InputTextRequest):
+    """Escribe una cadena de texto en el campo de texto activo."""
+    try:
+        return send_instance_text(name, req.text)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/launch-url", response_model=Dict[str, Any], summary="Abrir URL en navegador")
+def launch_url(name: str, req: LaunchUrlRequest):
+    """Lanza el navegador de Android abriendo la dirección especificada."""
+    try:
+        return launch_instance_url(name, req.url)
+    except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))

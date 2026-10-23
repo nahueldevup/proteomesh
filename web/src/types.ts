@@ -72,3 +72,10 @@ export interface Carrier {
   network_type?: string;
   timezone?: string;
 }
+
+export interface ScrcpyLaunchResult {
+  status: string;
+  instance: string;
+  adb_port: number;
+  message: string;
+}

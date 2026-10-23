@@ -1,4 +1,4 @@
-import type { Instance, TemplateItem, Carrier, LocationData, ProxyTestResult } from '../types';
+import type { Instance, TemplateItem, Carrier, LocationData, ProxyTestResult, ScrcpyLaunchResult } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -114,6 +114,68 @@ export const api = {
 
   async removeInstanceProxy(name: string): Promise<any> {
     const res = await fetch(`${API_BASE}/instances/${name}/proxy`, { method: 'DELETE' });
+    return handleResponse<any>(res);
+  },
+
+  // Control Interactivo y Pantalla
+  async launchScrcpy(name: string): Promise<ScrcpyLaunchResult> {
+    const res = await fetch(`${API_BASE}/instances/${name}/scrcpy`, { method: 'POST' });
+    return handleResponse<ScrcpyLaunchResult>(res);
+  },
+
+  getScreenUrl(name: string, timestamp?: number): string {
+    const t = timestamp || Date.now();
+    return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}`;
+  },
+
+  async sendTap(name: string, x: number, y: number): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/input/tap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: Math.round(x), y: Math.round(y) }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async sendSwipe(name: string, x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/input/swipe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        x1: Math.round(x1),
+        y1: Math.round(y1),
+        x2: Math.round(x2),
+        y2: Math.round(y2),
+        duration_ms: durationMs,
+      }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async sendKey(name: string, key: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/input/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async sendText(name: string, text: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/input/text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async launchUrl(name: string, url: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/launch-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
     return handleResponse<any>(res);
   },
 };

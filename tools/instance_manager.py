@@ -48,13 +48,28 @@ def validate_limits(
     """Valida y normaliza los límites de recursos de Docker (ADR-001 Fase 3)."""
     limits = {}
     if memory:
-        mem = str(memory).strip()
+        mem = str(memory).strip().lower()
+        # Normalizar decimales (ej: 2.5g -> 2560m) sin permitir espacios internos
+        dec_match = re.match(r"^(\d+(?:\.\d+)?)([bkmg])$", mem)
+        if dec_match:
+            val, unit = float(dec_match.group(1)), dec_match.group(2)
+            if unit == "g":
+                if val.is_integer():
+                    mem = f"{int(val)}g"
+                else:
+                    mem = f"{int(val * 1024)}m"
+            elif unit == "m":
+                mem = f"{int(val)}m"
+            elif unit == "k":
+                mem = f"{int(val)}k"
+            elif unit == "b":
+                mem = f"{int(val)}b"
         if not RESOURCE_MEM_RE.fullmatch(mem):
             raise SystemExit(
                 f"[!] Error: Formato de --memory inválido: {memory!r} "
-                "(ejemplos válidos: 4g, 2048m, 512m)."
+                "(ejemplos válidos: 4g, 2048m, 2.5g, 512m)."
             )
-        limits["memory"] = mem.lower()
+        limits["memory"] = mem
 
     if cpus:
         c = str(cpus).strip()

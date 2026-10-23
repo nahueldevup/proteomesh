@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Play,
@@ -13,25 +13,38 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Monitor,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { MapPicker } from './MapPicker';
+import { ScreenViewer } from './ScreenViewer';
 import type { Instance, ProxyTestResult } from '../types';
 
 interface DeviceDetailDrawerProps {
   instance: Instance | null;
   onClose: () => void;
   onRefresh: () => void;
+  defaultTab?: 'screen' | 'info' | 'location' | 'proxy' | 'health';
 }
 
 export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
   instance,
   onClose,
   onRefresh,
+  defaultTab,
 }) => {
-  if (!instance) return null;
+  const [activeTab, setActiveTab] = useState<'screen' | 'info' | 'location' | 'proxy' | 'health'>(
+    defaultTab || (instance?.running ? 'screen' : 'info')
+  );
 
-  const [activeTab, setActiveTab] = useState<'info' | 'location' | 'proxy' | 'health'>('info');
+  useEffect(() => {
+    if (defaultTab) {
+      setActiveTab(defaultTab);
+    } else if (instance?.running && activeTab === 'info') {
+      setActiveTab('screen');
+    }
+  }, [instance?.instance_name, defaultTab]);
+
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Acción estado
@@ -40,21 +53,36 @@ export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
 
   // Location edit
-  const [editLat, setEditLat] = useState(instance.location?.latitude || -34.603722);
-  const [editLon, setEditLon] = useState(instance.location?.longitude || -58.381592);
-  const [editCity, setEditCity] = useState(instance.location?.city || 'Buenos Aires');
+  const [editLat, setEditLat] = useState(instance?.location?.latitude || -34.603722);
+  const [editLon, setEditLon] = useState(instance?.location?.longitude || -58.381592);
+  const [editCity, setEditCity] = useState(instance?.location?.city || 'Buenos Aires');
   const [savingLocation, setSavingLocation] = useState(false);
   const [locSuccess, setLocSuccess] = useState(false);
 
   // Proxy edit
   const [proxyUrl, setProxyUrl] = useState(
-    instance.proxy
+    instance?.proxy
       ? `${instance.proxy.type}://${instance.proxy.username ? `${instance.proxy.username}:${instance.proxy.password}@` : ''}${instance.proxy.host}:${instance.proxy.port}`
       : ''
   );
   const [testingProxy, setTestingProxy] = useState(false);
   const [proxyTestRes, setProxyTestRes] = useState<ProxyTestResult | null>(null);
   const [savingProxy, setSavingProxy] = useState(false);
+
+  // Sincronizar estado local si cambia la instancia seleccionada
+  useEffect(() => {
+    if (!instance) return;
+    setEditLat(instance.location?.latitude || -34.603722);
+    setEditLon(instance.location?.longitude || -58.381592);
+    setEditCity(instance.location?.city || 'Buenos Aires');
+    setProxyUrl(
+      instance.proxy
+        ? `${instance.proxy.type}://${instance.proxy.username ? `${instance.proxy.username}:${instance.proxy.password}@` : ''}${instance.proxy.host}:${instance.proxy.port}`
+        : ''
+    );
+  }, [instance?.instance_name]);
+
+  if (!instance) return null;
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -139,9 +167,9 @@ export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-2xl bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
       {/* Cabecera */}
-      <div className="p-5 border-b border-zinc-800 bg-zinc-900/60 flex items-center justify-between">
+      <div className="p-4 border-b border-zinc-800 bg-zinc-900/60 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 font-mono text-sm">
             {instance.instance_name.slice(-2)}
@@ -195,8 +223,9 @@ export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
       </div>
 
       {/* Pestañas de detalle */}
-      <div className="flex border-b border-zinc-800 bg-zinc-900/30 px-5 gap-2">
+      <div className="flex border-b border-zinc-800 bg-zinc-900/30 px-4 gap-1 shrink-0 overflow-x-auto">
         {[
+          { id: 'screen', label: 'Pantalla & Control', icon: Monitor },
           { id: 'info', label: 'Identidad & Hardware', icon: Smartphone },
           { id: 'location', label: 'Ubicación GPS', icon: MapPin },
           { id: 'proxy', label: 'Proxy Residencial', icon: Shield },
@@ -208,7 +237,7 @@ export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
-              className={`flex items-center gap-1.5 py-2.5 px-3 text-xs font-medium border-b-2 transition-all ${
+              className={`flex items-center gap-1.5 py-2.5 px-3 text-xs font-medium border-b-2 transition-all shrink-0 ${
                 isActive
                   ? 'border-blue-500 text-blue-400 bg-blue-500/5'
                   : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -223,9 +252,16 @@ export const DeviceDetailDrawer: React.FC<DeviceDetailDrawerProps> = ({
 
       {/* Contenido */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* TAB 0: PANTALLA & CONTROL REMOTO */}
+        {activeTab === 'screen' && (
+          <div className="animate-in fade-in duration-150">
+            <ScreenViewer instance={instance} onRefreshInstance={onRefresh} />
+          </div>
+        )}
+
         {/* TAB 1: IDENTIDAD */}
         {activeTab === 'info' && (
-          <div className="space-y-4 text-xs">
+          <div className="space-y-4 text-xs animate-in fade-in duration-150">
             <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-lg p-3 space-y-2.5">
               <span className="font-semibold text-zinc-200 block text-xs border-b border-zinc-800 pb-1.5">
                 Identificadores GSMA / IEEE

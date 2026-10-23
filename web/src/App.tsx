@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CheckCircle2,
   Cpu,
+  Monitor,
 } from 'lucide-react';
 import { api } from './lib/api';
 import type { Instance, TemplateItem, LocationData } from './types';
@@ -28,6 +29,7 @@ export function App() {
   // Modals & Drawers
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'screen' | 'info' | 'location' | 'proxy' | 'health'>('screen');
 
   // Standalone tab data
   const [templatesCatalog, setTemplatesCatalog] = useState<Record<string, TemplateItem[]>>({});
@@ -337,6 +339,20 @@ export function App() {
 
                             <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1.5">
+                                {inst.running && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedInstance(inst);
+                                      setDrawerTab('screen');
+                                    }}
+                                    className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/40 rounded text-[11px] font-medium flex items-center gap-1.5 transition-colors"
+                                    title="Abrir pantalla interactiva y control remoto"
+                                  >
+                                    <Monitor className="w-3.5 h-3.5" />
+                                    <span>Pantalla</span>
+                                  </button>
+                                )}
+
                                 {inst.running ? (
                                   <button
                                     onClick={async () => {
@@ -362,7 +378,10 @@ export function App() {
                                 )}
 
                                 <button
-                                  onClick={() => setSelectedInstance(inst)}
+                                  onClick={() => {
+                                    setSelectedInstance(inst);
+                                    setDrawerTab('info');
+                                  }}
                                   className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors"
                                   title="Detalles y configuración"
                                 >
@@ -478,6 +497,7 @@ export function App() {
         instance={selectedInstance}
         onClose={() => setSelectedInstance(null)}
         onRefresh={fetchInstances}
+        defaultTab={drawerTab}
       />
     </div>
   );

@@ -233,6 +233,34 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         err_msg = stderr.decode().strip() or stdout.decode().strip()
         raise RuntimeError(f"Error al crear instancia: {err_msg}")
 
+    # Preservar ciudad y timezone personalizados en meta.json
+    if req.custom_location and (req.custom_location.city or req.custom_location.timezone):
+        inst_dir = INSTANCES_DIR / req.name
+        meta_path = inst_dir / "meta.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if "location" in meta:
+                    if req.custom_location.city:
+                        meta["location"]["city"] = req.custom_location.city
+                    if req.custom_location.timezone:
+                        meta["location"]["timezone"] = req.custom_location.timezone
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+            except Exception:
+                pass
+
+    # Asignar proxy residencial si fue provisto
+    if req.raw_proxy or req.proxy:
+        try:
+            from server.services.proxy_service import parse_proxy_string, set_instance_proxy
+            p_cfg = parse_proxy_string(req.raw_proxy) if req.raw_proxy else req.proxy
+            if p_cfg:
+                await set_instance_proxy(req.name, p_cfg, auto_sync_location=False)
+        except Exception:
+            pass
+
     return get_single_instance(req.name)
 
 
@@ -401,3 +429,166 @@ def check_health_sync(name: str) -> HealthReport:
     """Ejecuta el protocolo de salud post-arranque sobre una instancia."""
     ok, reports = verify_instance_health(name)
     return HealthReport(instance_name=name, ok=ok, reports=reports)
+
+
+# ── Funciones de Control Interactivo y Pantalla ──────────────────────────────
+def launch_native_scrcpy(name: str) -> Dict[str, Any]:
+    """Lanza la ventana nativa de scrcpy conectada al contenedor en el escritorio del host."""
+    import os
+    inst_name = validate_instance_name(name)
+    inst_dir = INSTANCES_DIR / inst_name
+    meta_path = inst_dir / "meta.json"
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Instancia '{inst_name}' no existe")
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    port = meta.get("adb_port", 5580)
+
+    # Verificar que el contenedor esté corriendo
+    cid = subprocess.run(
+        ["docker", "ps", "-q", "-f", f"name=^{inst_name}$"],
+        capture_output=True, text=True
+    ).stdout.strip()
+    if not cid:
+        raise RuntimeError(f"El CloudPhone '{inst_name}' está detenido. Inícialo primero para abrir scrcpy.")
+
+    # Asegurar entorno gráfico DISPLAY / WAYLAND
+    env = os.environ.copy()
+    if "DISPLAY" not in env:
+        env["DISPLAY"] = ":0"
+
+    cmd = [
+        "scrcpy",
+        "-s", f"127.0.0.1:{port}",
+        f"--window-title=ProteoMesh CloudPhone [{inst_name}]",
+        "--max-fps=30",
+        "--video-bit-rate=4M",
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        return {
+            "status": "launched",
+            "instance": inst_name,
+            "adb_port": port,
+            "pid": proc.pid,
+            "message": f"Ventana nativa scrcpy abierta en 127.0.0.1:{port}"
+        }
+    except FileNotFoundError:
+        raise RuntimeError("scrcpy no está instalado en el host del servidor.")
+    except Exception as e:
+        raise RuntimeError(f"Error al lanzar scrcpy: {e}")
+
+
+def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 540) -> bytes:
+    """Captura el frame actual de la pantalla de una instancia en ejecución."""
+    inst_name = validate_instance_name(name)
+    cid = subprocess.run(
+        ["docker", "ps", "-q", "-f", f"name=^{inst_name}$"],
+        capture_output=True, text=True
+    ).stdout.strip()
+    if not cid:
+        raise RuntimeError(f"Instancia '{inst_name}' no está en ejecución.")
+
+    res = subprocess.run(["docker", "exec", inst_name, "screencap", "-p"], capture_output=True)
+    if res.returncode != 0 or not res.stdout:
+        raise RuntimeError(f"Error al capturar pantalla de '{inst_name}': {res.stderr.decode().strip()}")
+
+    raw_png = res.stdout
+    if format.lower() in ("jpeg", "jpg"):
+        try:
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(raw_png)).convert("RGB")
+            if max_width and im.width > max_width:
+                aspect = im.height / im.width
+                new_h = int(max_width * aspect)
+                im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=75, optimize=True)
+            return buf.getvalue()
+        except Exception:
+            return raw_png
+    return raw_png
+
+
+def send_instance_tap(name: str, x: int, y: int) -> Dict[str, Any]:
+    """Envía un toque en pantalla (tap) a las coordenadas especificadas."""
+    inst_name = validate_instance_name(name)
+    res = subprocess.run(["docker", "exec", inst_name, "input", "tap", str(x), str(y)], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Error al enviar tap a '{inst_name}': {res.stderr.strip()}")
+    return {"status": "ok", "action": "tap", "x": x, "y": y}
+
+
+def send_instance_swipe(name: str, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> Dict[str, Any]:
+    """Envía un gesto de deslizamiento (swipe) entre dos puntos."""
+    inst_name = validate_instance_name(name)
+    res = subprocess.run(
+        ["docker", "exec", inst_name, "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)],
+        capture_output=True, text=True
+    )
+    if res.returncode != 0:
+        raise RuntimeError(f"Error al enviar swipe a '{inst_name}': {res.stderr.strip()}")
+    return {"status": "ok", "action": "swipe", "from": [x1, y1], "to": [x2, y2], "duration_ms": duration_ms}
+
+
+KEY_MAP = {
+    "back": "4",
+    "home": "3",
+    "recents": "187",
+    "app_switch": "187",
+    "power": "26",
+    "volup": "24",
+    "volume_up": "24",
+    "voldown": "25",
+    "volume_down": "25",
+    "menu": "82",
+    "enter": "66",
+    "tab": "61",
+    "delete": "67",
+}
+
+def send_instance_key(name: str, key: str) -> Dict[str, Any]:
+    """Envía una pulsación de tecla física o virtual a Android."""
+    inst_name = validate_instance_name(name)
+    keycode = KEY_MAP.get(key.lower().strip(), key.strip())
+    res = subprocess.run(["docker", "exec", inst_name, "input", "keyevent", keycode], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Error al enviar keyevent '{key}' a '{inst_name}': {res.stderr.strip()}")
+    return {"status": "ok", "action": "key", "key": key, "keycode": keycode}
+
+
+def send_instance_text(name: str, text: str) -> Dict[str, Any]:
+    """Escribe texto en el foco actual de Android."""
+    import shlex
+    inst_name = validate_instance_name(name)
+    # input text reemplaza espacios por %s
+    escaped = text.replace(" ", "%s").replace("&", "\\&").replace("'", "\\'")
+    res = subprocess.run(["docker", "exec", inst_name, "input", "text", escaped], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Error al enviar texto a '{inst_name}': {res.stderr.strip()}")
+    return {"status": "ok", "action": "text", "length": len(text)}
+
+
+def launch_instance_url(name: str, url: str) -> Dict[str, Any]:
+    """Abre una URL en el navegador web por defecto del CloudPhone."""
+    inst_name = validate_instance_name(name)
+    clean_url = url.strip()
+    if not clean_url.startswith(("http://", "https://")):
+        clean_url = f"https://{clean_url}"
+    res = subprocess.run(
+        ["docker", "exec", inst_name, "am", "start", "-a", "android.intent.action.VIEW", "-d", clean_url],
+        capture_output=True, text=True
+    )
+    if res.returncode != 0:
+        raise RuntimeError(f"Error al abrir URL en '{inst_name}': {res.stderr.strip()}")
+    return {"status": "ok", "action": "launch_url", "url": clean_url}

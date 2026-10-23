@@ -60,9 +60,37 @@ class TemplateItem(BaseModel):
 
 # ── Modelos de Recursos Docker ───────────────────────────────────────────────
 class LimitsSchema(BaseModel):
-    memory: Optional[str] = Field(default="2.5g", description="Límite de memoria RAM (ej: 2.5g, 4g, 2048m)")
+    memory: Optional[str] = Field(default="2560m", description="Límite de memoria RAM (ej: 2560m, 4g, 2048m)")
     cpus: Optional[str] = Field(default="0-3", description="Asignación de CPU (ej: 0-3 para CPU pinning, o 2.0)")
     pids_limit: Optional[int] = Field(default=None, description="Límite de PIDs (recomendado: None o >=4096)")
+
+
+# ── Modelos de Control Interactivo y Pantalla ────────────────────────────────
+class InputTapRequest(BaseModel):
+    x: int = Field(..., ge=0, description="Coordenada X en resolución nativa de pantalla")
+    y: int = Field(..., ge=0, description="Coordenada Y en resolución nativa de pantalla")
+
+class InputSwipeRequest(BaseModel):
+    x1: int = Field(..., ge=0)
+    y1: int = Field(..., ge=0)
+    x2: int = Field(..., ge=0)
+    y2: int = Field(..., ge=0)
+    duration_ms: int = Field(default=300, ge=50, le=5000, description="Duración del gesto en milisegundos")
+
+class InputKeyRequest(BaseModel):
+    key: str = Field(..., description="Nombre de tecla ('back', 'home', 'recents', 'power', 'volup', 'voldown', 'enter') o código numérico")
+
+class InputTextRequest(BaseModel):
+    text: str = Field(..., description="Cadena de texto para escribir en Android")
+
+class LaunchUrlRequest(BaseModel):
+    url: str = Field(..., description="Dirección web para abrir en el navegador de Android")
+
+class ScrcpyLaunchResponse(BaseModel):
+    status: str = "ok"
+    instance: str
+    adb_port: int
+    message: str
 
 
 # ── Modelos de Proxies Residenciales ─────────────────────────────────────────
