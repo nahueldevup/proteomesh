@@ -1,0 +1,12 @@
+{
+  "id": "us_tmobile",
+  "carrier_name": "T-Mobile",
+  "operator_numeric": "310260",
+  "country_iso": "us",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "310260",
+  "iccid_prefix": "890126",
+  "phone_prefix": "+1",
+  "timezone": "America/New_York"
+}

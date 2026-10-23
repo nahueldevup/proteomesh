@@ -1,0 +1,12 @@
+{
+  "id": "mx_telcel",
+  "carrier_name": "Telcel",
+  "operator_numeric": "334020",
+  "country_iso": "mx",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "334020",
+  "iccid_prefix": "895202",
+  "phone_prefix": "+52",
+  "timezone": "America/Mexico_City"
+}

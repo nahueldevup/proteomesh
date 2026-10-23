@@ -1,0 +1,12 @@
+{
+  "id": "us_verizon",
+  "carrier_name": "Verizon",
+  "operator_numeric": "311480",
+  "country_iso": "us",
+  "phone_type": "2",
+  "network_type": "13",
+  "imsi_prefix": "311480",
+  "iccid_prefix": "890148",
+  "phone_prefix": "+1",
+  "timezone": "America/New_York"
+}

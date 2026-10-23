@@ -1,0 +1,12 @@
+{
+  "id": "es_movistar",
+  "carrier_name": "Movistar ES",
+  "operator_numeric": "21407",
+  "country_iso": "es",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "21407",
+  "iccid_prefix": "893407",
+  "phone_prefix": "+34",
+  "timezone": "Europe/Madrid"
+}

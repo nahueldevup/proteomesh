@@ -1,0 +1,12 @@
+{
+  "id": "br_vivo",
+  "carrier_name": "Vivo",
+  "operator_numeric": "72406",
+  "country_iso": "br",
+  "phone_type": "1",
+  "network_type": "13",
+  "imsi_prefix": "72406",
+  "iccid_prefix": "895506",
+  "phone_prefix": "+55",
+  "timezone": "America/Sao_Paulo"
+}

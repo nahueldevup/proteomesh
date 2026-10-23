@@ -491,40 +491,60 @@ def find_carrier(name: str) -> Path:
 
 def cmd_list_templates(args):
     """Lista las plantillas disponibles organizadas por marca."""
-    print("================================================================================")
-    print("                    CATÁLOGO DE PLANTILLAS DE HARDWARE")
-    print("================================================================================")
+    catalog: Dict[str, list] = {}
     for brand_dir in sorted(TEMPLATES_DIR.iterdir()):
         if brand_dir.is_dir():
             templates = list(brand_dir.glob("*.json"))
             if not templates:
                 continue
-            print(f"\n📱 {brand_dir.name.upper()} ({len(templates)} modelos):")
+            catalog[brand_dir.name] = []
             for t_file in sorted(templates):
                 try:
-                    with open(t_file, "r") as f:
+                    with open(t_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    m_name = data.get("template", {}).get("name", t_file.stem)
-                    soc = data.get("cpu", {}).get("chipname", "Desconocido")
-                    gpu = data.get("gpu", {}).get("renderer", "Desconocida")
-                    disp = data.get("display", {})
-                    res = f"{disp.get('width', '?')}x{disp.get('height', '?')} @ {disp.get('fps', '?')}Hz"
-                    rel_path = f"{brand_dir.name}/{t_file.name}"
-                    print(f"  • {rel_path:<28} | {m_name:<25} | {soc:<22} | {res}")
-                except Exception as e:
-                    print(f"  • {t_file.stem} (Error: {e})")
+                    catalog[brand_dir.name].append({
+                        "id": f"{brand_dir.name}/{t_file.stem}",
+                        "name": data.get("template", {}).get("name", t_file.stem),
+                        "market_name": data.get("template", {}).get("market_name", ""),
+                        "platform": data.get("template", {}).get("platform", ""),
+                        "soc_model": data.get("cpu", {}).get("chipname", data.get("cpu", {}).get("model", "")),
+                        "gpu_renderer": data.get("gpu", {}).get("renderer", ""),
+                        "screen": f"{data.get('display', {}).get('width')}x{data.get('display', {}).get('height')} @ {data.get('display', {}).get('fps', 60)}Hz"
+                    })
+                except Exception:
+                    pass
+
+    if getattr(args, "json", False):
+        print(json.dumps(catalog, indent=2))
+        return
+
+    print("================================================================================")
+    print("                    CATÁLOGO DE PLANTILLAS DE HARDWARE")
+    print("================================================================================")
+    for brand_name, models in catalog.items():
+        print(f"\n📱 {brand_name.upper()} ({len(models)} modelos):")
+        for m in models:
+            print(f"  • {m['id']:<28} | {m['name']:<25} | {m['soc_model']:<22} | {m['screen']}")
     print("\n================================================================================")
 
 
 def cmd_list_carriers(args):
     """Lista las operadoras telefónicas disponibles."""
+    carriers_list = []
+    for c_file in sorted(CARRIERS_DIR.glob("*.json")):
+        with open(c_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        carriers_list.append(data)
+
+    if getattr(args, "json", False):
+        print(json.dumps(carriers_list, indent=2))
+        return
+
     print("================================================================================")
     print("                    CATÁLOGO DE OPERADORAS TELEFÓNICAS")
     print("================================================================================")
-    for c_file in sorted(CARRIERS_DIR.glob("*.json")):
-        with open(c_file, "r") as f:
-            data = json.load(f)
-        c_id = data.get("id", c_file.stem)
+    for data in carriers_list:
+        c_id = data.get("id", "desconocido")
         name = data.get("carrier_name", "Desconocido")
         numeric = data.get("operator_numeric", "")
         iso = data.get("country_iso", "").upper()
@@ -1351,7 +1371,7 @@ def cmd_sync_scope(args):
 def cmd_list_instances(args):
     """Lista las instancias existentes en instances/ y su estado en Docker."""
     instances = [d for d in INSTANCES_DIR.iterdir() if d.is_dir() and (d / "meta.json").exists()]
-    if not instances:
+    if not instances and not getattr(args, "json", False):
         print("\nNo hay instancias creadas en instances/.")
         print("Usa: python3 tools/instance_manager.py create --name <nombre> --template <modelo>\n")
         return
@@ -1362,6 +1382,20 @@ def cmd_list_instances(args):
         if "\t" in line:
             name, stat = line.split("\t", 1)
             running_map[name] = stat
+
+    if getattr(args, "json", False):
+        inst_list = []
+        for inst in sorted(instances):
+            try:
+                with open(inst / "meta.json", "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                meta["running"] = running_map.get(inst.name, "").startswith("Up")
+                meta["docker_status"] = running_map.get(inst.name, "Detenido (Offline)")
+                inst_list.append(meta)
+            except Exception:
+                pass
+        print(json.dumps(inst_list, indent=2))
+        return
 
     print("====================================================================================================")
     print("                              INSTANCIAS CONFIGURADAS (INSTANCES)")
@@ -1681,10 +1715,12 @@ def main():
 
     # list-templates
     sub = subparsers.add_parser("list-templates", help="Lista las plantillas de hardware disponibles")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
     sub.set_defaults(func=cmd_list_templates)
 
     # list-carriers
     sub = subparsers.add_parser("list-carriers", help="Lista las operadoras telefónicas disponibles")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
     sub.set_defaults(func=cmd_list_carriers)
 
     # randomize
@@ -1746,6 +1782,7 @@ def main():
 
     # list-instances
     sub = subparsers.add_parser("list-instances", help="Lista las instancias existentes")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
     sub.set_defaults(func=cmd_list_instances)
 
     # set-location (Geolocalización en caliente o frío)
