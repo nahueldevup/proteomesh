@@ -36,6 +36,7 @@ from instance_manager import (
     BUNDLE_FORMAT_VERSION,
     RUNTIME_VERSION,
     MAC_RE,
+    parse_location,
 )
 
 OUI_RE = re.compile(r"^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}$")
@@ -153,6 +154,7 @@ def render_bundle(
     seed: Optional[int] = None,
     instance_name: str = "default",
     out_dir: Optional[Path] = None,
+    location: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Renderiza determinísticamente un bundle de hardware según ADR-001 (Fase 2).
 
@@ -206,6 +208,15 @@ def render_bundle(
             "timezone": c_data.get("timezone", "America/Argentina/Buenos_Aires")
         }
 
+    loc_obj = None
+    if location is not None:
+        if isinstance(location, str):
+            c_tz = (c_data or {}).get("timezone")
+            loc_obj = parse_location(location, default_tz=c_tz)
+        else:
+            loc_obj = dict(location)
+        profile["location"] = loc_obj
+
     profile["generated_identity"] = identity
 
     # Validar profile derivado según contrato F1
@@ -243,6 +254,8 @@ def render_bundle(
         "identity": identity,
         "seed": seed
     }
+    if loc_obj:
+        meta["location"] = loc_obj
 
     # 6. Escribir a disco si se especificó out_dir
     if out_dir:
@@ -267,6 +280,7 @@ def main():
     )
     parser.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: samsung/a54x)")
     parser.add_argument("--carrier", "-c", required=False, help="Nombre o código de la operadora (ej: ar_personal)")
+    parser.add_argument("--location", "-l", required=False, help="Ubicación GPS: preset (ej: cordoba, miami) o 'lat,lon[,alt]'")
     parser.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
     parser.add_argument("--name", "-n", default="default", help="Nombre de la instancia (default: default)")
     parser.add_argument("--out", "-o", type=Path, required=False, help="Directorio de salida para el bundle congelado")
@@ -295,7 +309,8 @@ def main():
             carrier_path=c_path,
             seed=args.seed,
             instance_name=args.name,
-            out_dir=args.out
+            out_dir=args.out,
+            location=args.location,
         )
     except Exception as exc:
         print(f"[!] Error al renderizar bundle: {exc}", file=sys.stderr)

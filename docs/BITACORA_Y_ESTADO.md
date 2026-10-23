@@ -757,6 +757,24 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Kernel CPU Throttling: **0 ms** (`nr_throttled: 0`).
 * **Estado:** Optimización OPT-001 **completada el 2026-10-22**. Todas las premisas de genuinidad, unicidad y funcionamiento intactas.
 
+### 57. GEO-001 — Subsistema Universal de Geolocalización en Frío y Caliente (2026-10-22)
+
+* **Objetivo:** Conectar el subsistema de geolocalización de `FakeGps.java` con el ciclo de vida del gestor (`instance_manager.py`) y el renderizador (`render.py`), permitiendo fijar o cambiar la ubicación geográfica tanto al crear el perfil (en frío) como mientras la instancia corre (en caliente), con salida JSON estructurada lista para un futuro Panel Web o agentes de IA.
+* **Componentes implementados:**
+  1. **Catálogo de Presets Oficiales (`LOCATION_PRESETS`):** 20 presets de ciudades principales (Buenos Aires, Córdoba, Rosario, Mendoza, Bariloche, São Paulo, Santiago, Bogotá, Lima, CDMX, Miami, New York, Los Ángeles, Madrid, Barcelona, Londres, Tokio) con latitud, longitud, altitud, precisión y timezone IANA.
+  2. **Parser Flexible (`parse_location`):** Acepta tanto nombres de presets como coordenadas crudas decimales (`lat,lon` o `lat,lon,alt`) con validación estricta de rangos geográficos (-90..90 y -180..180).
+  3. **Inyección en Caliente (`apply_location_to_instance`):** Inyecta en milisegundos las propiedades `persist.sys.location.*` y `persist.sys.timezone` en el contenedor en ejecución, las cuales `FakeGps.java` toma en menos de 1.5 segundos sin requerir reinicio del contenedor.
+  4. **Modo en Frío (`create --location` y `render --location`):** Embede la sección `"location"` en `profile.json` y `meta.json`. Al iniciar la instancia con `start`, las coordenadas se configuran en el primer segundo de arranque.
+  5. **Comandos CLI con Salida JSON para IA y Web:**
+     - `instance_manager.py list-locations [--json]`: Expone el catálogo de presets disponibles.
+     - `instance_manager.py get-location <id> [--json]`: Consulta la ubicación configurada o viva en ejecución.
+     - `instance_manager.py set-location <id> <preset|coords> [--lat X] [--lon Y] [--alt Z] [--city C] [--timezone TZ] [--json]`: Actualiza la ubicación en vivo y la persiste en disco.
+* **Verificación y Cobertura:**
+  - Nueva suite unitaria `tests/host/test_location.py` (5 tests) cubriendo parsing de presets, coordenadas libres, rechazo de rangos inválidos, y renderizado en frío.
+  - Suite host completa: **52 / 52 tests pasando**.
+  - Revalidado en caliente en `f05-main`: cambio en vivo a Córdoba (`-31.4201, -64.1888`), Miami (`25.7617, -80.1918`) y restauración a Buenos Aires verificado en vivo con **Pixelscan 100/100** y **RDP 0/39**.
+* **Estado:** Subsistema de geolocalización GEO-001 **completado el 2026-10-22**. Listo para consumo por API y Panel Web.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

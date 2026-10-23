@@ -133,6 +133,240 @@ BG_PROCESS_SETTINGS = {
     "settings put global activity_manager_constants": "max_cached_processes=4,background_settle_time=5000",
 }
 
+# ── Catálogo de Presets Geográficos Oficiales ─────────────────────────────────
+LOCATION_PRESETS: Dict[str, Dict[str, Any]] = {
+    # Argentina
+    "ba": {
+        "city": "Buenos Aires, Argentina (Obelisco)",
+        "latitude": -34.603722,
+        "longitude": -58.381592,
+        "altitude": 25.0,
+        "accuracy": 4.2,
+        "timezone": "America/Argentina/Buenos_Aires"
+    },
+    "buenos-aires": {
+        "city": "Buenos Aires, Argentina (Obelisco)",
+        "latitude": -34.603722,
+        "longitude": -58.381592,
+        "altitude": 25.0,
+        "accuracy": 4.2,
+        "timezone": "America/Argentina/Buenos_Aires"
+    },
+    "cordoba": {
+        "city": "Córdoba, Argentina",
+        "latitude": -31.420083,
+        "longitude": -64.188776,
+        "altitude": 390.0,
+        "accuracy": 4.5,
+        "timezone": "America/Argentina/Cordoba"
+    },
+    "rosario": {
+        "city": "Rosario, Argentina",
+        "latitude": -32.958700,
+        "longitude": -60.693000,
+        "altitude": 31.0,
+        "accuracy": 4.0,
+        "timezone": "America/Argentina/Buenos_Aires"
+    },
+    "mendoza": {
+        "city": "Mendoza, Argentina",
+        "latitude": -32.889458,
+        "longitude": -68.845839,
+        "altitude": 746.0,
+        "accuracy": 4.8,
+        "timezone": "America/Argentina/Mendoza"
+    },
+    "bariloche": {
+        "city": "San Carlos de Bariloche, Argentina",
+        "latitude": -41.133472,
+        "longitude": -71.310278,
+        "altitude": 840.0,
+        "accuracy": 5.0,
+        "timezone": "America/Argentina/Salta"
+    },
+    # LATAM
+    "sao-paulo": {
+        "city": "São Paulo, Brasil",
+        "latitude": -23.550520,
+        "longitude": -46.633309,
+        "altitude": 760.0,
+        "accuracy": 4.3,
+        "timezone": "America/Sao_Paulo"
+    },
+    "santiago": {
+        "city": "Santiago, Chile",
+        "latitude": -33.448890,
+        "longitude": -70.669265,
+        "altitude": 570.0,
+        "accuracy": 4.2,
+        "timezone": "America/Santiago"
+    },
+    "bogota": {
+        "city": "Bogotá, Colombia",
+        "latitude": 4.710989,
+        "longitude": -74.072092,
+        "altitude": 2640.0,
+        "accuracy": 4.5,
+        "timezone": "America/Bogota"
+    },
+    "lima": {
+        "city": "Lima, Perú",
+        "latitude": -12.046374,
+        "longitude": -77.042793,
+        "altitude": 154.0,
+        "accuracy": 4.0,
+        "timezone": "America/Lima"
+    },
+    "cdmx": {
+        "city": "Ciudad de México, México",
+        "latitude": 19.432608,
+        "longitude": -99.133209,
+        "altitude": 2240.0,
+        "accuracy": 4.6,
+        "timezone": "America/Mexico_City"
+    },
+    "mexico": {
+        "city": "Ciudad de México, México",
+        "latitude": 19.432608,
+        "longitude": -99.133209,
+        "altitude": 2240.0,
+        "accuracy": 4.6,
+        "timezone": "America/Mexico_City"
+    },
+    # USA / Global
+    "miami": {
+        "city": "Miami, Florida, EE.UU.",
+        "latitude": 25.761680,
+        "longitude": -80.191790,
+        "altitude": 2.0,
+        "accuracy": 3.8,
+        "timezone": "America/New_York"
+    },
+    "ny": {
+        "city": "Nueva York, EE.UU.",
+        "latitude": 40.712776,
+        "longitude": -74.005974,
+        "altitude": 10.0,
+        "accuracy": 4.1,
+        "timezone": "America/New_York"
+    },
+    "new-york": {
+        "city": "Nueva York, EE.UU.",
+        "latitude": 40.712776,
+        "longitude": -74.005974,
+        "altitude": 10.0,
+        "accuracy": 4.1,
+        "timezone": "America/New_York"
+    },
+    "los-angeles": {
+        "city": "Los Ángeles, California, EE.UU.",
+        "latitude": 34.052235,
+        "longitude": -118.243683,
+        "altitude": 89.0,
+        "accuracy": 4.0,
+        "timezone": "America/Los_Angeles"
+    },
+    "madrid": {
+        "city": "Madrid, España",
+        "latitude": 40.416775,
+        "longitude": -3.703790,
+        "altitude": 657.0,
+        "accuracy": 4.0,
+        "timezone": "Europe/Madrid"
+    },
+    "barcelona": {
+        "city": "Barcelona, España",
+        "latitude": 41.385064,
+        "longitude": 2.173403,
+        "altitude": 12.0,
+        "accuracy": 3.9,
+        "timezone": "Europe/Madrid"
+    },
+    "london": {
+        "city": "Londres, Reino Unido",
+        "latitude": 51.507351,
+        "longitude": -0.127758,
+        "altitude": 35.0,
+        "accuracy": 4.2,
+        "timezone": "Europe/London"
+    },
+    "tokyo": {
+        "city": "Tokio, Japón",
+        "latitude": 35.676192,
+        "longitude": 139.650311,
+        "altitude": 40.0,
+        "accuracy": 3.7,
+        "timezone": "Asia/Tokyo"
+    }
+}
+
+
+def parse_location(val: str, default_tz: Optional[str] = None) -> Dict[str, Any]:
+    """Parsea una ciudad/preset o coordenadas 'lat,lon[,alt]' retornando un dict de ubicación normalizado."""
+    s = val.strip().lower()
+    if s in LOCATION_PRESETS:
+        return dict(LOCATION_PRESETS[s])
+
+    if "," in val:
+        parts = val.split(",")
+        try:
+            lat = float(parts[0].strip())
+            lon = float(parts[1].strip())
+            alt = float(parts[2].strip()) if len(parts) >= 3 else 25.0
+        except ValueError:
+            raise SystemExit(f"[!] Error: Formato de coordenadas inválido en --location: '{val}' (esperado: lat,lon[,alt])")
+
+        if not (-90.0 <= lat <= 90.0):
+            raise SystemExit(f"[!] Error: Latitud inválida: {lat} (debe estar entre -90.0 y 90.0)")
+        if not (-180.0 <= lon <= 180.0):
+            raise SystemExit(f"[!] Error: Longitud inválida: {lon} (debe estar entre -180.0 y 180.0)")
+
+        return {
+            "city": f"Coordenadas ({lat:.4f}, {lon:.4f})",
+            "latitude": lat,
+            "longitude": lon,
+            "altitude": alt,
+            "accuracy": 4.2,
+            "timezone": default_tz or "America/Argentina/Buenos_Aires"
+        }
+
+    raise SystemExit(
+        f"[!] Error: Preset de ubicación desconocido: '{val}'. "
+        f"Usa 'list-locations' para ver presets disponibles o pasa 'lat,lon' (ej: -31.42,-64.18)."
+    )
+
+
+def apply_location_to_instance(inst_name: str, adb_s: str, loc: Dict[str, Any]) -> bool:
+    """Aplica coordenadas GPS y timezone al vuelo a la instancia (FakeGps.java las consume en caliente)."""
+    lat = str(loc.get("latitude", -34.603722))
+    lon = str(loc.get("longitude", -58.381592))
+    alt = str(loc.get("altitude", 25.0))
+    acc = str(loc.get("accuracy", 4.2))
+    city = str(loc.get("city", "Coordenadas"))
+    tz = loc.get("timezone")
+
+    props = [
+        ("persist.sys.location.lat", lat),
+        ("persist.sys.location.lon", lon),
+        ("persist.sys.location.alt", alt),
+        ("persist.sys.location.acc", acc),
+        ("persist.sys.location.city", city),
+    ]
+    if tz:
+        props.extend([
+            ("persist.sys.timezone", tz),
+            ("timezone", tz),
+        ])
+
+    for k, v in props:
+        subprocess.run(["docker", "exec", inst_name, "setprop", k, v],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if tz:
+        subprocess.run(["docker", "exec", inst_name, "service", "call", "alarm", "3", "s16", tz],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
 
 def calc_luhn(digits: str) -> int:
     """Calcula el dígito verificador de Luhn para una cadena de dígitos numéricos."""
@@ -571,6 +805,16 @@ def cmd_create_instance(args):
         else:
             print(f"[!] Aviso al clonar data: {res.stderr.decode().strip()}")
 
+    # Configurar geoubicación inicial (en frío)
+    loc_arg = getattr(args, "location", None)
+    carrier_tz = (c_data or {}).get("timezone") if 'c_data' in locals() and c_data else profile.get("telephony", {}).get("timezone", "America/Argentina/Buenos_Aires")
+    if loc_arg:
+        location = parse_location(loc_arg, default_tz=carrier_tz)
+    else:
+        location = dict(LOCATION_PRESETS["ba"])
+        location["timezone"] = carrier_tz
+    profile["location"] = location
+
     # Guardar en instances/<name>/profile.json
     profile_out = inst_dir / "profile.json"
     with open(profile_out, "w", encoding="utf-8") as f:
@@ -596,6 +840,7 @@ def cmd_create_instance(args):
         "adb_port": args.port,
         "seed": seed,
         "limits": limits,
+        "location": location,
         "display": {
             "width": w,
             "height": h,
@@ -616,6 +861,7 @@ def cmd_create_instance(args):
 
     print(f"\n[✓] Instancia '{inst_name}' creada exitosamente en: {inst_dir_disp}")
     print(f"  • Modelo      : {profile.get('template', {}).get('name')}")
+    print(f"  • Ubicación   : {location['city']} ({location['latitude']:.4f}, {location['longitude']:.4f})")
     print(f"  • Pantalla    : {w}x{h} @ {dpi}dpi ({fps}Hz)")
     print(f"  • Puerto ADB  : {args.port}")
     print(f"  • IMEI        : {identity['imei']}")
@@ -860,6 +1106,12 @@ def cmd_start_instance(args):
     subprocess.run(["docker", "exec", inst_name, "setprop", "persist.sys.timezone", tz], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(["docker", "exec", inst_name, "service", "call", "alarm", "3", "s16", tz], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"[✓] Zona horaria sincronizada: {tz}")
+
+    # Inyectar geoubicación configurada en el perfil
+    loc = meta.get("location") or (pdata.get("location") if 'pdata' in locals() and pdata else None)
+    if loc:
+        apply_location_to_instance(inst_name, adb_s, loc)
+        print(f"[✓] Ubicación GPS configurada: {loc.get('city')} ({loc.get('latitude')}, {loc.get('longitude')})")
 
     # Normalizar permisos de sysfs de CPU para que apps sin privilegios lean topología completa
     subprocess.run([
@@ -1122,11 +1374,166 @@ def cmd_list_instances(args):
             port = meta.get("adb_port", "5555")
             imei = meta.get("identity", {}).get("imei", "N/A")
             carrier = meta.get("carrier", "default")
+            loc_city = meta.get("location", {}).get("city", "Buenos Aires")
             docker_stat = running_map.get(inst.name, "Detenido (Offline)")
-            print(f"  • {inst.name:<18} | Puerto: {port:<5} | Estado: {docker_stat:<18} | IMEI: {imei} | SIM: {carrier}")
+            print(f"  • {inst.name:<18} | Puerto: {port:<5} | Estado: {docker_stat:<18} | Ciudad: {loc_city:<22} | IMEI: {imei} | SIM: {carrier}")
         except Exception as e:
             print(f"  • {inst.name} (Error al leer meta: {e})")
     print("====================================================================================================")
+
+
+def cmd_set_location(args):
+    """Establece o actualiza la ubicación GPS de una instancia en caliente o en frío."""
+    inst_name = validate_instance_name(args.name)
+    inst_dir = INSTANCES_DIR / inst_name
+    if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
+        raise SystemExit(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
+
+    with open(inst_dir / "meta.json", "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    carrier_tz = None
+    profile_path = inst_dir / "profile.json"
+    profile_data = {}
+    if profile_path.exists():
+        try:
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile_data = json.load(f)
+            carrier_tz = profile_data.get("telephony", {}).get("timezone")
+        except Exception:
+            pass
+
+    # Determinar si se pasó lat/lon explícito o preset/coordenadas por argumento
+    if args.lat is not None and args.lon is not None:
+        loc = {
+            "city": args.city or f"Coordenadas ({args.lat:.4f}, {args.lon:.4f})",
+            "latitude": float(args.lat),
+            "longitude": float(args.lon),
+            "altitude": float(args.alt if args.alt is not None else 25.0),
+            "accuracy": 4.2,
+            "timezone": args.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
+        }
+    elif getattr(args, "location", None):
+        loc = parse_location(args.location, default_tz=carrier_tz)
+        if getattr(args, "city", None):
+            loc["city"] = args.city
+        if getattr(args, "timezone", None):
+            loc["timezone"] = args.timezone
+        if getattr(args, "alt", None) is not None:
+            loc["altitude"] = float(args.alt)
+    else:
+        raise SystemExit("[!] Error: Debes especificar una ciudad/preset (ej: miami, cordoba), coordenadas 'lat,lon' o flags --lat y --lon.")
+
+    # Validar rangos geográficos
+    if not (-90.0 <= loc["latitude"] <= 90.0):
+        raise SystemExit(f"[!] Error: Latitud inválida: {loc['latitude']} (debe estar entre -90.0 y 90.0)")
+    if not (-180.0 <= loc["longitude"] <= 180.0):
+        raise SystemExit(f"[!] Error: Longitud inválida: {loc['longitude']} (debe estar entre -180.0 y 180.0)")
+
+    # Actualizar meta.json y profile.json
+    meta["location"] = loc
+    with open(inst_dir / "meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    if profile_data:
+        profile_data["location"] = loc
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile_data, f, indent=2)
+
+    # Verificar si el contenedor está corriendo
+    port = meta.get("adb_port", 5580)
+    adb_s = f"127.0.0.1:{port}"
+    check_cid = subprocess.run(
+        ["docker", "ps", "-q", "-f", f"name=^{inst_name}$"],
+        capture_output=True, text=True
+    ).stdout.strip()
+
+    applied_live = False
+    if check_cid:
+        apply_location_to_instance(inst_name, adb_s, loc)
+        applied_live = True
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "status": "ok",
+            "instance": inst_name,
+            "applied_live": applied_live,
+            "location": loc
+        }, indent=2))
+    else:
+        status_msg = "aplicada en caliente al contenedor en ejecución" if applied_live else "guardada para el próximo arranque"
+        print(f"[✓] Ubicación actualizada ({status_msg}):")
+        print(f"  • Ciudad    : {loc['city']}")
+        print(f"  • Latitud   : {loc['latitude']}")
+        print(f"  • Longitud  : {loc['longitude']}")
+        print(f"  • Altitud   : {loc['altitude']}m")
+        print(f"  • Timezone  : {loc['timezone']}")
+
+
+def cmd_get_location(args):
+    """Obtiene la ubicación GPS configurada o actual de una instancia."""
+    inst_name = validate_instance_name(args.name)
+    inst_dir = INSTANCES_DIR / inst_name
+    if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
+        raise SystemExit(f"[!] Error: La instancia '{inst_name}' no existe en {INSTANCES_DIR}")
+
+    with open(inst_dir / "meta.json", "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    loc = meta.get("location")
+    is_live = False
+    check_cid = subprocess.run(
+        ["docker", "ps", "-q", "-f", f"name=^{inst_name}$"],
+        capture_output=True, text=True
+    ).stdout.strip()
+    if check_cid:
+        live_lat = subprocess.run(["docker", "exec", inst_name, "getprop", "persist.sys.location.lat"], capture_output=True, text=True).stdout.strip()
+        live_lon = subprocess.run(["docker", "exec", inst_name, "getprop", "persist.sys.location.lon"], capture_output=True, text=True).stdout.strip()
+        live_city = subprocess.run(["docker", "exec", inst_name, "getprop", "persist.sys.location.city"], capture_output=True, text=True).stdout.strip()
+        live_tz = subprocess.run(["docker", "exec", inst_name, "getprop", "persist.sys.timezone"], capture_output=True, text=True).stdout.strip()
+        if live_lat and live_lon:
+            is_live = True
+            live_alt = subprocess.run(["docker", "exec", inst_name, "getprop", "persist.sys.location.alt"], capture_output=True, text=True).stdout.strip() or "25.0"
+            loc = {
+                "city": live_city or (loc.get("city") if loc else "Coordenadas"),
+                "latitude": float(live_lat),
+                "longitude": float(live_lon),
+                "altitude": float(live_alt),
+                "accuracy": 4.2,
+                "timezone": live_tz or (loc.get("timezone") if loc else "America/Argentina/Buenos_Aires")
+            }
+
+    if not loc:
+        loc = dict(LOCATION_PRESETS["ba"])
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "status": "ok",
+            "instance": inst_name,
+            "running": bool(check_cid),
+            "is_live_query": is_live,
+            "location": loc
+        }, indent=2))
+    else:
+        print(f"=== Ubicación de '{inst_name}' ({'En Vivo' if is_live else 'En Disco'}) ===")
+        print(f"  • Ciudad    : {loc.get('city')}")
+        print(f"  • Latitud   : {loc.get('latitude')}")
+        print(f"  • Longitud  : {loc.get('longitude')}")
+        print(f"  • Altitud   : {loc.get('altitude')}m")
+        print(f"  • Timezone  : {loc.get('timezone')}")
+
+
+def cmd_list_locations(args):
+    """Lista todos los presets de ubicación disponibles."""
+    if getattr(args, "json", False):
+        print(json.dumps(LOCATION_PRESETS, indent=2))
+    else:
+        print("====================================================================================================")
+        print("                              PRESETS DE UBICACIÓN GEOGRÁFICA (GPS)")
+        print("====================================================================================================")
+        for key, info in sorted(LOCATION_PRESETS.items()):
+            print(f"  • {key:<14} -> {info['city']} ({info['latitude']:.4f}, {info['longitude']:.4f}) [{info['timezone']}]")
+        print("====================================================================================================")
 
 
 def verify_instance_health(inst_name: str) -> tuple[bool, list[str]]:
@@ -1248,7 +1655,8 @@ def cmd_render(args):
         carrier_path=c_path,
         seed=getattr(args, "seed", None),
         instance_name=getattr(args, "name", "default"),
-        out_dir=getattr(args, "out", None)
+        out_dir=getattr(args, "out", None),
+        location=getattr(args, "location", None)
     )
     print(f"[✓] Bundle renderizado exitosamente:")
     print(f"  • Modelo      : {res['profile'].get('template', {}).get('name')}")
@@ -1288,6 +1696,7 @@ def main():
     sub.add_argument("--template", "-t", required=False, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
     sub.add_argument("--from-bundle", "-b", required=False, help="Ruta al bundle pre-renderizado (ADR-001 Fase 3)")
     sub.add_argument("--carrier", "-c", required=False, default="ar_personal", help="Operadora (default: ar_personal)")
+    sub.add_argument("--location", "-l", required=False, help="Ubicación GPS: preset (ej: cordoba, miami) o 'lat,lon[,alt]'")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
     sub.add_argument("--memory", "-m", required=False, help="Límite de memoria RAM para el contenedor (ej: 4g, 3072m)")
@@ -1300,6 +1709,7 @@ def main():
     sub = subparsers.add_parser("render", help="Renderiza un bundle determinista (ADR-001 Fase 2)")
     sub.add_argument("--template", "-t", required=True, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
     sub.add_argument("--carrier", "-c", required=False, help="Nombre o código de la operadora (ej: ar_personal)")
+    sub.add_argument("--location", "-l", required=False, help="Ubicación GPS: preset (ej: cordoba, miami) o 'lat,lon[,alt]'")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
     sub.add_argument("--name", "-n", default="default", help="Nombre de la instancia (default: default)")
     sub.add_argument("--out", "-o", type=Path, required=False, help="Directorio de salida para el bundle congelado")
@@ -1334,6 +1744,29 @@ def main():
     # list-instances
     sub = subparsers.add_parser("list-instances", help="Lista las instancias existentes")
     sub.set_defaults(func=cmd_list_instances)
+
+    # set-location (Geolocalización en caliente o frío)
+    sub = subparsers.add_parser("set-location", help="Establece la ubicación GPS (en caliente o en frío)")
+    sub.add_argument("name", help="Nombre de la instancia (ej: f05-main)")
+    sub.add_argument("location", nargs="?", default=None, help="Preset (ej: miami, cordoba) o coordenadas 'lat,lon'")
+    sub.add_argument("--lat", type=float, required=False, help="Latitud decimal (-90.0 a 90.0)")
+    sub.add_argument("--lon", type=float, required=False, help="Longitud decimal (-180.0 a 180.0)")
+    sub.add_argument("--alt", type=float, required=False, help="Altitud en metros")
+    sub.add_argument("--city", required=False, help="Nombre descriptivo de la ciudad")
+    sub.add_argument("--timezone", required=False, help="Huso horario IANA (ej: America/Argentina/Cordoba)")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
+    sub.set_defaults(func=cmd_set_location)
+
+    # get-location
+    sub = subparsers.add_parser("get-location", help="Consulta la ubicación GPS actual o configurada")
+    sub.add_argument("name", help="Nombre de la instancia (ej: f05-main)")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
+    sub.set_defaults(func=cmd_get_location)
+
+    # list-locations
+    sub = subparsers.add_parser("list-locations", help="Lista el catálogo de presets de ubicación geográfica")
+    sub.add_argument("--json", action="store_true", help="Salida estructurada en JSON para IA y APIs")
+    sub.set_defaults(func=cmd_list_locations)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
