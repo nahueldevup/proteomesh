@@ -42,6 +42,11 @@ tests/archprobe/device/classes/
 tests/archprobe/device/dex/
 tests/archprobe/device/tools/
 
+# Web frontend build and dependencies
+web/node_modules/
+web/dist/
+web/.vite/
+
 # IDE and OS metadata
 .DS_Store
 Thumbs.db

@@ -6,8 +6,8 @@
 | Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | `main`; F4 cerrada; OPT-001, GEO-001, API-001 y PROXY-001 completados (FastAPI backend + proxies residenciales); tests host-side pasando (71/71) |
-| Próximo hito | Plataforma de Gestión (Panel Web Frontend con Mapa / WebSockets Streaming) |
+| Estado del repo | `main`; F4 cerrada; OPT-001, GEO-001, API-001, PROXY-001 y WEB-001 completados (FastAPI backend + Panel Web React con Mapa); tests host-side pasando (71/71) |
+| Próximo hito | Orquestador Multi-Host / Túneles WireGuard / WebSockets Canvas Video Streaming |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
 
@@ -92,6 +92,7 @@
 - **GEO-001 — Geolocalización Frío y Caliente:** **cerrada el 2026-10-22.** Catálogo de 20 presets de ciudades mundiales (`LOCATION_PRESETS`), parser de coordenadas decimales libres (`lat,lon[,alt]`), comandos CLI con salida JSON para IA/Web (`list-locations`, `get-location`, `set-location`), inyección en caliente en <1.5s sin reiniciar el contenedor vía `setprop persist.sys.location.*` y `persist.sys.timezone`, soporte en frío en `create --location` y `render --location`. Revalidado en caliente en `f05-main` (Córdoba, Miami, Buenos Aires) con Pixelscan 100/100 y RDP 0/39 intactos. 52 tests unitarios pasando.
 - **API-001 — Servidor Backend FastAPI:** **cerrada el 2026-10-22.** Arquitectura modular (`server/`) con FastAPI, Pydantic V2 y CORS universal. Expone endpoints REST para instancias (`/api/v1/instances`), catálogo de 17 plantillas (`/api/v1/templates`), operadoras internacionales (`/api/v1/carriers`) y geolocalización en frío y caliente (`/api/v1/locations`). Documentación interactiva Swagger en `/docs`. Lanzador `tools/run_api.sh`. Suite de 12 tests en `tests/host/test_api_server.py`. 64 tests unitarios globales pasando.
 - **PROXY-001 — Proxies Residenciales y Georreferenciación:** **cerrada el 2026-10-22.** Servicio de proxies (`server/services/proxy_service.py` y `server/routes/proxies.py`) con soporte universal para formatos SOCKS5 y HTTP (`socks5://user:pass@host:port` y `host:port:user:pass`). Verificación asíncrona de latencia en ms, geolocalización de la IP de salida y auto-sincronización opcional de GPS/timezone para coincidir con la ubicación del proxy. Suite de 7 tests en `tests/host/test_proxies.py`. 71 tests unitarios globales pasando.
+- **WEB-001 — Panel Web Frontend estilo GeeLark:** **cerrada el 2026-10-22.** Panel de control web completo (`web/`) en React 19 + TypeScript + Vite 8 + Tailwind CSS v4. Incluye dashboard de flota con métricas en tiempo real, selector visual interactivo de mapa (Leaflet + CartoDB Dark Matter) para geolocalización con chincheta arrastrable, modal de creación guiada en 5 pasos (Hardware, SIM, Mapa, Proxy, Recursos), drawer lateral para inspección de identificadores GSMA/IEEE y verificación de salud en 1 clic. Compilación de producción en 207ms (~125 kB gzipped). Cero emojis, iconografía SVG profesional con Lucide.
 
 ## 6. Regla de uso
 

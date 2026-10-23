@@ -813,6 +813,31 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Suite host global: **71 / 71 tests pasando**.
 * **Estado:** PROXY-001 **completado el 2026-10-22**. Listo para consumo por el Panel Web.
 
+### 60. WEB-001 — Panel Web Frontend estilo GeeLark con Selector Visual de Mapa y Gestor de Flota (2026-10-22)
+
+* **Objetivo:** Construir la interfaz de usuario web completa para la plataforma ProteoMesh (`web/`), inspirada en la densidad de datos y ergonomía de GeeLark y los principios de diseño de Shadcn UI y Vercel Web Interface Guidelines. Diseño minimalista oscuro (`zinc-950`), alto rendimiento (<250ms build, ~125 kB gzipped), cero emojis (iconografía SVG profesional con Lucide), selector visual interactivo de mapa para geolocalización y panel de control remoto de instancias.
+* **Componentes implementados en `web/`:**
+  1. **Stack Tecnológico:** React 19 + Vite 8 + TypeScript + Tailwind CSS v4 (`@tailwindcss/vite`).
+  2. **Dashboard de Flota (`web/src/App.tsx`):**
+     - Barra lateral con métricas de flota, catálogo de hardware, operadoras y proxies.
+     - Tabla de CloudPhones con indicadores de estado en vivo, puertos ADB, hardware asignado, GPS con pin de mapa, operadora SIM y estado de proxy.
+     - Buscador reactivo y filtros de estado (Todos, Online, Offline).
+  3. **Selector Visual de Mapa Interactivo (`web/src/components/MapPicker.tsx`):**
+     - Integración con Leaflet y azulejos oscuros CartoDB Dark Matter.
+     - Chincheta interactiva arrastrable y evento de clic en cualquier lugar del planeta para fijar coordenadas decimales exactas y altitud en tiempo real.
+     - Presets rápidos de ciudades mundiales para saltar instantáneamente al destino.
+  4. **Modal de Aprovisionamiento (`web/src/components/CreateDeviceModal.tsx`):**
+     - Flujo guiado en 5 pasos (Hardware & Modelo con selector de 17 marcas, Operadora SIM, Mapa & GPS interactivo, Proxy Residencial SOCKS5/HTTP con test de latencia e IP en vivo, y Recursos Docker con CPU Pinning y memoria).
+  5. **Drawer de Detalle y Control en Caliente (`web/src/components/DeviceDetailDrawer.tsx`):**
+     - Slide-over con visualización de identificadores GSMA/IEEE (IMEI, Serial, MACs, SSID).
+     - Modificación de GPS en caliente sobre contenedores en marcha.
+     - Asignación, prueba y remoción de proxies residenciales.
+     - Ejecución y visualización de los 7 checks del protocolo de salud.
+* **Verificación:**
+  - Compilación de producción en **207 ms** (`dist/index.html` 0.48 kB, `index.js` 125 kB gzipped).
+  - Suite de 71 tests host pasando.
+* **Estado:** WEB-001 **completado el 2026-10-22**. Frontend y Backend 100% operativos.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
