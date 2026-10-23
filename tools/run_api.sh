@@ -11,7 +11,7 @@ VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
 if [ ! -f "${VENV_PYTHON}" ]; then
     echo "[!] Entorno virtual .venv no encontrado. Creando e instalando dependencias con uv..."
     "${HOME}/.local/bin/uv" venv "${REPO_ROOT}/.venv" --clear --python /usr/bin/python3
-    "${HOME}/.local/bin/uv" pip install --python "${VENV_PYTHON}" fastapi uvicorn pydantic httpx websockets
+    "${HOME}/.local/bin/uv" pip install --python "${VENV_PYTHON}" fastapi uvicorn pydantic "httpx[socks]" websockets socksio
 fi
 
 PORT="${PORT:-8000}"

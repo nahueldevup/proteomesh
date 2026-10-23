@@ -65,6 +65,49 @@ class LimitsSchema(BaseModel):
     pids_limit: Optional[int] = Field(default=None, description="Límite de PIDs (recomendado: None o >=4096)")
 
 
+# ── Modelos de Proxies Residenciales ─────────────────────────────────────────
+class ProxyConfig(BaseModel):
+    type: str = Field(default="socks5", description="Tipo de proxy ('socks5', 'http')")
+    host: str = Field(..., description="Dirección IP o dominio del proxy")
+    port: int = Field(..., ge=1, le=65535, description="Puerto del proxy")
+    username: Optional[str] = Field(default=None, description="Usuario de autenticación")
+    password: Optional[str] = Field(default=None, description="Contraseña de autenticación")
+
+    @property
+    def url(self) -> str:
+        auth = f"{self.username}:{self.password}@" if self.username and self.password else ""
+        return f"{self.type}://{auth}{self.host}:{self.port}"
+
+
+class ProxyTestRequest(BaseModel):
+    proxy_url: Optional[str] = Field(default=None, description="Cadena de proxy (ej: socks5://user:pass@ip:port o ip:port:user:pass)")
+    type: Optional[str] = Field(default="socks5", description="Tipo por defecto si no viene en URL")
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class ProxyTestResponse(BaseModel):
+    ok: bool
+    ip: Optional[str] = None
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    city: Optional[str] = None
+    timezone: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    latency_ms: Optional[float] = None
+    error: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
+
+
+class InstanceProxyUpdate(BaseModel):
+    proxy: Optional[ProxyConfig] = Field(default=None, description="Configuración estructurada del proxy (None para remover)")
+    raw_proxy: Optional[str] = Field(default=None, description="Cadena raw del proxy (ej: socks5://user:pass@host:port)")
+    auto_sync_location: bool = Field(default=True, description="Sincronizar GPS y timezone automáticamente con la IP del proxy")
+
+
 # ── Modelos de Instancias (CloudPhones) ───────────────────────────────────────
 class InstanceCreateRequest(BaseModel):
     name: str = Field(..., pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$", description="Nombre único en minúsculas")
@@ -74,6 +117,8 @@ class InstanceCreateRequest(BaseModel):
     custom_carrier: Optional[CarrierSchema] = Field(default=None, description="Operadora personalizada inline")
     location: Optional[str] = Field(default=None, description="Preset geográfico o 'lat,lon'")
     custom_location: Optional[LocationSchema] = Field(default=None, description="Ubicación geográfica explícita")
+    proxy: Optional[ProxyConfig] = Field(default=None, description="Proxy residencial para la instancia")
+    raw_proxy: Optional[str] = Field(default=None, description="Cadena raw de proxy para auto-parseo")
     port: int = Field(default=5580, ge=1024, le=65535, description="Puerto ADB en el host")
     seed: Optional[int] = Field(default=None, description="Semilla determinista")
     limits: Optional[LimitsSchema] = Field(default_factory=LimitsSchema)
@@ -88,6 +133,7 @@ class InstanceResponse(BaseModel):
     running: bool = False
     docker_status: Optional[str] = "Detenido (Offline)"
     location: Optional[LocationSchema] = None
+    proxy: Optional[ProxyConfig] = None
     limits: Optional[Dict[str, Any]] = None
     identity: Optional[Dict[str, Any]] = None
 

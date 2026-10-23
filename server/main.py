@@ -25,6 +25,7 @@ from server.routes import (
     carriers_router,
     locations_router,
     instances_router,
+    proxies_router,
 )
 
 app = FastAPI(
@@ -50,6 +51,7 @@ app.include_router(instances_router, prefix=API_PREFIX)
 app.include_router(templates_router, prefix=API_PREFIX)
 app.include_router(carriers_router, prefix=API_PREFIX)
 app.include_router(locations_router, prefix=API_PREFIX)
+app.include_router(proxies_router, prefix=API_PREFIX)
 
 
 @app.get("/", tags=["Estado del Servidor"])
@@ -66,6 +68,7 @@ def root():
             "templates": f"{API_PREFIX}/templates",
             "carriers": f"{API_PREFIX}/carriers",
             "locations": f"{API_PREFIX}/locations",
+            "proxies": f"{API_PREFIX}/proxies/test",
         }
     }
 

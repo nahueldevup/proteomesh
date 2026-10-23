@@ -38,6 +38,7 @@ from server.models.schemas import (
     LocationResponse,
     CarrierSchema,
     TemplateItem,
+    ProxyConfig,
     InstanceCreateRequest,
     InstanceResponse,
     HealthReport,
@@ -133,6 +134,8 @@ def get_instances_list() -> List[InstanceResponse]:
             is_running = stat.startswith("Up")
             loc_data = meta.get("location")
             location_obj = LocationSchema(**loc_data) if loc_data else None
+            proxy_data = meta.get("proxy")
+            proxy_obj = ProxyConfig(**proxy_data) if proxy_data else None
 
             res.append(InstanceResponse(
                 instance_name=inst.name,
@@ -142,6 +145,7 @@ def get_instances_list() -> List[InstanceResponse]:
                 running=is_running,
                 docker_status=stat,
                 location=location_obj,
+                proxy=proxy_obj,
                 limits=meta.get("limits"),
                 identity=meta.get("identity")
             ))
@@ -164,6 +168,8 @@ def get_single_instance(name: str) -> InstanceResponse:
     stat = running_map.get(name, "Detenido (Offline)")
     loc_data = meta.get("location")
     location_obj = LocationSchema(**loc_data) if loc_data else None
+    proxy_data = meta.get("proxy")
+    proxy_obj = ProxyConfig(**proxy_data) if proxy_data else None
 
     return InstanceResponse(
         instance_name=name,
@@ -173,6 +179,7 @@ def get_single_instance(name: str) -> InstanceResponse:
         running=stat.startswith("Up"),
         docker_status=stat,
         location=location_obj,
+        proxy=proxy_obj,
         limits=meta.get("limits"),
         identity=meta.get("identity")
     )

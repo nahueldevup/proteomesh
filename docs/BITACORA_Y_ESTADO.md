@@ -796,6 +796,23 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Suite host ampliada: **64 / 64 tests pasando**.
 * **Estado:** API-001 **completada el 2026-10-22**. Backend 100% operativo y listo para integrar el Panel Web.
 
+### 59. PROXY-001 — Subsistema de Validación, Georreferenciación y Túnel de Proxies Residenciales (2026-10-22)
+
+* **Objetivo:** Implementar la capa de gestión de proxies residenciales en el Backend FastAPI (`server/services/proxy_service.py` y `server/routes/proxies.py`), permitiendo parsear formatos libres (URL `socks5://user:pass@host:port` o delimitados por dos puntos `host:port:user:pass`), probar latencia e IP de salida en milisegundos, geolocalizar la IP pública resultante y auto-sincronizar el GPS y timezone del CloudPhone para coincidir con la ubicación del proxy.
+* **Componentes implementados:**
+  1. **Parser Universal (`parse_proxy_string`):** Interpreta URLs estándar (`socks5://`, `http://`) y formatos de proveedores residenciales (`ip:port:user:pass`, `ip:port`) generando esquemas Pydantic V2 (`ProxyConfig`).
+  2. **Verificador Asíncrono de Proxies (`test_proxy_connection`):** Emplea `httpx` con soporte `socksio` para medir la latencia ida y vuelta en ms y consultar servicios de geolocalización IP (país, código ISO, ciudad, timezone, lat/lon de la IP de salida).
+  3. **Auto-sincronización GPS ↔ Proxy (`auto_sync_location`):** Al asignar un proxy residencial a una instancia, si se habilita la bandera, el backend actualiza automáticamente las coordenadas del CloudPhone para que coincidan con la ciudad del proxy, erradicando incoherencias entre la IP de red y la geolocalización de las apps.
+  4. **Endpoints REST de Proxies:**
+     - `POST /api/v1/proxies/test`: Prueba y georreferencia cualquier proxy residencial sin requerir asignarlo.
+     - `GET /api/v1/instances/{name}/proxy`: Consulta el proxy activo de la instancia.
+     - `POST /api/v1/instances/{name}/proxy`: Asigna o actualiza el proxy en caliente o frío.
+     - `DELETE /api/v1/instances/{name}/proxy`: Remueve el proxy y restaura la conexión directa.
+* **Verificación y Cobertura:**
+  - Nueva suite unitaria `tests/host/test_proxies.py` (7 tests) cubriendo parsing de URLs con/sin auth, formatos colon-delimited, rechazo de formatos inválidos y endpoints REST con `TestClient`.
+  - Suite host global: **71 / 71 tests pasando**.
+* **Estado:** PROXY-001 **completado el 2026-10-22**. Listo para consumo por el Panel Web.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
