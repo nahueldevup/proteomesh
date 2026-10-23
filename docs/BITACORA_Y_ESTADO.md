@@ -775,6 +775,27 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Revalidado en caliente en `f05-main`: cambio en vivo a Córdoba (`-31.4201, -64.1888`), Miami (`25.7617, -80.1918`) y restauración a Buenos Aires verificado en vivo con **Pixelscan 100/100** y **RDP 0/39**.
 * **Estado:** Subsistema de geolocalización GEO-001 **completado el 2026-10-22**. Listo para consumo por API y Panel Web.
 
+### 58. API-001 — Servidor Backend FastAPI y Endpoints REST para Orquestación y Panel Web (2026-10-22)
+
+* **Objetivo:** Construir la capa de servicios Backend basada en FastAPI + Python, conectando el motor de contenedores, catálogo de plantillas, operadoras y geolocalización a través de una API REST asíncrona estándar con documentación interactiva OpenAPI (Swagger), consumible tanto por agentes de IA como por futuros paneles web (React / Vue).
+* **Componentes implementados en `server/`:**
+  1. **Configuración y Middleware (`server/config.py` y `server/main.py`):** Configuración centralizada de rutas, títulos, versión 1.0.0 y middleware de CORS universal (`*` y puertos Vite/Next.js locales) para permitir peticiones cross-origin desde cualquier navegador o cliente Electron.
+  2. **Modelos Pydantic V2 (`server/models/schemas.py`):** Modelos fuertemente tipados con validación de expresiones regulares (`pattern`), rangos geográficos (`ge`, `le`) y esquemas serializables para:
+     - `InstanceCreateRequest`, `InstanceResponse`, `LimitsSchema`, `HealthReport`.
+     - `LocationSchema`, `LocationUpdate`, `LocationResponse`.
+     - `CarrierSchema`, `TemplateItem`.
+  3. **Puente de Servicios Nativos (`server/services/manager_bridge.py`):** Fachada Python que interactúa directamente con las funciones del motor (`tools/instance_manager.py`) sin depender de shells externas cuando es innecesario, y delegando operaciones asíncronas de Docker y subprocesos a `asyncio.create_subprocess_exec`.
+  4. **Controladores de Rutas API (`server/routes/`):**
+     - `templates.py`: `GET /api/v1/templates` (catálogo completo por fabricante) y `GET /api/v1/templates/{brand}/{model}` (especificación profunda).
+     - `carriers.py`: `GET /api/v1/carriers` (catálogo internacional) y `POST /api/v1/carriers` (registro dinámico de operadora personalizada).
+     - `locations.py`: `GET /api/v1/locations` (catálogo de 20 presets mundiales) y `GET`/`POST /api/v1/locations/instances/{name}` (consulta y modificación en caliente de GPS/timezone).
+     - `instances.py`: `GET`/`POST /api/v1/instances` (listar y aprovisionar CloudPhone), `GET /api/v1/instances/{name}` (detalle), `POST /api/v1/instances/{name}/start` y `stop` (ciclo de vida de contenedor Docker), `GET /api/v1/instances/{name}/health` (verificación de salud).
+  5. **Lanzador Unificado (`tools/run_api.sh`):** Script ejecutable que inicializa o verifica el entorno `.venv` y arranca `uvicorn` en `http://127.0.0.1:8000` con recarga automática (`reload`).
+* **Verificación y Cobertura:**
+  - Nueva suite de tests `tests/host/test_api_server.py` (12 tests de integración usando `TestClient`) validando `/`, `/health`, templates, carriers, locations y actualización en caliente de instancias reales.
+  - Suite host ampliada: **64 / 64 tests pasando**.
+* **Estado:** API-001 **completada el 2026-10-22**. Backend 100% operativo y listo para integrar el Panel Web.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

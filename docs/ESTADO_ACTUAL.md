@@ -6,8 +6,8 @@
 | Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | `main`; F4 cerrada; OPT-001 y GEO-001 aplicados (rendimiento, fluidez 30fps y geolocalización frío/caliente); tests host-side pasando (52/52) |
-| Próximo hito | Plataforma de Gestión (Panel Web / Orquestador multi-contenedor / Proxies) |
+| Estado del repo | `main`; F4 cerrada; OPT-001, GEO-001 y API-001 completados (FastAPI backend operativo); tests host-side pasando (64/64) |
+| Próximo hito | Plataforma de Gestión (Panel Web Frontend con Mapa / WebSockets Streaming / Proxies) |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
 
@@ -90,6 +90,7 @@
 - **F4 — Dependencias:** **cerrada el 2026-10-22.** `modules.lock` completo con todas las dependencias bloqueadas: `redroid_base` con digest fijado en `Dockerfile`, `nohello` (0.0.7), `magisk` (30.6) y `lsposed` (1.9.2-7024) con URLs de release oficiales y sha256. Aprovisionamiento reproducible vía `tools/bootstrap_data_clean.sh`. 47 tests unitarios en `tests/host/`.
 - **OPT-001 — Rendimiento y Fluidez:** **cerrada el 2026-10-22.** Eliminado spam de log en hot paths (-96.8% de logs en `FakeWifiHook`), fast-path sin asignaciones en `isSuspectPackage`, early-out por prefijo en `redirect_path` (Bionic C), prefix gate en `mark_net_fd`, grouping de props en `get_fake_prop`, SurfaceFlinger optimizado a 30 FPS estables (`RENDER_FPS = 30`), erradicación del CFS CPU Quota throttling reemplazando `--cpus` por CPU Pinning (`--cpuset-cpus 0-3` aislando renderizado de UI y compresión H264 de scrcpy), poda de 5 servicios de sistema prescindibles en `DISABLE_PACKAGES` (~420 MB liberados), tope de memoria en 2.5 GB, y cacheo estático de métodos reflexivos en `FakeGps`, `FakeSensors` y `FakeWifiHook`. Revalidado en vivo en `f05-main`: Pixelscan 100/100 y RDP 0/39 intactos. 47 tests unitarios pasando.
 - **GEO-001 — Geolocalización Frío y Caliente:** **cerrada el 2026-10-22.** Catálogo de 20 presets de ciudades mundiales (`LOCATION_PRESETS`), parser de coordenadas decimales libres (`lat,lon[,alt]`), comandos CLI con salida JSON para IA/Web (`list-locations`, `get-location`, `set-location`), inyección en caliente en <1.5s sin reiniciar el contenedor vía `setprop persist.sys.location.*` y `persist.sys.timezone`, soporte en frío en `create --location` y `render --location`. Revalidado en caliente en `f05-main` (Córdoba, Miami, Buenos Aires) con Pixelscan 100/100 y RDP 0/39 intactos. 52 tests unitarios pasando.
+- **API-001 — Servidor Backend FastAPI:** **cerrada el 2026-10-22.** Arquitectura modular (`server/`) con FastAPI, Pydantic V2 y CORS universal. Expone endpoints REST para instancias (`/api/v1/instances`), catálogo de 17 plantillas (`/api/v1/templates`), operadoras internacionales (`/api/v1/carriers`) y geolocalización en frío y caliente (`/api/v1/locations`). Documentación interactiva Swagger en `/docs`. Lanzador `tools/run_api.sh`. Suite de 12 tests en `tests/host/test_api_server.py`. 64 tests unitarios globales pasando.
 
 ## 6. Regla de uso
 
