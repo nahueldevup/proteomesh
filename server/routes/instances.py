@@ -1,8 +1,9 @@
 """
 Rutas para ciclo de vida de instancias (CloudPhones)
 """
+import asyncio
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 
 from server.models.schemas import (
     InstanceCreateRequest,
@@ -14,6 +15,12 @@ from server.models.schemas import (
     InputTextRequest,
     LaunchUrlRequest,
     ScrcpyLaunchResponse,
+    GroupTapRequest,
+    GroupSwipeRequest,
+    GroupKeyRequest,
+    GroupInstancesRequest,
+    GroupActionResponse,
+    ScrcpyStreamInfo,
 )
 from server.services.manager_bridge import (
     get_instances_list,
@@ -29,6 +36,11 @@ from server.services.manager_bridge import (
     send_instance_key,
     send_instance_text,
     launch_instance_url,
+    group_tap_async,
+    group_swipe_async,
+    group_key_async,
+    group_lifecycle_async,
+    get_scrcpy_stream_info,
 )
 
 router = APIRouter(prefix="/instances", tags=["Instancias (CloudPhones)"])
@@ -47,6 +59,29 @@ async def create_instance(req: InstanceCreateRequest):
         return await create_instance_async(req)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Control de Grupo (debe declararse antes de /{name} para no colisionar) ──
+@router.post("/group/input/tap", response_model=GroupActionResponse, summary="Tap simultáneo en varias instancias")
+async def group_input_tap(req: GroupTapRequest):
+    return await group_tap_async(req.instances, req.x, req.y)
+
+
+@router.post("/group/input/swipe", response_model=GroupActionResponse, summary="Swipe simultáneo en varias instancias")
+async def group_input_swipe(req: GroupSwipeRequest):
+    return await group_swipe_async(req.instances, req.x1, req.y1, req.x2, req.y2, req.duration_ms)
+
+
+@router.post("/group/input/key", response_model=GroupActionResponse, summary="Tecla simultánea en varias instancias")
+async def group_input_key(req: GroupKeyRequest):
+    return await group_key_async(req.instances, req.key)
+
+
+@router.post("/group/{action}", response_model=GroupActionResponse, summary="Ciclo de vida masivo (start/stop/restart)")
+async def group_lifecycle(action: str, req: GroupInstancesRequest):
+    if action not in ("start", "stop", "restart"):
+        raise HTTPException(status_code=400, detail="Acción inválida: use start, stop o restart")
+    return await group_lifecycle_async(req.instances, action)
 
 
 @router.get("/{name}", response_model=InstanceResponse, summary="Obtener detalle de una instancia")
@@ -103,6 +138,15 @@ def open_scrcpy(name: str):
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{name}/stream-info", response_model=ScrcpyStreamInfo, summary="Info de streaming nativo scrcpy (ws-scrcpy)")
+def stream_info(name: str, player: str = Query(default="mse", pattern="^(mse|webcodecs|tinyh264|broadway)$")):
+    """Devuelve la URL de embed del visor ws-scrcpy y si el servicio está disponible."""
+    try:
+        return get_scrcpy_stream_info(name, player)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{name}/screen", summary="Obtener captura de pantalla en vivo (JPEG/PNG)")
@@ -171,3 +215,28 @@ def launch_url(name: str, req: LaunchUrlRequest):
         return launch_instance_url(name, req.url)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.websocket("/{name}/ws-stream")
+async def ws_stream(websocket: WebSocket, name: str, fps: int = 3, max_width: int = 540):
+    """Stream continuo de frames JPEG por WebSocket (fallback nativo cuando ws-scrcpy no está disponible)."""
+    await websocket.accept()
+    delay = 1.0 / max(1, min(fps, 10))
+    try:
+        while True:
+            try:
+                frame = await asyncio.to_thread(get_instance_screenshot, name, "jpeg", max_width)
+            except Exception as e:
+                await websocket.send_json({"error": str(e)})
+                break
+            await websocket.send_bytes(frame)
+            await asyncio.sleep(delay)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass

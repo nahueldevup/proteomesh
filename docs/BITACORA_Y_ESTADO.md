@@ -868,6 +868,62 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Compilación de producción en **207 ms** con `tsc -b && vite build` (cero errores en oxlint).
 * **Estado:** WEB-002 **completado el 2026-10-23**. Plataforma completamente interactiva y visual.
 
+### 62. WEB-003 — Rediseño Mosaico/Focus, Control de Grupo Multi-Touch y Streaming WebSocket (2026-10-23)
+
+* **Objetivo:** Refactor visual estilo GeeLark/GenFarmer: reemplazar la tabla administrativa y el drawer por un mosaico de CloudPhones, una vista enfocada de 3 columnas, control de grupo con toques sincronizados y streaming continuo por WebSocket.
+* **FASE 1 — UI Mosaico y Focus:**
+  - `web/src/App.tsx`: nuevo estado `viewMode: 'grid' | 'focus'`, `focusedName`, `selectedNames: Set<string>` y `groupMode`. Sidebar/Topbar conservados.
+  - `web/src/components/grid/DeviceGrid.tsx` + `DeviceCard.tsx`: grid responsivo (`sm:2 / lg:3 / xl:4`), thumbnail de pantalla en vivo (refresco 5s), modelo, estado Online/Offline, ciudad GPS, checkbox de selección y "Seleccionar todo".
+  - `web/src/components/focus/FocusView.tsx`: split-screen de 3 columnas (visor 50%, ControlPanel 25%, InfoAccordion 25%) sin drawers.
+  - `ControlPanel.tsx`: encendido/apagado, Power/Vol±, inyección de texto, apertura de URLs y lanzador scrcpy nativo.
+  - `InfoAccordion.tsx`: acordeón vertical con Identidad (IMEI/MAC/serial), GPS (mapa mini editable), Proxy, Salud (verify-health con logs) y Red.
+  - `ScreenViewer.tsx` refactorizado: canvas de streaming, click-to-tap y drag-to-swipe escalados a resolución nativa real (`display.width/height` del meta), nav bar Android y descarga de captura.
+  - `DeviceDetailDrawer.tsx` **eliminado**.
+* **FASE 2 — Control de Grupo:**
+  - Backend: `POST /api/v1/instances/group/input/{tap,swipe,key}` y `POST /api/v1/instances/group/{start,stop,restart}`, ejecutados con `asyncio.gather` sobre `docker exec` (`group_tap_async`, `group_swipe_async`, `group_key_async`, `group_lifecycle_async` en `manager_bridge.py`).
+  - Respuesta uniforme `GroupActionResponse` con resultado por instancia (`total`, `succeeded`, `results[]`).
+  - Frontend: `GroupActionBar.tsx` flotante (Encender, Apagar, Reiniciar, Modo Grupo con sincronización de toques, limpiar selección).
+  - `ScreenViewer` en modo grupo envía tap/swipe/teclas a todas las instancias seleccionadas.
+* **FASE 3 — Streaming WebSocket:**
+  - `GET ws://.../api/v1/instances/{name}/ws-stream?fps=3` (`server/routes/instances.py`): frames JPEG binarios continuos generados con Pillow.
+  - `web/src/components/focus/ScreenStream.tsx`: canvas con `createImageBitmap`, reconexión y **fallback automático a polling HTTP** si el WebSocket falla.
+  - `web/vite.config.ts`: proxy `/api` con `ws: true`.
+  - ws-scrcpy opcional: `tools/run_ws_scrcpy.sh` y `docker-compose.ws-scrcpy.yml` (puerto 8001, `network_mode: host`).
+* **Decisiones de diseño y por qué:**
+  - **Mosaico + focus en lugar de tabla + drawer:** la operación de una granja exige ver el estado de N dispositivos de un vistazo y entrar a uno sin perder el contexto; el drawer tapaba el mosaico y la tabla no escalaba visualmente. El split-screen de 3 columnas mantiene visor, controles e identidad visibles a la vez.
+  - **Control de grupo vía REST + `asyncio.gather`:** una sola llamada del frontend dispara el fan-out en paralelo (evita sumar ~33 ms por instancia de forma secuencial) y devuelve un resultado por dispositivo, de modo que un fallo aislado no aborta la operación completa.
+  - **WebSocket JPEG con fallback a polling:** `screencap` no requiere ningún servicio externo y funciona aunque ws-scrcpy no esté instalado; el WS elimina el overhead de reconexión del polling, se limita a 3 FPS para no competir con el render del invitado, y si cae degrada a polling en lugar de dejar la pantalla negra.
+  - **ws-scrcpy como componente opcional:** el visor de baja latencia depende de un servicio Node externo; la plataforma debe seguir operando sin él, por eso los scripts viven aparte y no como requisito de arranque.
+* **Verificación:**
+  - Nueva suite `tests/host/test_group_control.py` (6 tests: tap/swipe/key masivos, lista vacía y ciclo de vida inválido).
+  - Total host: **83 / 83 tests pasando**.
+  - Build producción: **235–338 ms**, JS 447 kB (gzip 131 kB), CSS 57.5 kB (gzip 14 kB). oxlint: 0 errores, 4 warnings preexistentes.
+* **Estado:** WEB-003 **completado y validado el 2026-10-23**.
+
+### 63. WEB-004 — Visor Nativo scrcpy de Baja Latencia y Entrada ADB Directa (2026-10-23)
+
+* **Diagnóstico medido:**
+  - Tap por `docker exec` ≈ 33 ms vs `adb -s 127.0.0.1:<port> shell input` ≈ 21 ms.
+  - Frame del visor canvas: `screencap` ≈ 500 ms + conversión JPEG ≈ 40 ms, servido a 3 FPS → latencia visual percibida ~550 ms. Es el cuello de botella real, no la entrada.
+* **Solución:**
+  1. **Entrada ADB directa:** `_input_command()` en `manager_bridge.py` prefiere `adb -s 127.0.0.1:<adb_port>` y cae a `docker exec` si el dispositivo no está conectado. Aplica a tap/swipe/key/text y al control de grupo.
+  2. **Streaming nativo scrcpy:** `GET /api/v1/instances/{name}/stream-info?player=webcodecs|mse` devuelve `available`, `udid` y `embed_url` de ws-scrcpy. El servidor valida disponibilidad con un GET al servicio (timeout 0.8 s).
+  3. **Embed en el visor:** `ScreenViewer.tsx` detecta WebCodecs (`VideoDecoder`) y usa `player=webcodecs` (fallback `mse`). El visor nativo es el **modo por defecto** cuando ws-scrcpy está disponible: iframe a 30 FPS H.264 con toolbar (reconectar, abrir en pestaña, volver a Canvas), overlay de carga y aviso de control nativo. El canvas queda como fallback automático si ws-scrcpy no está disponible o en modo grupo, y como opción manual. En modo grupo se advierte que el visor nativo controla un solo dispositivo.
+  4. **ws-scrcpy operativo:** instalado en `~/.cache/proteomesh/ws-scrcpy`, config YAML en `~/.cache/proteomesh/ws-scrcpy.yaml` (puerto 8001) y corriendo. El puerto se configura por `WS_SCRCPY_CONFIG`, no por `PORT` (el script y el compose fueron corregidos).
+* **Decisiones de diseño y por qué:**
+  - **ADB directo antes que `docker exec`:** medido en 21 ms vs 33 ms por tap; el overhead de `dockerd` no aporta nada al envío de input. El fallback a `docker exec` conserva compatibilidad si el puerto ADB no está conectado.
+  - **H.264 sobre ws-scrcpy en lugar de optimizar el canvas:** el problema era el pipeline `screencap` (~500 ms) + JPEG (~40 ms), no la red ni el frontend. Reimplementar el protocolo scrcpy habría sido costoso y frágil; ws-scrcpy ya expone video H.264 a 30 FPS con players WebCodecs/MSE mantenidos.
+  - **Iframe en vez de un player propio:** aísla el ciclo de vida del stream, evita reimplementar el handshake de scrcpy y permite abrir la misma sesión en pestaña completa. La contrapartida es que solo controla un dispositivo y compite por el socket de video si hay una ventana scrcpy nativa abierta.
+  - **scrcpy por defecto + canvas como fallback:** se prioriza la latencia cuando el servicio está disponible; el canvas se conserva para el mosaico (thumbnails a 5 s), el modo grupo (multi-touch sincronizado), navegadores sin WebCodecs/MSE y caídas de ws-scrcpy. Así la plataforma no queda acoplada a Node.
+  - **`WS_SCRCPY_CONFIG` en vez de `PORT`:** ws-scrcpy ignora `PORT` y su puerto por defecto 8000 colisiona con FastAPI; el YAML generado por `tools/run_ws_scrcpy.sh` y el compose fijan 8001 de forma reproducible. `node-pty` se reconstruye explícitamente porque npm 11 omite los install scripts sin fallar.
+  - **`stream-info` con timeout de 0.8 s:** permite que el frontend decida rápido entre visor nativo y canvas; una comprobación lenta bloquearía la primera pintura del dispositivo.
+* **Verificación:**
+  - `stream-info` → `available: true`, `udid: 127.0.0.1:5601`.
+  - Handshake del proxy WS recibido: `scrcpy_initialSM-A546M` (video H.264 activo).
+  - Build 279 ms (449.7 kB / 132 kB gzip), 0 errores de lint.
+  - **83 / 83 tests host pasando.**
+* **Estado:** WEB-004 **completado y validado el 2026-10-23**. El visor nativo scrcpy es el modo por defecto; el canvas JPEG queda como fallback automático (ws-scrcpy no disponible o modo grupo) y como opción manual.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

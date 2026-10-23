@@ -1,4 +1,4 @@
-import type { Instance, TemplateItem, Carrier, LocationData, ProxyTestResult, ScrcpyLaunchResult } from '../types';
+import type { Instance, TemplateItem, Carrier, LocationData, ProxyTestResult, ScrcpyLaunchResult, GroupResponse, ScrcpyStreamInfo } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -123,6 +123,11 @@ export const api = {
     return handleResponse<ScrcpyLaunchResult>(res);
   },
 
+  async getStreamInfo(name: string, player: string = 'mse'): Promise<ScrcpyStreamInfo> {
+    const res = await fetch(`${API_BASE}/instances/${name}/stream-info?player=${encodeURIComponent(player)}`);
+    return handleResponse<ScrcpyStreamInfo>(res);
+  },
+
   getScreenUrl(name: string, timestamp?: number): string {
     const t = timestamp || Date.now();
     return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}`;
@@ -177,5 +182,47 @@ export const api = {
       body: JSON.stringify({ url }),
     });
     return handleResponse<any>(res);
+  },
+
+  // Control de Grupo (Multi-Touch)
+  async groupTap(instances: string[], x: number, y: number): Promise<GroupResponse> {
+    const res = await fetch(`${API_BASE}/instances/group/input/tap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances, x: Math.round(x), y: Math.round(y) }),
+    });
+    return handleResponse<GroupResponse>(res);
+  },
+
+  async groupSwipe(instances: string[], x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<GroupResponse> {
+    const res = await fetch(`${API_BASE}/instances/group/input/swipe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instances,
+        x1: Math.round(x1), y1: Math.round(y1),
+        x2: Math.round(x2), y2: Math.round(y2),
+        duration_ms: durationMs,
+      }),
+    });
+    return handleResponse<GroupResponse>(res);
+  },
+
+  async groupKey(instances: string[], key: string): Promise<GroupResponse> {
+    const res = await fetch(`${API_BASE}/instances/group/input/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances, key }),
+    });
+    return handleResponse<GroupResponse>(res);
+  },
+
+  async groupLifecycle(instances: string[], action: 'start' | 'stop' | 'restart'): Promise<GroupResponse> {
+    const res = await fetch(`${API_BASE}/instances/group/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances }),
+    });
+    return handleResponse<GroupResponse>(res);
   },
 };

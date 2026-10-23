@@ -1,0 +1,24 @@
+# ws-scrcpy opcional (visor nativo scrcpy de baja latencia, ~30 FPS H.264).
+# Levantar:
+#   docker compose -f docker-compose.ws-scrcpy.yml up -d --build
+# UI/embed: http://localhost:8001
+#
+# Usa network_mode host para alcanzar el adb server del host (127.0.0.1:5037)
+# y los puertos ADB de cada CloudPhone (127.0.0.1:5580+).
+services:
+  ws-scrcpy:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:20-bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends git adb ca-certificates \
+            build-essential python3 pkg-config \
+            && rm -rf /var/lib/apt/lists/*
+        WORKDIR /app
+        RUN git clone --depth 1 https://github.com/NetrisTV/ws-scrcpy.git .
+        RUN npm install && npm rebuild node-pty && npm run dist
+        EXPOSE 8001
+        CMD ["sh", "-c", "printf 'server:\\n  - secure: false\\n    port: 8001\\n' > /tmp/ws-scrcpy.yaml && WS_SCRCPY_CONFIG=/tmp/ws-scrcpy.yaml node dist/index.js"]
+    container_name: proteomesh-ws-scrcpy
+    restart: unless-stopped
+    network_mode: host

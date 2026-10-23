@@ -93,6 +93,15 @@ class ScrcpyLaunchResponse(BaseModel):
     message: str
 
 
+class ScrcpyStreamInfo(BaseModel):
+    available: bool
+    provider: str = "ws-scrcpy"
+    base_url: str
+    udid: str
+    player: str
+    embed_url: str
+
+
 # ── Modelos de Proxies Residenciales ─────────────────────────────────────────
 class ProxyConfig(BaseModel):
     type: str = Field(default="socks5", description="Tipo de proxy ('socks5', 'http')")
@@ -164,9 +173,41 @@ class InstanceResponse(BaseModel):
     proxy: Optional[ProxyConfig] = None
     limits: Optional[Dict[str, Any]] = None
     identity: Optional[Dict[str, Any]] = None
+    display: Optional[Dict[str, Any]] = None
 
 
 class HealthReport(BaseModel):
     instance_name: str
     ok: bool
     reports: List[str]
+
+
+# ── Modelos de Control de Grupo (Multi-Touch) ────────────────────────────────
+class GroupInstancesRequest(BaseModel):
+    instances: List[str] = Field(..., min_length=1, description="Lista de nombres de instancias")
+
+class GroupTapRequest(GroupInstancesRequest):
+    x: int = Field(..., ge=0)
+    y: int = Field(..., ge=0)
+
+class GroupSwipeRequest(GroupInstancesRequest):
+    x1: int = Field(..., ge=0)
+    y1: int = Field(..., ge=0)
+    x2: int = Field(..., ge=0)
+    y2: int = Field(..., ge=0)
+    duration_ms: int = Field(default=300, ge=50, le=5000)
+
+class GroupKeyRequest(GroupInstancesRequest):
+    key: str = Field(..., description="Nombre de tecla o código numérico")
+
+class GroupActionResult(BaseModel):
+    instance: str
+    ok: bool
+    error: Optional[str] = None
+
+class GroupActionResponse(BaseModel):
+    status: str = "ok"
+    action: str
+    total: int
+    succeeded: int
+    results: List[GroupActionResult]

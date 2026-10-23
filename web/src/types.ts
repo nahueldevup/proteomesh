@@ -51,6 +51,12 @@ export interface Instance {
     wifi_bssid?: string;
     phone_number?: string;
   };
+  display?: {
+    width?: number;
+    height?: number;
+    density?: number;
+    [key: string]: unknown;
+  };
 }
 
 export interface TemplateItem {
@@ -78,4 +84,27 @@ export interface ScrcpyLaunchResult {
   instance: string;
   adb_port: number;
   message: string;
+}
+
+export interface GroupActionResult {
+  instance: string;
+  ok: boolean;
+  error?: string | null;
+}
+
+export interface ScrcpyStreamInfo {
+  available: boolean;
+  provider: string;
+  base_url: string;
+  udid: string;
+  player: string;
+  embed_url: string;
+}
+
+export interface GroupResponse {
+  status: string;
+  action: string;
+  total: number;
+  succeeded: number;
+  results: GroupActionResult[];
 }

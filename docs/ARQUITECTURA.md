@@ -86,7 +86,27 @@ redroid-integrity-lab/
 │   ├── xiaomi_getapps.apk         # com.xiaomi.mipicks (4.1 KB)
 │   └── huawei_appgallery.apk      # com.huawei.appmarket (4.1 KB)
 ├── tools/
-│   └── instance_manager.py        # Orquestador CLI del ciclo de vida de instancias
+│   ├── instance_manager.py        # Orquestador CLI del ciclo de vida de instancias
+│   ├── render.py                  # Renderizador determinista de identidades
+│   ├── run_api.sh                 # Lanzador del servidor FastAPI (puerto 8000)
+│   └── run_ws_scrcpy.sh           # Lanzador opcional de ws-scrcpy (puerto 8001)
+├── server/                        # API REST + streaming (FastAPI)
+│   ├── main.py                    # Composición de la app y registro de routers
+│   ├── config.py                  # Variables de entorno (WS_SCRCPY_URL, etc.)
+│   ├── models/schemas.py          # Contratos Pydantic V2 (instancias, grupo, stream)
+│   ├── routes/                    # instances, templates, carriers, locations, proxies
+│   └── services/
+│       ├── manager_bridge.py      # Puente CLI↔API, ADB directo y streaming
+│       └── proxy_service.py       # Verificación de proxies y geolocalización
+├── web/                           # Panel React 19 + TypeScript + Vite 8 + Tailwind 4
+│   └── src/
+│       ├── App.tsx                # Estado de grid/focus, selección y modo grupo
+│       ├── components/grid/       # Mosaico: DeviceGrid, DeviceCard, GroupActionBar
+│       ├── components/focus/      # FocusView, ControlPanel, InfoAccordion, ScreenStream
+│       ├── components/ScreenViewer.tsx  # Visor canvas + iframe scrcpy
+│       └── lib/api.ts, types.ts   # Cliente REST/WS tipado
+├── tests/host/                    # Suites del motor, API, grupo y proxies
+├── docker-compose.ws-scrcpy.yml   # ws-scrcpy contenedorizado (network_mode: host)
 ├── src/
 │   ├── profile_loader/            # Cargador nativo en C estático (main.c)
 │   ├── libpixel_hw/               # Hooks C Bionic LD_PRELOAD (pixel_hw64.c, pixel_hw32.c)
@@ -179,3 +199,43 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
   * Coherencia de sistema de archivos: `stat`/`lstat`/`fstatat`/`statx`/`readlink(at)`/`fopen` de `/dev/ashmem` se resuelven como dispositivo de caracteres (`/dev/null`); `access` con `X_OK` → `EACCES`; `dup2`/`dup3` limpian marcas obsoletas del descriptor destino.
   * Política por dispositivo: `device.ashmem` en `profile.json` → `fake_proc/ashmem_present` (default `true`); con `false` el shim responde `ENOENT` coherente en `open`/`access`/`stat` y las apps usan su fallback memfd nativo, igual que un equipo sin nodo ashmem.
   * Verificación reproducible sin Android: `tests/ashmem/run_host_test.sh` ejecuta el selftest del shim con `LD_PRELOAD` sobre Linux.
+
+---
+
+## 5. Plano de Control Web y Streaming de Baja Latencia
+
+El panel (`web/`) y la API (`server/`) son un plano de control desacoplado del motor de instancias: **toda mutación de estado pasa por `tools/instance_manager.py`**, que sigue siendo la única fuente de verdad sobre Docker, ADB, perfiles y ciclo de vida. La API no reimplementa esa lógica; la envuelve y la expone con contratos Pydantic y respuestas uniformes por instancia.
+
+### 5.1 Flujo de datos
+
+```text
+React (5173) ──REST──► FastAPI (8000) ──subprocess──► instance_manager.py ──► Docker / ADB
+     │                     │
+     │                     ├──GET /instances/{name}/screen        (JPEG, thumbnails/captura)
+     │                     ├──GET /instances/{name}/stream-info   (disponibilidad ws-scrcpy)
+     │                     └──WS  /instances/{name}/ws-stream     (JPEG ~3 FPS, fallback)
+     │
+     └──iframe──► ws-scrcpy (8001) ──proxy-adb──► scrcpy server (H.264 30 FPS)
+```
+
+### 5.2 Jerarquía de visores y justificación
+
+| Nivel | Transporte | Uso | Por qué |
+|---|---|---|---|
+| **Primario** | ws-scrcpy + H.264 (WebCodecs/MSE) | Vista focus por defecto | Latencia percibida ~50–100 ms y 30 FPS reales; el pipeline JPEG medía ~550 ms y era el cuello de botella, no la entrada táctil |
+| **Fallback** | WebSocket JPEG + canvas | ws-scrcpy caído, navegador sin decodificador o modo grupo | Funciona solo con FastAPI/Docker, sin Node; mantiene la operación ante fallos del servicio externo |
+| **Mosaico** | `GET /screen` a 5 s por tarjeta | Thumbnails de `DeviceCard` | Abrir un stream H.264 por tarjeta multiplicaría CPU y ancho de banda con 7+ instancias |
+| **Captura** | `GET /screen` bajo demanda | Descarga de screenshot | No depende del stream ni de scrcpy |
+
+- **Canvas en modo grupo:** el iframe de scrcpy controla un único dispositivo (un socket de video por dispositivo en el servidor scrcpy). La sincronización multi-touch hacia N instancias requiere el canvas y los endpoints `/instances/group/input/*`.
+- **Entrada:** `manager_bridge.py` prefiere `adb -s 127.0.0.1:<adb_port> shell input` (~21 ms medidos) y cae a `docker exec` (~33 ms) si el dispositivo no está conectado. El ahorro aplica a tap, swipe, teclas, texto y al fan-out de grupo.
+- **Control de grupo:** una sola llamada REST desde el frontend ejecuta `asyncio.gather` sobre las instancias y devuelve `GroupActionResponse` con `results[]`; así un fallo individual no aborta el lote y se evita la suma secuencial de latencias.
+- **Conectividad ws-scrcpy:** se valida con un GET de 0.8 s de timeout en `stream-info` para degradar rápido al canvas. La URL base se configura con `WS_SCRCPY_URL`, lo que permite apuntar a un ws-scrcpy remoto sin tocar el frontend.
+- **Configuración de ws-scrcpy:** el puerto se define en el YAML apuntado por `WS_SCRCPY_CONFIG`; la variable `PORT` es ignorada por ws-scrcpy y su puerto por defecto (8000) colisiona con FastAPI. El script y el compose generan el YAML y reconstruyen `node-pty` (npm 11 omite install scripts), evitando el fallo silencioso del módulo nativo.
+- **Orden de rutas en FastAPI:** `/instances/group/*` se declara antes de `/{name}/*`; de lo contrario `group/start` se interpretaría como una instancia llamada `group`. El router WS no aparece en OpenAPI, por eso `stream-info` es la vía documentada para descubrir el visor.
+
+### 5.3 Límites operativos
+
+- Un solo cliente de video scrcpy por dispositivo: una ventana nativa abierta en el host puede competir con ws-scrcpy.
+- El visor nativo no aplica al control de grupo ni a la descarga de captura.
+- El render del invitado se mantiene en 30 FPS (`RENDER_FPS`), por lo que pedir más FPS al visor no mejora la fluidez real.

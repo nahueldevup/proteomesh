@@ -1,11 +1,14 @@
 """
 Puente de servicios Python nativos hacia el motor ProteoMesh
 """
+import os
 import sys
 import json
+import shutil
 import asyncio
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse, urlencode
 from typing import Dict, List, Any, Optional
 
 from server.config import (
@@ -147,7 +150,8 @@ def get_instances_list() -> List[InstanceResponse]:
                 location=location_obj,
                 proxy=proxy_obj,
                 limits=meta.get("limits"),
-                identity=meta.get("identity")
+                identity=meta.get("identity"),
+                display=meta.get("display")
             ))
         except Exception:
             pass
@@ -181,7 +185,8 @@ def get_single_instance(name: str) -> InstanceResponse:
         location=location_obj,
         proxy=proxy_obj,
         limits=meta.get("limits"),
-        identity=meta.get("identity")
+        identity=meta.get("identity"),
+        display=meta.get("display")
     )
 
 
@@ -520,10 +525,39 @@ def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 54
     return raw_png
 
 
+def _adb_serial(inst_name: str) -> Optional[str]:
+    """Devuelve el serial ADB (127.0.0.1:<port>) de una instancia, si existe."""
+    try:
+        with open(INSTANCES_DIR / inst_name / "meta.json", "r", encoding="utf-8") as f:
+            port = json.load(f).get("adb_port")
+        return f"127.0.0.1:{port}" if port else None
+    except Exception:
+        return None
+
+
+def _input_command(inst_name: str, kind: str, args: List[str]) -> List[str]:
+    """Prefiere adb directo (~21ms) y cae a docker exec (~33ms) si no está conectado."""
+    serial = _adb_serial(inst_name)
+    if serial and shutil.which("adb"):
+        return ["adb", "-s", serial, "shell", "input", kind, *args]
+    return ["docker", "exec", inst_name, "input", kind, *args]
+
+
+def _run_input(inst_name: str, kind: str, args: List[str]) -> subprocess.CompletedProcess:
+    cmd = _input_command(inst_name, kind, args)
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0 and cmd[0] == "adb":
+        res = subprocess.run(
+            ["docker", "exec", inst_name, "input", kind, *args],
+            capture_output=True, text=True,
+        )
+    return res
+
+
 def send_instance_tap(name: str, x: int, y: int) -> Dict[str, Any]:
     """Envía un toque en pantalla (tap) a las coordenadas especificadas."""
     inst_name = validate_instance_name(name)
-    res = subprocess.run(["docker", "exec", inst_name, "input", "tap", str(x), str(y)], capture_output=True, text=True)
+    res = _run_input(inst_name, "tap", [str(x), str(y)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar tap a '{inst_name}': {res.stderr.strip()}")
     return {"status": "ok", "action": "tap", "x": x, "y": y}
@@ -532,10 +566,7 @@ def send_instance_tap(name: str, x: int, y: int) -> Dict[str, Any]:
 def send_instance_swipe(name: str, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> Dict[str, Any]:
     """Envía un gesto de deslizamiento (swipe) entre dos puntos."""
     inst_name = validate_instance_name(name)
-    res = subprocess.run(
-        ["docker", "exec", inst_name, "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)],
-        capture_output=True, text=True
-    )
+    res = _run_input(inst_name, "swipe", [str(x1), str(y1), str(x2), str(y2), str(duration_ms)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar swipe a '{inst_name}': {res.stderr.strip()}")
     return {"status": "ok", "action": "swipe", "from": [x1, y1], "to": [x2, y2], "duration_ms": duration_ms}
@@ -561,7 +592,7 @@ def send_instance_key(name: str, key: str) -> Dict[str, Any]:
     """Envía una pulsación de tecla física o virtual a Android."""
     inst_name = validate_instance_name(name)
     keycode = KEY_MAP.get(key.lower().strip(), key.strip())
-    res = subprocess.run(["docker", "exec", inst_name, "input", "keyevent", keycode], capture_output=True, text=True)
+    res = _run_input(inst_name, "keyevent", [keycode])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar keyevent '{key}' a '{inst_name}': {res.stderr.strip()}")
     return {"status": "ok", "action": "key", "key": key, "keycode": keycode}
@@ -573,7 +604,7 @@ def send_instance_text(name: str, text: str) -> Dict[str, Any]:
     inst_name = validate_instance_name(name)
     # input text reemplaza espacios por %s
     escaped = text.replace(" ", "%s").replace("&", "\\&").replace("'", "\\'")
-    res = subprocess.run(["docker", "exec", inst_name, "input", "text", escaped], capture_output=True, text=True)
+    res = _run_input(inst_name, "text", [escaped])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar texto a '{inst_name}': {res.stderr.strip()}")
     return {"status": "ok", "action": "text", "length": len(text)}
@@ -592,3 +623,110 @@ def launch_instance_url(name: str, url: str) -> Dict[str, Any]:
     if res.returncode != 0:
         raise RuntimeError(f"Error al abrir URL en '{inst_name}': {res.stderr.strip()}")
     return {"status": "ok", "action": "launch_url", "url": clean_url}
+
+
+# ── Control de Grupo (Multi-Touch y ciclo de vida masivo) ────────────────────
+async def _run_input_batch(names: List[str], kind: str, args: List[str]) -> List[Dict[str, Any]]:
+    """Ejecuta un comando `input <kind>` en paralelo sobre varias instancias."""
+    async def _one(inst: str) -> Dict[str, Any]:
+        try:
+            validate_instance_name(inst)
+            cmd = _input_command(inst, kind, args)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _out, err = await proc.communicate()
+            if proc.returncode != 0:
+                return {"instance": inst, "ok": False, "error": err.decode().strip() or "input falló"}
+            return {"instance": inst, "ok": True, "error": None}
+        except Exception as e:
+            return {"instance": inst, "ok": False, "error": str(e)}
+
+    return list(await asyncio.gather(*(_one(n) for n in names)))
+
+
+def _summarize(action: str, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "action": action,
+        "total": len(results),
+        "succeeded": sum(1 for r in results if r["ok"]),
+        "results": results,
+    }
+
+
+async def group_tap_async(names: List[str], x: int, y: int) -> Dict[str, Any]:
+    return _summarize("tap", await _run_input_batch(names, "tap", [str(x), str(y)]))
+
+
+async def group_swipe_async(names: List[str], x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> Dict[str, Any]:
+    return _summarize("swipe", await _run_input_batch(
+        names, "swipe", [str(x1), str(y1), str(x2), str(y2), str(duration_ms)]
+    ))
+
+
+async def group_key_async(names: List[str], key: str) -> Dict[str, Any]:
+    keycode = KEY_MAP.get(key.lower().strip(), key.strip())
+    return _summarize("key", await _run_input_batch(names, "keyevent", [keycode]))
+
+
+async def _run_lifecycle(names: List[str], op: str) -> List[Dict[str, Any]]:
+    async def _one(inst: str) -> Dict[str, Any]:
+        try:
+            if op == "start":
+                await start_instance_async(inst)
+            elif op == "stop":
+                await stop_instance_async(inst)
+            elif op == "restart":
+                try:
+                    await stop_instance_async(inst)
+                except Exception:
+                    pass
+                await start_instance_async(inst)
+            return {"instance": inst, "ok": True, "error": None}
+        except Exception as e:
+            return {"instance": inst, "ok": False, "error": str(e)}
+
+    return list(await asyncio.gather(*(_one(n) for n in names)))
+
+
+async def group_lifecycle_async(names: List[str], op: str) -> Dict[str, Any]:
+    return _summarize(op, await _run_lifecycle(names, op))
+
+
+# ── Streaming nativo scrcpy (ws-scrcpy) ─────────────────────────────────────
+WS_SCRCPY_URL = os.environ.get("WS_SCRCPY_URL", "http://127.0.0.1:8001")
+
+
+def get_scrcpy_stream_info(name: str, player: str = "mse") -> Dict[str, Any]:
+    """Devuelve la URL de embed de ws-scrcpy para una instancia y su disponibilidad."""
+    inst = get_single_instance(name)
+    base = WS_SCRCPY_URL.rstrip("/")
+    parsed = urlparse(base)
+    secure = parsed.scheme == "https"
+    ws_scheme = "wss" if secure else "ws"
+    udid = f"127.0.0.1:{inst.adb_port}"
+    inner_ws = f"{ws_scheme}://{parsed.netloc}/?action=proxy-adb&remote=tcp:8886&udid={udid}"
+    params = urlencode({
+        "action": "stream",
+        "udid": udid,
+        "player": player,
+        "ws": inner_ws,
+        "fitToScreen": "true",
+    })
+    available = False
+    try:
+        import httpx
+        available = httpx.get(f"{base}/", timeout=0.8).status_code < 500
+    except Exception:
+        available = False
+    return {
+        "available": available,
+        "provider": "ws-scrcpy",
+        "base_url": base,
+        "udid": udid,
+        "player": player,
+        "embed_url": f"{base}/#!{params}",
+    }
