@@ -1291,8 +1291,8 @@ def main():
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
     sub.add_argument("--memory", "-m", required=False, help="Límite de memoria RAM para el contenedor (ej: 4g, 3072m)")
-    sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 2.0, 0-3)")
-    sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs para el contenedor (ej: 2048)")
+    sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 0-3 para pinning, o 2.0)")
+    sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs (ej: 4096 o sin límite; evitar <3000 para no agotar hilos en Android 13)")
     sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
     sub.set_defaults(func=cmd_create_instance)
 

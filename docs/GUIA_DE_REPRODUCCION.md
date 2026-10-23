@@ -109,8 +109,13 @@ El gestor ofrece dos modalidades según el caso de uso:
 #### 1. Modo Directo: Instancias Únicas para Granjas Masivas (`--template`)
 Cada invocación genera un conjunto único y aleatorio de identificadores de hardware (IMEI, MEID, MACs, Serial, Android ID, SIM). Ninguna instancia comparte huella:
 ```bash
-# Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584 con límites de recursos Docker
-python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 4g --cpus 2.0 --pids-limit 2048
+# Ejemplo: Crear un Samsung Galaxy A54 en puerto 5584 con límites óptimos de recursos Docker
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 2.5g --cpus 0-3
+
+# Nota de recursos: usar CPU Pinning (ej: --cpus 0-3) en lugar de cuotas CFS (--cpus 2.0)
+# para evitar que el kernel pause el renderizado por software (SwiftShader).
+# No fijar --pids-limit por debajo de 3000 (o dejarlo por defecto) para prevenir
+# errores EAGAIN de pthread_create en Android 13 + GMS + scrcpy.
 
 # Ejemplo: Crear un Xiaomi Redmi 12 en puerto 5586
 python3 tools/instance_manager.py create --name redmi-12-01 --template xiaomi/fire --carrier ar_personal --port 5586

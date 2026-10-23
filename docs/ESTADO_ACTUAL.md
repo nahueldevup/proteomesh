@@ -25,7 +25,7 @@
 - **Stack verificado:** Magisk 30.6 bootless, LSPosed 1.9.2, NoHello v0.0.7, `libpixel_hw.so` 64/32, `FakeWifiPixel.apk`, `manage-spoof`.
 - **Entrega de perfil:** `instance_manager.py create` escribe `instances/<name>/profile.json` y lo monta read-only en `/system/etc/proteomesh_profile.json` y `/proteomesh/bundle`; `/system/bin/profile-loader apply` lo consume. (C8/C9, confirmados.)
 - **Catálogo:** 17 plantillas en `templates/` y 3 carriers en `carriers/`; todas parsean.
-- **Instancias existentes:** `f05-main` corriendo en `5601` (contenedor `2375edae584b` con límites 4G RAM, 2.0 CPUs, 2048 PIDs); `hide-test` sin contenedor pero con data persistente; `inst-note13`, `verify-a54` y `v-gale` conservan sus datos. El clon `f05-live` y su copia parcial fueron eliminados.
+- **Instancias existentes:** `f05-main` corriendo en `5601` (contenedor con límites 2.5G RAM, CPU Pinning `0-3`, PIDs default); `hide-test` sin contenedor pero con data persistente; `inst-note13`, `verify-a54` y `v-gale` conservan sus datos. El clon `f05-live` y su copia parcial fueron eliminados.
 - **`data-clean`:** original intacto (`mtime=2026-10-10 07:31:33.117736806 -0300`); NoHello y RDP licenciado ya aprovisionados; sin cuentas en `accounts_ce.db`/`accounts_de.db`; sin `persistent_properties` ni `persist.sys.fake.*`. El clon parcial que tenía 8 fuentes fscrypt faltantes ya no existe.
 
 ## 2. Qué no está resuelto
@@ -53,7 +53,7 @@
 2. `DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .`
 3. **Creación de la instancia:**
    - **Modo directo (instancias únicas para granjas):**
-     `python3 tools/instance_manager.py create --name <id> --template <marca/modelo> --carrier <carrier> --port <puerto> [--memory 4g --cpus 2.0 --pids-limit 2048] --start`
+     `python3 tools/instance_manager.py create --name <id> --template <marca/modelo> --carrier <carrier> --port <puerto> [--memory 2.5g --cpus 0-3] --start`
    - **Modo bundle (reproducibilidad determinista, backup de hardware y migración):**
      `python3 tools/render.py --template <marca/modelo> --carrier <carrier> --seed <N> --out bundles/<id>`
      `python3 tools/instance_manager.py create --name <id> --from-bundle bundles/<id> --port <puerto> --start`
