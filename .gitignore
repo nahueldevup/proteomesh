@@ -47,5 +47,8 @@ tests/archprobe/device/tools/
 Thumbs.db
 .idea/
 .vscode/
+.agents/
+skills-lock.json
+genfarmer_install.sh
 *.swp
 *~
