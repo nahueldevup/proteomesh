@@ -979,6 +979,34 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Apertura, cancelación y confirmación del modal de eliminación verificado en `BulkBar` y `FocusView`.
 * **Estado:** WEB-006 **completado y validado el 2026-10-23**.
 
+### 66. FIX(WEB-007) — Modal Fino de Confirmación con Portal en document.body, Cierre por Backdrop / Escape y Cancelación Inmediata (2026-10-23)
+
+* **Motivación y diagnóstico del fallo:**
+  - Al abrir el modal de confirmación de eliminación desde la barra flotante (`BulkBar`), el botón "Cancelar" no cerraba el modal y la interfaz quedaba estancada.
+  - **Causa raíz:** En `BulkBar.tsx`, el contenedor padre aplicaba `pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center`. Al renderizar el modal como hijo directo de este contenedor, el backdrop heredaba el contexto del contenedor inferior transformado y la directiva `pointer-events-none`, impidiendo que los clics exteriores en el backdrop o los eventos de cancelar alcanzaran el manejador adecuadamente sin quedar bloqueados.
+  - Adicionalmente, el diseño original usaba esquinas excesivamente redondeadas (`rounded-2xl` / estilo burbuja) y botones sobredimensionados que desentonaban con la estética técnica, sobria y minimalista del sistema.
+* **Soluciones implementadas:**
+  1. **Componente dedicado `ConfirmDeleteModal.tsx` con React Portal:**
+     - El modal se renderiza directamente en `document.body` mediante `createPortal(..., document.body)`, aislándolo de cualquier `transform`, `pointer-events-none` o z-index de los contenedores padres.
+  2. **Triple mecanismo de cierre seguro:**
+     - **Botón Cancelar:** `onClick={onClose}` garantizado y sin bloqueos de propagación.
+     - **Clic en el exterior (Backdrop click dismiss):** `onClick` en el contenedor `fixed inset-0` que valida `e.target === e.currentTarget` para cerrar inmediatamente al hacer clic en los costados o en el fondo oscuro.
+     - **Tecla Escape:** Listener global de eventos de teclado `keydown` que cierra el modal al pulsar `Esc` salvo cuando una eliminación está en curso (`busy=true`).
+  3. **Refinamiento visual estético ("Más fino"):**
+     - Reducción del radio de curvatura a `rounded-lg` (~8-10px) en el chasis del modal, el contenedor de previsualización y los botones, erradicando el aspecto de burbuja.
+     - Botones `h-8` con tipografía monoespaciada limpia (`font-mono text-xs`), espaciado fino `p-5` y borde milimétrico `border border-border/80 bg-surface/98 shadow-2xl`.
+  4. **Unificación en todo el sistema:**
+     - El mismo componente `ConfirmDeleteModal` se reutiliza de forma homogénea tanto en la barra flotante de granja (`BulkBar.tsx`) como en la botonera lateral dentro del perfil en el visor enfocado (`FocusView.tsx`).
+* **Verificación:**
+  - `npm run build` en 286 ms con 0 errores.
+  - Verificación interactiva en navegador (`browser_exec`):
+    - Cierre por botón Cancelar verificado (`MODAL CLOSED AFTER CANCEL: True`).
+    - Cierre por clic en backdrop exterior verificado (`MODAL CLOSED AFTER BACKDROP CLICK: True`).
+    - Cierre por tecla Escape verificado (`MODAL CLOSED AFTER ESCAPE: True`).
+    - Modal en Focus View verificado (`FOCUS MODAL CLOSED AFTER CANCEL: True`).
+    - Inspección visual vía `vision_analyze` confirmando estética fina, técnica y esquinas sutiles.
+* **Estado:** WEB-007 **completado y validado el 2026-10-23**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
