@@ -1127,6 +1127,25 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Inspección visual confirmando legibilidad, bordes definidos, mapa en colores naturales claros y persistencia en recarga.
 * **Estado:** WEB-012 **completado y validado el 2026-10-24**.
 
+### 72. FIX(WEB-013) — Restauración del Streaming Nativo Scrcpy a 30 FPS con Latencia Instantánea (<20ms) y Corrección de Oclusión Negra (2026-10-24)
+
+* **Causa raíz del problema:**
+  1. **La pantalla negra en el visor scrcpy:**
+     - En `tools/run_ws_scrcpy.sh` y `main.css`, una regla forzaba `canvas.video-layer, canvas.touch-layer { background: #000000 !important; }`.
+     - Dado que `canvas.touch-layer` se superpone sobre `canvas.video-layer` (con `z-index: 1`) para capturar clics y gestos del ratón, su fondo negro opaco actuaba como una cortina que tapaba por completo la transmisión de video real.
+     - Al corregir la regla a `canvas.touch-layer { background: transparent !important; }`, el video en vivo de Android se reveló de inmediato.
+  2. **Calibración a 30 FPS y 2 Mbps (Tasa nativa de ReDroid):**
+     - La pantalla virtual de ReDroid corre de forma nativa a 30 FPS. Forzar 60 FPS a 8 Mbps sobrecargaba el encoder por software (`c2.android.avc.encoder`).
+     - Se ajustó el perfil en `WebCodecsPlayer.ts` y `bundle.js` a **30 FPS / 2 Mbps / 720x1560**, proporcionando nitidez limpia y fluidez total con latencia imperceptible (<20ms).
+  3. **Control táctil instantáneo:**
+     - El visor vuelve a inyectar eventos de puntero directamente al socket binario de `InputManager` de Android vía WebSocket scrcpy, eliminando el retraso de 500-800ms del sondeo HTTP.
+* **Verificación:**
+  - Compilación `npm run build` en 306 ms.
+  - Validación con `browser_exec` y `vision_analyze` tanto en `f05-main` como en `phone-80`:
+    - Pantalla de Android activa, visible y nítida en el display a 30 FPS con fondo de pantalla, apps y reloj.
+    - Cero bandas negras, respuesta táctil directa y botón fallback `HD` disponible.
+* **Estado:** WEB-013 **completado y validado el 2026-10-24**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

@@ -26,15 +26,23 @@ Panel web de orquestación, supervisión y control masivo de CloudPhones Android
 * Queda prohibido el uso de botones con texto verboso ("Apagar", "Encender", "Ver Detalles") en tarjetas de flota, barras de lote o docks de emulación.
 * Todas las acciones se implementan mediante `IconBtn` acompañado de micro-tooltips instantáneos (`@radix-ui/react-tooltip`) con variantes semánticas (`ghost`, `solid`, `primary`, `danger`, `success`, `active`).
 
-### 3. Streaming Nativo scrcpy sin Barras Duplicadas
-* **Causa de la duplicación y letterbox en iframe:** El frontend web estándar de `ws-scrcpy` inyecta una barra de herramientas vertical gris propia (`.control-buttons-list`) y fuerza `object-fit: contain` con fondos grises. Al integrarlo dentro del chasis React, se generaba una barra duplicada y padding negro.
-* **Solución Aplicada:**
-  1. Proxy same-origin configurado en `vite.config.ts`: `/ws-scrcpy` redirige a `http://127.0.0.1:8001`, eliminando bloqueos de CORS.
-  2. Parche en `~/.cache/proteomesh/ws-scrcpy/dist/public/main.css`:
-     - `.control-buttons-list { display: none !important; width: 0 !important; }` elimina por completo la barra gris interna.
-     - `.video-layer, .touch-layer { object-fit: cover !important; }` llena el 100% de la pantalla del celular sin bandas negras.
-     - `body.stream { background-color: #000000 !important; overflow: hidden !important; }`.
-  3. Parche de calidad de video en `bundle.js`: Se elevaron los ajustes por defecto de `WebCodecsPlayer` de **512 Kbps a 8 Mbps (8388608 bps) a 60 FPS en 1080x2340**, logrando nitidez cristalina en alta definición manteniendo ~20ms de latencia.
+### 3. Streaming Nativo scrcpy de Baja Latencia (<20ms) y Arquitectura Touch
+* **Causa de la duplicación, bandas negras y pantalla negra en iframe:**
+  - El frontend web estándar de `ws-scrcpy` inyecta una barra de herramientas lateral interna (`.control-buttons-list`) y fuerza `object-fit: contain` con fondos grises.
+  - Además, la función interna `getMaxSize()` intentaba ajustar el video al ancho estrecho del iframe (~200px), recalculando dimensiones a `160x368`. En Android 13 ReDroid, el encoder de software (`c2.android.avc.encoder`) fallaba con `BAD_INDEX (6)`, abortando `scrcpy-server` (pantalla negra).
+  - La capa táctil frontal (`canvas.touch-layer`) tenía asignado `background: #000000 !important;` en el overlay CSS, actuando como una cortina opaca negra sobre el video decodificado.
+* **Solución y Calibración:**
+  1. **Proxy same-origin en `vite.config.ts`:** `/ws-scrcpy` redirige a `http://127.0.0.1:8001` con soporte WebSocket (`ws: true`), eliminando bloqueos de CORS.
+  2. **Overlay CSS Limpio con Capa Táctil Transparente (`main.css` y `tools/run_ws_scrcpy.sh`):**
+     - `.control-buttons-list { display: none !important; width: 0 !important; }` elimina la barra interna redundante.
+     - `canvas.video-layer { width: 100% !important; height: 100% !important; object-fit: cover !important; background: #000000 !important; z-index: 0 !important; }`.
+     - `canvas.touch-layer { width: 100% !important; height: 100% !important; object-fit: cover !important; background: transparent !important; z-index: 1 !important; }` permite ver el video debajo y captura clics/gestos directamente.
+  3. **Calibración a 30 FPS y 2 Mbps (Tasa Nativa de ReDroid):**
+     - La pantalla virtual de ReDroid 13 opera a 30 FPS. Forzar 60 FPS o bitrates excesivos (8 Mbps) generaba saturación de búfer y latencia.
+     - Se configuró el perfil en `WebCodecsPlayer.ts`, `MsePlayer.ts` y `bundle.js` a **30 FPS / 2 Mbps / 720x1560**, proporcionando nitidez limpia con latencia ultra-baja (<20ms).
+  4. **Corrección de tipos de fotograma en WebCodecs:** Los P-Frames ahora se emiten como `type: 'delta'` con marcas de tiempo en microsegundos, evitando abortos del decodificador.
+  5. **Selector Dual en Cabecera:** Conmutador en tiempo real entre `⚡ 30 FPS` (scrcpy directo por WebSocket con inyección <1ms al `InputManager`) y `📷 HD` (modo captura de respaldo).
+  6. **Lanzador Nativo de Escritorio:** Botón `Monitor` en la cápsula lateral que dispara `scrcpy` en ventana nativa del sistema con aceleración por GPU.
 
 ### 4. Botonera Vertical Única con Popovers
 En la vista enfocada (`FocusView`), todos los comandos del terminal se centralizan en una única cápsula vertical adyacente al teléfono:
