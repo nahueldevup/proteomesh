@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Smartphone,
   Layers,
@@ -77,9 +77,14 @@ export function App() {
 
   useEffect(() => {
     fetchInstances();
-    const interval = setInterval(fetchInstances, 5000);
+    const interval = setInterval(() => {
+      // Pausar polling en segundo plano si el modal de creación está abierto
+      if (!isCreateOpen) {
+        fetchInstances();
+      }
+    }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isCreateOpen]);
 
   useEffect(() => {
     if (activeNav === 'templates' && Object.keys(templatesCatalog).length === 0) {
@@ -104,7 +109,7 @@ export function App() {
   });
 
   const onlineCount = instances.filter((i) => i.running).length;
-  const existingPorts = instances.map((i) => i.adb_port);
+  const existingPorts = useMemo(() => instances.map((i) => i.adb_port), [instances]);
   const focusedInstance = instances.find((i) => i.instance_name === focusedName) ?? null;
   const selectedList = [...selectedNames];
   const allFilteredSelected =

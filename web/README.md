@@ -73,6 +73,18 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
   - **Visor enfocado (`FocusView`):** Botón `Trash2` en la base de la cápsula vertical de hardware.
 * **Modal de Confirmación Obligatorio:** Ninguna eliminación se ejecuta de forma directa. Se despliega un diálogo modal en `z-[99999]` con fondo atenuado (`backdrop-blur-sm`), advirtiendo sobre la irreversibilidad de la acción, listando los terminales afectados y requiriendo confirmación explícita antes de invocar la API (`DELETE /instances/{name}` o `POST /instances/group/delete`).
 
+### 8. Flujo Optimizado de Creación de CloudPhones (Wizard de 3 Pasos)
+* **Inmunidad a Polling y Pérdida de Datos:**
+  - El modal inicializa sus puertos y catálogos una única vez al abrir (`prevIsOpenRef`), evitando que el refresco automático de fondo de instancias sobreescriba los valores ingresados por el usuario o fuerce el regreso al paso 1.
+  - El temporizador de sondeo se suspende temporalmente en `App.tsx` mientras el modal de creación permanece abierto.
+* **Consolidación en 3 Pasos Ergonómicos:**
+  - **Paso 1: Dispositivo & SIM:** Nombre, puerto ADB con detección de colisión, operadora móvil con badges MCC/MNC, selector de marca (`Samsung`, `Motorola`, `Xiaomi`, `Google`) y modelos de catálogo.
+  - **Paso 2: GPS & Proxy:** Mapa interactivo Leaflet con presets rápidos, campos de coordenadas y proxy residencial SOCKS5/HTTP con verificación en vivo.
+  - **Paso 3: Recursos & Crear:** Presets de RAM y CPU Pinning, ficha técnica determinista tipo consola y botón primario de creación en verde esmeralda neón (`bg-primary`).
+* **Estética Fina y Disciplinada:**
+  - Montaje mediante React Portal en `document.body` (`z-[99999]`), con cierre por tecla `Escape` o clic exterior en backdrop.
+  - Sustitución de botones azules por tokens OKLCH coherentes con el resto de la interfaz.
+
 ---
 
 ## 🛠️ Pila Tecnológica

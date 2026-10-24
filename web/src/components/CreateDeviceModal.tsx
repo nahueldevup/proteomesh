@@ -1,21 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Smartphone,
-  Globe,
   MapPin,
-  Shield,
   Zap,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Cpu,
   ArrowRight,
   ArrowLeft,
+  Check,
+  Globe,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { MapPicker } from './MapPicker';
 import type { TemplateItem, Carrier, ProxyTestResult } from '../types';
+import { cn } from '../lib/utils';
 
 interface CreateDeviceModalProps {
   isOpen: boolean;
@@ -25,15 +26,18 @@ interface CreateDeviceModalProps {
   presetModel?: string;
 }
 
-const TABS = ['hardware', 'carrier', 'location', 'proxy', 'limits'] as const;
-type TabId = typeof TABS[number];
+const STEPS = [
+  { id: 'device' as const, label: '1. Dispositivo & SIM', icon: Smartphone },
+  { id: 'location' as const, label: '2. GPS & Proxy', icon: MapPin },
+  { id: 'review' as const, label: '3. Recursos & Crear', icon: Zap },
+];
+type StepId = typeof STEPS[number]['id'];
 
-const TAB_CONFIG = [
-  { id: 'hardware' as const, label: '1. Hardware', icon: Cpu },
-  { id: 'carrier' as const, label: '2. Operadora', icon: Globe },
-  { id: 'location' as const, label: '3. GPS', icon: MapPin },
-  { id: 'proxy' as const, label: '4. Proxy', icon: Shield },
-  { id: 'limits' as const, label: '5. Recursos', icon: Zap },
+const RAM_PRESETS = ['2.0g', '2.5g', '3.0g', '4.0g'];
+const CPU_PRESETS = [
+  { label: '2 Hilos (0-1)', value: '0-1' },
+  { label: '4 Hilos (0-3)', value: '0-3' },
+  { label: '8 Hilos (0-7)', value: '0-7' },
 ];
 
 export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
@@ -43,9 +47,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   existingPorts,
   presetModel,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabId>('hardware');
+  const [activeStep, setActiveStep] = useState<StepId>('device');
 
-  // Form state
+  // Form State
   const [name, setName] = useState('');
   const [port, setPort] = useState(5580);
   const [selectedBrand, setSelectedBrand] = useState('samsung');
@@ -79,56 +83,71 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Reset al abrir
+  // Prevención de reinicio: Inicializar SOLO una vez al pasar de cerrado a abierto
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (!isOpen) return;
+    if (isOpen && !prevIsOpenRef.current) {
+      setActiveStep('device');
+      setErrorMessage(null);
+      setSuccessMessage(null);
 
-    if (presetModel) {
-      setSelectedModel(presetModel);
-      const b = presetModel.split('/')[0];
-      if (b) setSelectedBrand(b);
-    }
+      // Calcular siguiente puerto libre
+      let nextPort = 5580;
+      while (existingPorts.includes(nextPort)) {
+        nextPort += 2;
+      }
+      setPort(nextPort);
+      setName(`phone-${String(nextPort).slice(-2)}`);
 
-    // Calcular siguiente puerto libre
-    let nextPort = 5580;
-    while (existingPorts.includes(nextPort)) {
-      nextPort += 2;
-    }
-    setPort(nextPort);
-    setName(`phone-${String(nextPort).slice(-2)}`);
+      if (presetModel) {
+        setSelectedModel(presetModel);
+        const b = presetModel.split('/')[0];
+        if (b) setSelectedBrand(b);
+      }
 
-    async function loadData() {
-      setLoading(true);
-      try {
-        const [tData, cData] = await Promise.all([
-          api.getTemplates(),
-          api.getCarriers(),
-        ]);
-        setTemplates(tData);
-        setCarriers(cData);
-      } catch (err: any) {
-        setErrorMessage(err.message || 'Error al cargar catalogos del servidor');
-      } finally {
-        setLoading(false);
+      // Cargar catálogos solo si no están cargados
+      if (Object.keys(templates).length === 0) {
+        setLoading(true);
+        Promise.all([api.getTemplates(), api.getCarriers()])
+          .then(([tData, cData]) => {
+            setTemplates(tData);
+            setCarriers(cData);
+          })
+          .catch((err: any) => {
+            setErrorMessage(err.message || 'Error al cargar catálogos del servidor');
+          })
+          .finally(() => setLoading(false));
       }
     }
-    loadData();
-  }, [isOpen, existingPorts]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  // Manejo de teclado (Escape para cerrar)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, submitting]);
 
   if (!isOpen) return null;
 
-  const currentTabIndex = TABS.indexOf(activeTab);
-  const isFirstTab = currentTabIndex === 0;
-  const isLastTab = currentTabIndex === TABS.length - 1;
+  const currentStepIndex = STEPS.findIndex((s) => s.id === activeStep);
+  const isFirstStep = currentStepIndex === 0;
+  const isLastStep = currentStepIndex === STEPS.length - 1;
 
   const goNext = () => {
-    if (!isLastTab) setActiveTab(TABS[currentTabIndex + 1]);
+    if (!isLastStep) setActiveStep(STEPS[currentStepIndex + 1].id);
   };
   const goPrev = () => {
-    if (!isFirstTab) setActiveTab(TABS[currentTabIndex - 1]);
+    if (!isFirstStep) setActiveStep(STEPS[currentStepIndex - 1].id);
   };
 
-  // Proxy test
+  // Test de Proxy
   const handleTestProxy = async () => {
     if (!rawProxy.trim()) return;
     setTestingProxy(true);
@@ -149,16 +168,16 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     }
   };
 
-  // Submit
+  // Enviar Creación
   const handleSubmit = async () => {
     if (!name.trim()) {
       setErrorMessage('El nombre de la instancia es obligatorio');
-      setActiveTab('hardware');
+      setActiveStep('device');
       return;
     }
     if (existingPorts.includes(port)) {
-      setErrorMessage(`El puerto ${port} ya esta en uso por otra instancia`);
-      setActiveTab('hardware');
+      setErrorMessage(`El puerto ${port} ya está en uso por otra instancia`);
+      setActiveStep('device');
       return;
     }
 
@@ -191,11 +210,11 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       }
 
       await api.createInstance(payload);
-      setSuccessMessage(`CloudPhone "${name}" creado con exito`);
+      setSuccessMessage(`CloudPhone "${name}" creado con éxito`);
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 800);
+      }, 700);
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al aprovisionar el CloudPhone');
     } finally {
@@ -206,424 +225,456 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const brands = Object.keys(templates);
   const currentBrandModels = templates[selectedBrand] || [];
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in-0 duration-150"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
     >
-      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden">
-        {/* Cabecera */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <Smartphone className="w-4 h-4" />
+      <div
+        className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-lg border border-border/80 bg-surface/98 shadow-2xl shadow-black/80 overflow-hidden animate-in zoom-in-95 duration-150"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Cabecera Técnica Lovable */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-background/50 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-8 w-8 place-items-center rounded-md border border-primary/30 bg-primary/10 text-primary">
+              <Smartphone className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Crear Nuevo CloudPhone</h2>
-              <p className="text-xs text-zinc-500">Configura identidad, hardware, SIM y geolocalizacion</p>
+              <h2 className="font-sans text-sm font-bold text-foreground">Crear Nuevo CloudPhone</h2>
+              <p className="font-mono text-xs text-muted-foreground">
+                Configura hardware, operadora SIM, geolocalización y límites
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
+            className="grid h-8 w-8 place-items-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Barra de pestanas con indicador de progreso */}
-        <div className="flex border-b border-zinc-800 bg-zinc-900/30 px-4 gap-1 shrink-0 overflow-x-auto">
-          {TAB_CONFIG.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            const isPast = TABS.indexOf(tab.id) < currentTabIndex;
+        {/* Stepper de 3 Pasos Compacto y Fino */}
+        <div className="flex border-b border-border/60 bg-background/30 px-5 gap-1 shrink-0">
+          {STEPS.map((step, idx) => {
+            const Icon = step.icon;
+            const isActive = activeStep === step.id;
+            const isPast = idx < currentStepIndex;
             return (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition-all shrink-0 ${
+                key={step.id}
+                type="button"
+                onClick={() => setActiveStep(step.id)}
+                className={cn(
+                  'flex items-center gap-2 py-2.5 px-3.5 text-xs font-mono font-medium border-b-2 transition-all shrink-0',
                   isActive
-                    ? 'border-blue-500 text-blue-400 bg-blue-500/5'
+                    ? 'border-primary text-primary bg-primary/10 font-semibold'
                     : isPast
-                    ? 'border-transparent text-zinc-300'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                }`}
+                    ? 'border-transparent text-foreground hover:text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
               >
                 {isPast ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                 ) : (
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="h-3.5 w-3.5" />
                 )}
-                <span>{tab.label}</span>
+                <span>{step.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Contenido con scroll */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Mensajes de error/exito */}
+        {/* Contenedor de Contenido con Scroll Estable */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
+          {/* Mensajes de error/éxito */}
           {errorMessage && (
-            <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-lg text-xs text-red-300 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-medium">Error: </span>
-                <span>{errorMessage}</span>
-              </div>
-              <button onClick={() => setErrorMessage(null)} className="ml-auto text-red-400 hover:text-red-200">
-                <X className="w-3.5 h-3.5" />
+            <div className="p-3 bg-destructive/15 border border-destructive/30 rounded-md text-xs text-destructive flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex-1 font-mono">{errorMessage}</div>
+              <button onClick={() => setErrorMessage(null)} className="text-destructive/70 hover:text-destructive">
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-lg text-xs text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="font-medium">{successMessage}</span>
+            <div className="p-3 bg-primary/15 border border-primary/30 rounded-md text-xs text-primary flex items-center gap-2 font-mono">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMessage}</span>
             </div>
           )}
 
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-500 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
-              <span className="text-xs">Cargando catalogos de hardware y red...</span>
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="text-xs font-mono">Cargando catálogo oficial de dispositivos y redes...</span>
             </div>
           ) : (
             <>
-              {/* TAB 1: HARDWARE & MODELO */}
-              {activeTab === 'hardware' && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
+              {/* ── PASO 1: DISPOSITIVO & OPERADORA SIM ──────────────────────────── */}
+              {activeStep === 'device' && (
+                <div className="space-y-4">
+                  {/* Fila: Nombre, Puerto ADB y Operadora */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                      <label className="block text-xs font-medium text-foreground mb-1">
                         Nombre de la Instancia
                       </label>
                       <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 font-mono"
+                        className="w-full h-8.5 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                         placeholder="ej: phone-01"
                       />
-                      <span className="text-[10px] text-zinc-500 mt-1 block">Solo minusculas, numeros, guiones</span>
+                      <span className="text-[10px] text-muted-foreground mt-1 block">Minúsculas, números o guiones</span>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                      <label className="block text-xs font-medium text-foreground mb-1">
                         Puerto ADB
                       </label>
                       <input
                         type="number"
                         value={port}
                         onChange={(e) => setPort(Number(e.target.value))}
-                        className={`w-full bg-zinc-900 border rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 font-mono ${
-                          existingPorts.includes(port) ? 'border-red-500/60' : 'border-zinc-800'
-                        }`}
+                        className={cn(
+                          'w-full h-8.5 rounded-md border bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1',
+                          existingPorts.includes(port)
+                            ? 'border-destructive focus:ring-destructive'
+                            : 'border-input focus:ring-primary'
+                        )}
                         min={1024}
                         max={65535}
                       />
-                      {existingPorts.includes(port) ? (
-                        <span className="text-[10px] text-red-400 mt-1 block">Puerto en uso</span>
-                      ) : (
-                        <span className="text-[10px] text-zinc-500 mt-1 block">Mapeado a 5555 del contenedor</span>
-                      )}
+                      <span className={cn('text-[10px] mt-1 block', existingPorts.includes(port) ? 'text-destructive font-semibold' : 'text-muted-foreground')}>
+                        {existingPorts.includes(port) ? 'Puerto en uso' : 'Mapeado al 5555 del contenedor'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-foreground mb-1">
+                        Operadora Móvil (SIM)
+                      </label>
+                      <select
+                        value={selectedCarrier}
+                        onChange={(e) => setSelectedCarrier(e.target.value)}
+                        className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary capitalize"
+                      >
+                        {carriers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.carrier_name} ({c.country_iso.toUpperCase()} · {c.operator_numeric})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-muted-foreground mt-1 block">Spoofing MCC/MNC y telemetría</span>
                     </div>
                   </div>
 
+                  {/* Selector de Fabricante */}
                   {brands.length > 0 && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-medium text-zinc-300 mb-2">Fabricante</label>
-                        <div className="flex gap-2">
-                          {brands.map((brand) => (
-                            <button
-                              key={brand}
-                              type="button"
-                              onClick={() => {
-                                setSelectedBrand(brand);
-                                const firstModel = templates[brand]?.[0]?.id;
-                                if (firstModel) setSelectedModel(firstModel);
-                              }}
-                              className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium capitalize transition-all ${
-                                selectedBrand === brand
-                                  ? 'bg-blue-600/10 border-blue-500 text-blue-400'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                              }`}
-                            >
-                              {brand}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-foreground">Fabricante</label>
+                        <span className="text-[11px] font-mono text-muted-foreground">
+                          {currentBrandModels.length} modelos oficiales
+                        </span>
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-zinc-300 mb-2">
-                          Modelo ({currentBrandModels.length} disponibles)
-                        </label>
-                        <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                          {currentBrandModels.map((m) => {
-                            const isSelected = selectedModel === m.id;
-                            return (
-                              <div
-                                key={m.id}
-                                onClick={() => setSelectedModel(m.id)}
-                                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                                  isSelected
-                                    ? 'bg-blue-500/10 border-blue-500 text-blue-100'
-                                    : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="font-semibold text-xs text-zinc-100">{m.name}</span>
-                                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
-                                </div>
-                                <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                                  <span>SoC: {m.soc_model}</span>
-                                  <span className="font-mono">{m.screen}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 2: OPERADORA SIM */}
-              {activeTab === 'carrier' && (
-                <div className="space-y-4">
-                  <label className="block text-xs font-medium text-zinc-300">
-                    Operadora Telefonica
-                  </label>
-                  {carriers.length === 0 ? (
-                    <div className="py-8 text-center text-zinc-500 text-xs">
-                      No hay operadoras cargadas en el servidor
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      {carriers.map((c) => {
-                        const isSelected = selectedCarrier === c.id;
-                        return (
-                          <div
-                            key={c.id}
-                            onClick={() => setSelectedCarrier(c.id)}
-                            className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                              isSelected
-                                ? 'bg-blue-500/10 border-blue-500'
-                                : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-                            }`}
+                      <div className="flex gap-1.5 flex-wrap">
+                        {brands.map((brand) => (
+                          <button
+                            key={brand}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBrand(brand);
+                              const firstModel = templates[brand]?.[0]?.id;
+                              if (firstModel) setSelectedModel(firstModel);
+                            }}
+                            className={cn(
+                              'h-8 px-4 rounded-md border text-xs font-medium capitalize transition-all',
+                              selectedBrand === brand
+                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+                            )}
                           >
-                            <div>
-                              <div className="text-xs font-medium text-zinc-100">{c.carrier_name}</div>
-                              <div className="text-[11px] text-zinc-500">
-                                MCC/MNC: <span className="font-mono">{c.operator_numeric}</span> ·{' '}
-                                <span className="uppercase">{c.country_iso}</span>
+                            {brand}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Cuadrícula de Modelos */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 max-h-56 overflow-y-auto pr-1">
+                        {currentBrandModels.map((m) => {
+                          const isSelected = selectedModel === m.id;
+                          return (
+                            <div
+                              key={m.id}
+                              onClick={() => setSelectedModel(m.id)}
+                              className={cn(
+                                'p-2.5 rounded-md border cursor-pointer transition-all',
+                                isSelected
+                                  ? 'bg-primary/10 border-primary text-foreground'
+                                  : 'bg-background/60 border-border hover:border-muted-foreground/40 text-muted-foreground'
+                              )}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-xs text-foreground">{m.name}</span>
+                                {isSelected && <Check className="h-4 w-4 text-primary" />}
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+                                <span>SoC: {m.soc_model}</span>
+                                <span>{m.screen}</span>
                               </div>
                             </div>
-                            {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />}
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* TAB 3: MAPA & GPS */}
-              {activeTab === 'location' && (
+              {/* ── PASO 2: GEOLOCALIZACIÓN GPS & PROXY RESIDENCIAL ─────────────── */}
+              {activeStep === 'location' && (
                 <div className="space-y-4">
-                  <MapPicker
-                    latitude={latitude}
-                    longitude={longitude}
-                    city={city}
-                    onChange={(lat, lon, newCity) => {
-                      setLatitude(lat);
-                      setLongitude(lon);
-                      if (newCity) setCity(newCity);
-                      else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
-                    }}
-                    height="300px"
-                  />
+                  {/* Mapa Interactivo Leaflet con Presets */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-primary" />
+                        <span>Geolocalización GPS & Presets de Ciudades</span>
+                      </label>
+                      <span className="text-[11px] font-mono text-muted-foreground">
+                        {city} · {latitude.toFixed(4)}, {longitude.toFixed(4)}
+                      </span>
+                    </div>
 
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="col-span-2">
-                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">Ciudad</label>
-                      <input
-                        type="text"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">Latitud</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={latitude}
-                        onChange={(e) => setLatitude(Number(e.target.value))}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 font-mono focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">Longitud</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={longitude}
-                        onChange={(e) => setLongitude(Number(e.target.value))}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 font-mono focus:outline-none focus:border-blue-500"
-                      />
+                    <MapPicker
+                      latitude={latitude}
+                      longitude={longitude}
+                      city={city}
+                      onChange={(lat, lon, newCity) => {
+                        setLatitude(lat);
+                        setLongitude(lon);
+                        if (newCity) setCity(newCity);
+                        else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+                      }}
+                      height="210px"
+                      showPresets={true}
+                      showInfoOverlay={false}
+                    />
+
+                    <div className="grid grid-cols-3 gap-2.5 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-mono text-muted-foreground mb-1">Ciudad</label>
+                        <input
+                          type="text"
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-mono text-muted-foreground mb-1">Latitud</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={latitude}
+                          onChange={(e) => setLatitude(Number(e.target.value))}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-mono text-muted-foreground mb-1">Longitud</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={longitude}
+                          onChange={(e) => setLongitude(Number(e.target.value))}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* TAB 4: PROXY RESIDENCIAL */}
-              {activeTab === 'proxy' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                      Proxy Residencial (SOCKS5 / HTTP)
-                    </label>
+                  {/* Sección de Proxy Residencial */}
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Globe className="h-3.5 w-3.5 text-primary" />
+                        <span>Proxy Residencial SOCKS5 / HTTP (Opcional)</span>
+                      </label>
+                      <span className="text-[10px] text-muted-foreground">Vacío = Conexión directa</span>
+                    </div>
+
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={rawProxy}
                         onChange={(e) => setRawProxy(e.target.value)}
                         placeholder="socks5://user:pass@host:port o host:port:user:pass"
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-blue-500"
+                        className="flex-1 h-8.5 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                       <button
                         type="button"
                         onClick={handleTestProxy}
                         disabled={testingProxy || !rawProxy.trim()}
-                        className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-xs font-medium text-zinc-200 rounded-lg transition-colors flex items-center gap-2"
+                        className="h-8.5 px-3.5 rounded-md border border-border bg-secondary text-xs font-mono font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40 flex items-center gap-1.5"
                       >
-                        {testingProxy && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />}
+                        {testingProxy && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
                         <span>Probar</span>
                       </button>
                     </div>
-                    <span className="text-[10px] text-zinc-500 mt-1 block">
-                      Deja vacio para conexion directa (sin proxy)
-                    </span>
-                  </div>
 
-                  {proxyTestResult && (
-                    <div
-                      className={`p-3.5 rounded-lg border text-xs ${
-                        proxyTestResult.ok
-                          ? 'bg-emerald-950/20 border-emerald-800/60 text-emerald-200'
-                          : 'bg-red-950/20 border-red-800/60 text-red-300'
-                      }`}
-                    >
-                      {proxyTestResult.ok ? (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 font-medium text-emerald-400">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Proxy Verificado</span>
-                            <span className="ml-auto text-[11px] font-mono bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-                              {proxyTestResult.latency_ms} ms
+                    {proxyTestResult && (
+                      <div
+                        className={cn(
+                          'p-2.5 rounded-md border text-xs font-mono',
+                          proxyTestResult.ok
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-destructive/40 bg-destructive/10 text-destructive'
+                        )}
+                      >
+                        {proxyTestResult.ok ? (
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">
+                              ✓ IP: {proxyTestResult.ip} · País: {proxyTestResult.country}
                             </span>
+                            <span>{proxyTestResult.latency_ms} ms</span>
                           </div>
-                          <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-zinc-400">
-                            <div>IP: <span className="text-zinc-200 font-mono">{proxyTestResult.ip}</span></div>
-                            <div>Pais: <span className="text-zinc-200">{proxyTestResult.city ? `${proxyTestResult.city}, ` : ''}{proxyTestResult.country}</span></div>
-                            <div>TZ: <span className="text-zinc-200 font-mono">{proxyTestResult.timezone}</span></div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-red-400">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>{proxyTestResult.error || 'No se pudo conectar al proxy'}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <span>Error: {proxyTestResult.error || 'Fallo de conexión'}</span>
+                        )}
+                      </div>
+                    )}
 
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoSyncProxyLocation}
-                      onChange={(e) => setAutoSyncProxyLocation(e.target.checked)}
-                      className="rounded bg-zinc-900 border-zinc-700 text-blue-500 focus:ring-0 w-3.5 h-3.5"
-                    />
-                    <span className="text-xs text-zinc-300">
-                      Auto-sincronizar GPS con ubicacion del proxy
-                    </span>
-                  </label>
+                    <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={autoSyncProxyLocation}
+                        onChange={(e) => setAutoSyncProxyLocation(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-0 h-3.5 w-3.5"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        Sincronizar coordenadas GPS automáticamente con la IP del proxy
+                      </span>
+                    </label>
+                  </div>
                 </div>
               )}
 
-              {/* TAB 5: RECURSOS */}
-              {activeTab === 'limits' && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              {/* ── PASO 3: RECURSOS & RESUMEN DETERMINISTA ──────────────────────── */}
+              {activeStep === 'review' && (
+                <div className="space-y-4">
+                  {/* Asignación de Recursos */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-foreground">
                         Memoria RAM
                       </label>
-                      <input
-                        type="text"
-                        value={memoryLimit}
-                        onChange={(e) => setMemoryLimit(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-blue-500"
-                        placeholder="2.5g"
-                      />
-                      <span className="text-[10px] text-zinc-500 mt-1 block">Recomendado: 2.5g</span>
+                      <div className="flex gap-1.5">
+                        {RAM_PRESETS.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setMemoryLimit(p)}
+                            className={cn(
+                              'flex-1 h-8 rounded-md border font-mono text-xs transition-colors',
+                              memoryLimit === p
+                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground block">
+                        Recomendado: 2.5g (Óptimo para 120Hz)
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                        CPU Pinning
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-foreground">
+                        CPU Pinning (Aislamiento de Hilos)
                       </label>
-                      <input
-                        type="text"
-                        value={cpuLimit}
-                        onChange={(e) => setCpuLimit(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-blue-500"
-                        placeholder="0-3"
-                      />
-                      <span className="text-[10px] text-zinc-500 mt-1 block">Recomendado: 0-3 (4 hilos dedicados)</span>
+                      <div className="flex gap-1.5">
+                        {CPU_PRESETS.map((c) => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => setCpuLimit(c.value)}
+                            className={cn(
+                              'flex-1 h-8 rounded-md border font-mono text-xs transition-colors',
+                              cpuLimit === c.value
+                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            {c.value}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground block">
+                        Asignación de núcleos de CPU para mitigar contención
+                      </span>
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border bg-background/50">
                     <input
                       type="checkbox"
                       checked={startImmediately}
                       onChange={(e) => setStartImmediately(e.target.checked)}
-                      className="rounded bg-zinc-900 border-zinc-700 text-blue-500 focus:ring-0 w-3.5 h-3.5"
+                      className="rounded border-border text-primary focus:ring-0 h-4 w-4"
                     />
-                    <span className="text-xs text-zinc-300 font-medium">
-                      Iniciar contenedor inmediatamente
-                    </span>
+                    <div className="text-xs">
+                      <span className="font-semibold text-foreground">Iniciar contenedor inmediatamente</span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Arranca el entorno Android y levanta el servicio ADB tras la creación
+                      </p>
+                    </div>
                   </label>
 
-                  {/* Resumen final */}
-                  <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-2">
-                    <div className="text-xs font-semibold text-zinc-200 border-b border-zinc-800 pb-2">
-                      Resumen de Configuracion
+                  {/* Ficha Técnica de Resumen Determinista */}
+                  <div className="rounded-lg border border-border/80 bg-background/80 p-3.5 font-mono text-xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-border/50 pb-2 text-foreground font-semibold">
+                      <span>Ficha Técnica de Aprovisionamiento</span>
+                      <span className="text-primary text-[11px]">ProteoMesh Deterministic</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-y-1.5 text-[11px]">
-                      <span className="text-zinc-500">Nombre:</span>
-                      <span className="text-zinc-200 font-mono">{name || '(sin nombre)'}</span>
-                      <span className="text-zinc-500">Puerto ADB:</span>
-                      <span className="text-zinc-200 font-mono">{port}</span>
-                      <span className="text-zinc-500">Modelo:</span>
-                      <span className="text-zinc-200">{selectedModel}</span>
-                      <span className="text-zinc-500">Operadora:</span>
-                      <span className="text-zinc-200">{selectedCarrier}</span>
-                      <span className="text-zinc-500">GPS:</span>
-                      <span className="text-zinc-200 font-mono">{latitude.toFixed(4)}, {longitude.toFixed(4)}</span>
-                      <span className="text-zinc-500">Ciudad:</span>
-                      <span className="text-zinc-200">{city}</span>
-                      <span className="text-zinc-500">Proxy:</span>
-                      <span className="text-zinc-200 font-mono">{rawProxy || 'Conexion directa'}</span>
-                      <span className="text-zinc-500">RAM / CPU:</span>
-                      <span className="text-zinc-200 font-mono">{memoryLimit} / {cpuLimit}</span>
+
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Instancia:</span>
+                        <span className="font-bold text-foreground">{name}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Puerto ADB:</span>
+                        <span className="text-foreground">:{port}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Modelo:</span>
+                        <span className="text-foreground">{selectedModel}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Operadora:</span>
+                        <span className="text-foreground">{selectedCarrier}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">GPS / Ciudad:</span>
+                        <span className="text-foreground">{city} ({latitude.toFixed(2)}, {longitude.toFixed(2)})</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Proxy:</span>
+                        <span className="text-foreground">{rawProxy ? 'Residencial' : 'Directo (Host)'}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -632,56 +683,60 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
           )}
         </div>
 
-        {/* Pie con navegacion y accion */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-t border-zinc-800 bg-zinc-900/50 shrink-0">
+        {/* Pie con Navegación y Acciones */}
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-background/50 shrink-0">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={goPrev}
-              disabled={isFirstTab}
-              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 text-xs font-medium text-zinc-300 rounded-lg border border-zinc-800 transition-colors flex items-center gap-1.5"
+              disabled={isFirstStep}
+              className="h-8 px-3 rounded-md border border-border bg-background text-xs font-mono font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30 flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="h-3.5 w-3.5" />
               <span>Anterior</span>
             </button>
-            <span className="text-[10px] text-zinc-600 font-mono">
-              Paso {currentTabIndex + 1} de {TABS.length}
+            <span className="text-[11px] font-mono text-muted-foreground">
+              Paso {currentStepIndex + 1} de {STEPS.length}
             </span>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-zinc-400 rounded-lg border border-zinc-800 transition-colors"
+              className="h-8 px-3.5 rounded-md border border-border bg-background text-xs font-mono font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
 
-            {isLastTab ? (
+            {isLastStep ? (
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting || !name.trim()}
-                className="px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                disabled={submitting || !name.trim() || existingPorts.includes(port)}
+                className="flex h-8 items-center gap-2 rounded-md bg-primary px-4 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 shadow-sm shadow-primary/20"
               >
-                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>{submitting ? 'Creando...' : 'Crear CloudPhone'}</span>
-                {!submitting && <ArrowRight className="w-3.5 h-3.5" />}
+                {submitting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}
+                <span>{submitting ? 'Aprovisionando...' : 'Crear CloudPhone'}</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={goNext}
-                className="px-5 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-4 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity shadow-sm shadow-primary/20"
               >
                 <span>Siguiente</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

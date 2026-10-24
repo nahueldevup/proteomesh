@@ -1030,6 +1030,33 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Inspección visual con `vision_analyze` confirmando simetría vertical perfecta entre el smartphone y las tarjetas de la derecha, y homogeneidad total en la cabecera de acciones.
 * **Estado:** WEB-008 **completado y validado el 2026-10-23**.
 
+### 68. FEAT(WEB-009) — Rediseño del Flujo de Creación de Instancias: Wizard Fino de 3 Pasos, Inmunidad a Polling y Estética Dark Tech (2026-10-23)
+
+* **Motivación y diagnóstico del fallo:**
+  - El modal de creación de CloudPhones (`CreateDeviceModal.tsx`) presentaba tres problemas graves de experiencia de usuario:
+    1. **Pérdida de datos y regreso al paso 1 por polling:** Cada 5 segundos, la consulta de fondo (`fetchInstances` en `App.tsx`) refrescaba el estado global y generaba una nueva referencia para `existingPorts`. Esto disparaba un `useEffect` con dependencia en `[isOpen, existingPorts]` que recalculaba el puerto, reescribía el nombre ingresado, ponía `loading=true` y forzaba el retorno a la pestaña 1 de Hardware mientras el usuario completaba el formulario.
+    2. **Opciones excesivamente dispersas en 5 pasos fragmentados:** Pasos como Proxy (1 solo campo) y Recursos (2 campos + resumen) fragmentaban innecesariamente el flujo con clics redundantes de navegación.
+    3. **Desalineación estética con el sistema Dark Tech:** Uso de esquinas redondeadas tipo burbuja (`rounded-2xl`), botones en azul genérico (`bg-blue-600`) y falta de portal React directo a `document.body`.
+* **Soluciones implementadas:**
+  1. **Inmunidad absoluta al polling en segundo plano:**
+     - En `App.tsx`: Se pausó el timer de polling (`setInterval`) mientras `isCreateOpen` está activo y se memorizó `existingPorts` mediante `useMemo`.
+     - En `CreateDeviceModal.tsx`: Se implementó un guardián con `prevIsOpenRef` para que la inicialización (cálculo de siguiente puerto libre, nombre predeterminado y carga de catálogos) se ejecute **estrictamente una sola vez al pasar de cerrado a abierto (`isOpen && !prevIsOpenRef.current`)**, sin reaccionar a re-renders ni props en segundo plano.
+  2. **Consolidación en un Wizard Óptimo de 3 Pasos:**
+     - **Paso 1: Dispositivo & SIM:** Nombre de instancia + puerto ADB (con detección de colisión en tiempo real), selector de operadora móvil (Personal, Claro, Movistar, Verizon...), marcas de fabricantes (`Samsung`, `Motorola`, `Xiaomi`, `Google`) y cuadrícula técnica de modelos con SoC y resolución.
+     - **Paso 2: GPS & Proxy:** Mapa interactivo Leaflet libre con presets en píldora (`Buenos Aires`, `São Paulo`, `Miami`, `New York`, `Madrid`, `CDMX`, `Londres`), coordenadas sincronizadas, input de proxy SOCKS5/HTTP con test de latencia/IP y checkbox de auto-sincronización geográfica.
+     - **Paso 3: Recursos & Crear:** Asignación rápida de RAM (`2.0g`, `2.5g`, `3.0g`, `4.0g`) y CPU Pinning (`0-1`, `0-3`, `0-7`), opción de arranque inmediato, ficha técnica determinista tipo consola y botón primario de aprovisionamiento en verde esmeralda neón (`bg-primary text-primary-foreground`).
+  3. **Estética Fina y Disciplinada (Lovable Dark Tech):**
+     - Montaje en `document.body` vía React Portal (`createPortal`), con cierre por tecla `Escape` y clic exterior (*backdrop click*).
+     - Erradicación de tonos azules: integración plena de tokens OKLCH (`bg-surface/98`, `border-border/80`, `bg-primary` neón #4ADE80).
+     - Bordes y esquinas moderadas (`rounded-lg`), tipografía dual **Space Grotesk** + **JetBrains Mono** y stepper técnico interactivo con marcas de validación (`✓`).
+* **Verificación:**
+  - `npm run build` en 335 ms con 0 errores.
+  - Verificación interactiva en navegador (`browser_exec`):
+    - `TYPED VALUE: my-custom-test` persistido tras avanzar al Paso 2, esperar 7 segundos de polling y regresar al Paso 1 (`IS PERSISTED: True`).
+    - Cierre por Cancelar, clic en backdrop y tecla Escape verificado.
+    - Inspección visual con `vision_analyze` confirmando estética técnica impecable, contraste accesible y botones verdes.
+* **Estado:** WEB-009 **completado y validado el 2026-10-23**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
