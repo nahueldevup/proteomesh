@@ -514,35 +514,36 @@ export default function FocusView({
           </div>
         </div>
 
-        {/* Columna Derecha: Tarjeta de Metadatos (Espaciado Lovable) + Módulos Interactivos */}
-        <div className="min-w-0 flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
-          {/* Tarjeta de Metadatos (Espaciado compacto py-1.5 idéntico a Lovable) */}
-          <div className="space-y-1 rounded-xl border border-border bg-surface p-4 font-mono text-xs shadow-md">
-            {[
-              ['Modelo', modelName],
-              ['IMEI', identity.imei ?? '351689227998429'],
-              ['Serial', identity.serial ?? 'R58RACBDED'],
-              ['Teléfono', identity.phone_number ?? '+5491169653997'],
-              ['Puerto ADB', String(instance.adb_port)],
-              ['Grupo', instance.carrier ?? 'ar_personal'],
-              ['Proxy', instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—'],
-              ['Zona horaria', instance.location?.timezone ?? 'America/Argentina/Buenos_Aires'],
-              ['Apps', 'Chrome, Play Store'],
-            ].map(([k, v]) => (
-              <div
-                key={String(k)}
-                className="flex justify-between gap-4 border-b border-border/50 py-1.5"
-              >
-                <span className="text-muted-foreground">{k}</span>
-                <span className="truncate text-foreground font-medium">{v}</span>
-              </div>
-            ))}
+        {/* Columna Derecha: Tarjeta de Metadatos (Compacta en 2 columnas) + Módulos Interactivos */}
+        <div className="min-w-0 flex-1 flex flex-col gap-3 h-full overflow-hidden">
+          {/* Tarjeta de Metadatos (Distribución compacta en 2 columnas, espaciado fino Lovable) */}
+          <div className="rounded-xl border border-border bg-surface p-3 font-mono text-xs shadow-md shrink-0">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+              {[
+                ['Modelo', modelName],
+                ['Puerto ADB', String(instance.adb_port)],
+                ['IMEI', identity.imei ?? '351689227998429'],
+                ['Grupo', instance.carrier ?? 'ar_personal'],
+                ['Serial', identity.serial ?? 'R58RACBDED'],
+                ['Proxy', instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—'],
+                ['Teléfono', identity.phone_number ?? '+549****3997'],
+                ['Zona horaria', instance.location?.timezone ?? 'America/Argentina/Buenos_Aires'],
+              ].map(([k, v]) => (
+                <div
+                  key={String(k)}
+                  className="flex items-center justify-between gap-2 border-b border-border/40 py-1"
+                >
+                  <span className="text-muted-foreground text-[11px] shrink-0">{k}</span>
+                  <span className="truncate text-foreground font-medium text-[11px] text-right">{v}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Tarjeta de Módulos Interactivos Reincorporados (Mapa GPS, Proxy, Salud) */}
-          <div className="flex-1 flex flex-col rounded-xl border border-border bg-surface p-4 shadow-md min-h-[340px]">
+          <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-border bg-surface p-3.5 shadow-md overflow-hidden">
             {/* Cabecera de Pestañas del Módulo */}
-            <div className="flex items-center gap-1 border-b border-border pb-3">
+            <div className="flex items-center gap-1 border-b border-border pb-2.5 shrink-0">
               <button
                 onClick={() => setActiveTab('gps')}
                 className={cn(
@@ -649,8 +650,37 @@ export default function FocusView({
 
             {/* Contenido: Tab Proxy */}
             {activeTab === 'proxy' && (
-              <div className="flex flex-col gap-3 pt-3 flex-1">
-                <div className="space-y-1">
+              <div className="flex flex-col gap-3 pt-2.5 flex-1 min-h-0">
+                {/* Cabecera con título y botones de acción unificados (idéntico a GPS y Salud) */}
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50 shrink-0 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <Shield className="h-4 w-4 text-primary" />
+                    <span>Configuración de Proxy Residencial</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {instance.proxy && (
+                      <button
+                        onClick={() => {
+                          setProxyInput('');
+                          handleSaveProxy();
+                        }}
+                        className="h-7 rounded-md border border-border bg-background px-2.5 font-mono text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        Quitar Proxy
+                      </button>
+                    )}
+                    <button
+                      onClick={handleSaveProxy}
+                      className="flex h-7 items-center gap-1.5 rounded-md bg-primary px-3 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
+                    >
+                      <Send className="h-3 w-3" />
+                      <span>Guardar Proxy</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1 shrink-0">
                   <label className="text-xs font-medium text-foreground">
                     Cadena de Proxy SOCKS5 / HTTP
                   </label>
@@ -659,18 +689,18 @@ export default function FocusView({
                   </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <input
                     type="text"
                     value={proxyInput}
                     onChange={(e) => setProxyInput(e.target.value)}
                     placeholder="socks5://user:pass@127.0.0.1:1080"
-                    className="h-9 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8.5 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                   <button
                     disabled={testingProxy || !proxyInput.trim()}
                     onClick={handleTestProxy}
-                    className="flex items-center gap-1 rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+                    className="flex h-8.5 items-center gap-1 rounded-md border border-border bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40"
                   >
                     {testingProxy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                     <span>Probar</span>
@@ -680,7 +710,7 @@ export default function FocusView({
                 {proxyTestResult && (
                   <div
                     className={cn(
-                      'rounded-md p-2.5 text-xs font-mono border',
+                      'rounded-md p-2.5 text-xs font-mono border shrink-0',
                       proxyTestResult.ok
                         ? 'border-success/40 bg-success/10 text-success'
                         : 'border-destructive/40 bg-destructive/10 text-destructive'
@@ -695,32 +725,14 @@ export default function FocusView({
                     )}
                   </div>
                 )}
-
-                <div className="mt-auto flex justify-end gap-2 pt-2 border-t border-border">
-                  <button
-                    onClick={() => {
-                      setProxyInput('');
-                      handleSaveProxy();
-                    }}
-                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Quitar Proxy
-                  </button>
-                  <button
-                    onClick={handleSaveProxy}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:opacity-90"
-                  >
-                    Guardar Proxy
-                  </button>
-                </div>
               </div>
             )}
 
             {/* Contenido: Tab Salud & Antifraude */}
             {activeTab === 'health' && (
-              <div className="flex flex-col gap-2.5 pt-2.5 flex-1 min-h-0">
+              <div className="flex flex-col gap-2.5 pt-2.5 flex-1 min-h-0 overflow-hidden">
                 {/* Cabecera con título y botón de acción prominente */}
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50">
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50 shrink-0">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <CheckCircle2 className="h-4 w-4 text-primary" />
                     <span>Auditoría de Integridad y Antifraude</span>
@@ -741,7 +753,7 @@ export default function FocusView({
                 </div>
 
                 {/* Métricas clave */}
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono shrink-0">
                   <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
                     <span className="text-muted-foreground text-[10px]">Pixelscan Checker</span>
                     <div className="font-bold text-success flex items-center gap-1 text-xs">
@@ -764,8 +776,8 @@ export default function FocusView({
                   </div>
                 </div>
 
-                {/* Consola de resultados con altura estable y scroll interno para prevenir descuadres */}
-                <div className="flex-1 min-h-[140px] max-h-[175px] rounded-lg border border-border bg-background/90 p-2.5 font-mono text-xs overflow-y-auto">
+                {/* Consola de resultados con altura flexible interna y scroll para PREVENIR cualquier desborde */}
+                <div className="flex-1 min-h-0 rounded-lg border border-border bg-background/90 p-2.5 font-mono text-xs overflow-y-auto">
                   {healthReport ? (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] font-bold text-primary">
@@ -781,7 +793,7 @@ export default function FocusView({
                       </ul>
                     </div>
                   ) : (
-                    <div className="flex h-full min-h-[110px] flex-col items-center justify-center text-center text-muted-foreground/60 text-xs gap-1.5 p-2">
+                    <div className="flex h-full min-h-[90px] flex-col items-center justify-center text-center text-muted-foreground/60 text-xs gap-1.5 p-2">
                       <CheckCircle2 className="h-6 w-6 text-muted-foreground/30" />
                       <span>Listo para auditar heurísticas de emulación y root.</span>
                       <span className="text-[10px] text-muted-foreground/40">

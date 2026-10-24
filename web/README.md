@@ -48,21 +48,24 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
 * `Link2`: Apertura de URL en el navegador de Android con Popover.
 * `ExternalLink`: Apertura del visor en ventana independiente para pruebas dedicadas.
 
-### 5. Tarjeta de Metadatos y Módulo GPS / Proxy / Salud
-* **Espaciado Lovable (`py-1.5`):** Tabla de especificaciones con espaciado compacto en `JetBrains Mono` con divisiones finas (`border-b border-border/50`).
+### 5. Tarjeta de Metadatos y Módulos de Cabecera Unificada (GPS / Proxy / Salud)
+* **Metadatos Compactos en 2 Columnas:** La tabla de especificaciones técnicas se distribuye en una cuadrícula compacta de dos columnas (`grid grid-cols-2 py-1 text-[11px]`), reduciendo su altura de ~320px a solo ~115px y garantizando más de 200px de espacio vertical para los módulos interactivos inferiores.
+* **Patrón de Cabeceras Homogéneo:**
+  - **Pestaña GPS:** Presets de ciudades + Botón primario `Actualizar GPS` en la cabecera.
+  - **Pestaña Proxy:** Título con icono + Botones `Quitar Proxy` y primario `Guardar Proxy` en la cabecera (eliminando la barra descolgada inferior).
+  - **Pestaña Salud:** Título con check + Botón primario `Ejecutar Diagnóstico` en la cabecera.
 * **Z-Index y Stacking Context:**
   - Los Popovers y Tooltips utilizan `z-[9999]`.
   - El contenedor de Leaflet se aísla con `isolation: isolate` y sus paneles se restringen a `z-10`, evitando que los popovers o sugerencias se rendericen por debajo del mapa.
 * **Mapa Oscuro Libre sin API Key:**
   - Se eliminaron las teselas comerciales de CARTO que mostraban marcas de agua de `"API KEY REQUIRED"`.
   - Se utiliza la capa libre de **OpenStreetMap** combinada con un filtro CSS de inversión cromática (`brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3)`), logrando un mapa nocturno nítido sin costo ni dependencias de terceros.
-  - El botón `"Actualizar GPS"` se reubicó en la cabecera superior del módulo junto a los presets de ciudades (`Buenos Aires`, `São Paulo`, `Miami`, `New York`, `Madrid`, `CDMX`), asegurando máxima visibilidad.
 
-### 6. Estabilidad de Layout en Auditoría de Salud
-* **Problema resuelto:** Previamente, al ejecutar la auditoría de integridad, el reporte dinámico de 7 verificaciones empujaba verticalmente el contenedor hacia abajo, desplazando el botón de acción fuera de la vista y rompiendo la alineación con la pantalla del teléfono.
+### 6. Estabilidad de Layout y Contención sin Desborde en Auditoría de Salud
+* **Problema resuelto:** Previamente, en pantallas con viewport ajustado, el reporte dinámico de auditoría empujaba la caja fuera del borde inferior de la pantalla, recortando el texto y la barra de desplazamiento.
 * **Solución aplicada:**
-  - El botón `"Ejecutar Diagnóstico"` se trasladó a la cabecera superior de la sección, quedando fijo y siempre visible.
-  - La consola de resultados de auditoría cuenta con dimensiones estables (`min-h-[140px] max-h-[175px] overflow-y-auto`) con scrollbar interno, garantizando cero descuadres (*zero layout shift*) antes, durante y después del test.
+  - El contenedor derecho y la tarjeta interactiva aplican contención estricta (`h-full overflow-hidden` y `flex-1 min-h-0`).
+  - La consola de resultados de auditoría opera con `flex-1 min-h-0 overflow-y-auto`, adaptándose fluidamente al espacio exacto disponible y conteniendo las comprobaciones dentro de sus bordes redondeados y padding sin desbordar el viewport.
 
 ### 7. Eliminación Segura de Perfiles con Modal de Confirmación
 * **Ubicación ergonómica:**

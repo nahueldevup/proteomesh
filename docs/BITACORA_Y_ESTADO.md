@@ -1007,6 +1007,29 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Inspección visual vía `vision_analyze` confirmando estética fina, técnica y esquinas sutiles.
 * **Estado:** WEB-007 **completado y validado el 2026-10-23**.
 
+### 67. FIX(WEB-008) — Encapsulamiento sin Desborde en Auditoría de Salud y Unificación de Cabeceras de Acción en Proxy Residencial (2026-10-23)
+
+* **Motivación y diagnóstico del fallo:**
+  - Al ejecutar la auditoría en la pestaña "Salud & Antifraude", la consola de resultados sobrepasaba la parte inferior de la tarjeta y se cortaba contra el borde de la ventana (la 7ª línea de log quedaba truncada horizontalmente).
+  - **Causa raíz:** La tarjeta de metadatos superior presentaba 9 filas verticales apiladas que ocupaban ~320px de altura. En pantallas con viewport vertical ajustado (576px a 768px), la suma de la tabla de metadatos + la tarjeta de módulos (con `min-h-[340px]`) forzaba un desborde hacia abajo.
+  - Además, en la pestaña de "Proxy Residencial", los botones de acción (`Guardar Proxy` y `Quitar Proxy`) estaban descolgados en la esquina inferior derecha mediante `mt-auto`, dejando un gran espacio muerto en el medio y rompiendo la consistencia con las pestañas de GPS y Salud (donde las acciones principales presiden la cabecera).
+* **Soluciones implementadas:**
+  1. **Rediseño compacto de Metadatos en 2 Columnas (`FocusView.tsx`):**
+     - Se transformó la tabla vertical en una cuadrícula compacta de 2 columnas (`grid grid-cols-2 gap-x-6 gap-y-0.5 py-1 text-[11px]`), reduciendo la altura vertical de la tarjeta de 320px a solo ~115px (ahorro de más de 200px de espacio).
+  2. **Encapsulamiento estricto de la consola de auditoría:**
+     - El contenedor de la columna derecha se fijó en `h-full overflow-hidden`, asignando a la tarjeta de módulos interactivos `flex-1 min-h-0 overflow-hidden`.
+     - La consola de logs de auditoría se configuró con `flex-1 min-h-0 overflow-y-auto`, asegurando que tome exactamente el espacio restante disponible dentro de la tarjeta y active scrollbar interno sin desbordar jamás el contenedor ni el viewport.
+  3. **Unificación de botones en la cabecera de "Proxy Residencial":**
+     - Se eliminó la barra inferior con `mt-auto` y se reubicaron los botones `Guardar Proxy` (botón primario verde con icono Send) y `Quitar Proxy` (botón secundario neutro) en la **esquina superior derecha de la cabecera interna**, alineados con el título *Configuración de Proxy Residencial*.
+     - El patrón de usabilidad queda 100% homogéneo en las tres pestañas: GPS (`Actualizar GPS` en cabecera), Proxy (`Guardar/Quitar Proxy` en cabecera) y Salud (`Ejecutar Diagnóstico` en cabecera).
+* **Verificación:**
+  - `npm run build` en 314 ms con 0 errores.
+  - Verificación interactiva en navegador (`browser_exec`):
+    - Con viewport de solo 576px de altura: `cardBottom = 560.67px`, `consoleBottom = 545.57px`, `fitsInsideCard = true`, `fitsInsideWindow = true`. Cero desborde vertical.
+    - Pestaña Proxy verificada con `saveBtnFound = true`, `isInHeader = true`.
+    - Inspección visual con `vision_analyze` confirmando simetría vertical perfecta entre el smartphone y las tarjetas de la derecha, y homogeneidad total en la cabecera de acciones.
+* **Estado:** WEB-008 **completado y validado el 2026-10-23**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
