@@ -18,6 +18,8 @@ import re
 import sys
 import json
 import time
+import shutil
+import shlex
 import hashlib
 import subprocess
 import random
@@ -816,10 +818,28 @@ def cmd_create_instance(args):
     inst_data_dir = inst_dir / "data"
     inst_data_dir.mkdir(exist_ok=True)
 
-    # Clonar base de datos /data desde data-clean si existe y data está vacía
-    if CLEAN_DATA_DIR.exists() and not (inst_data_dir / "adb").exists():
+    # Comprobar si data tiene una base completa instalada (módulos adb y aplicaciones en app/)
+    has_full_data = (inst_data_dir / "adb").exists() and (inst_data_dir / "app").exists()
+    if has_full_data:
+        try:
+            if len(list((inst_data_dir / "app").glob("*"))) < 5:
+                has_full_data = False
+        except Exception:
+            has_full_data = False
+
+    # Clonar base de datos /data desde data-clean si existe y la instancia no tiene una base íntegra
+    if CLEAN_DATA_DIR.exists() and not has_full_data:
         print(f"[*] Inicializando sistema de archivos /data desde plantilla base (data-clean)...")
         safe_name = shlex.quote(inst_name)
+
+        # Si existían restos parciales corruptos en instances/<nombre>/data, purgarlos con root para evitar conflictos
+        if inst_data_dir.exists():
+            subprocess.run([
+                "docker", "run", "--rm",
+                "-v", f"{BASE_DIR}:/lab",
+                "alpine", "sh", "-c",
+                f"rm -rf /lab/instances/{safe_name}/data/*"
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         # Inyectar siempre la clave pública ADB del host para evitar 'unauthorized' y diálogo interactivo
         host_pub_path = Path.home() / ".android" / "adbkey.pub"
@@ -1358,6 +1378,42 @@ def cmd_stop_instance(args):
     print(f"[✓] Instancia '{inst_name}' detenida (los datos de /data se conservan en disco).")
 
 
+def cmd_delete_instance(args):
+    """Detiene y elimina por completo una instancia y su partición /data usando permisos root."""
+    inst_name = validate_instance_name(args.name)
+    inst_dir = INSTANCES_DIR / inst_name
+    print(f"[*] Eliminando instancia '{inst_name}' y purgando datos de disco...")
+
+    # 1. Detener Docker
+    for cname in [inst_name, f"redroid-{inst_name}"]:
+        subprocess.run(["docker", "rm", "-f", cname], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # 2. Desconectar socket ADB
+    meta_file = inst_dir / "meta.json"
+    if meta_file.exists():
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                p = json.load(f).get("adb_port")
+                if p:
+                    subprocess.run(["adb", "disconnect", f"127.0.0.1:{p}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+    # 3. Eliminar carpeta del disco con contenedor efímero para superar permisos root en /data
+    if inst_dir.exists():
+        safe_name = shlex.quote(inst_name)
+        subprocess.run([
+            "docker", "run", "--rm",
+            "-v", f"{BASE_DIR}:/lab",
+            "alpine", "rm", "-rf", f"/lab/instances/{safe_name}"
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        if inst_dir.exists():
+            shutil.rmtree(inst_dir, ignore_errors=True)
+
+    print(f"[✓] Instancia '{inst_name}' eliminada por completo del disco.")
+
+
 def cmd_sync_scope(args):
     """Agrega apps post-boot al scope LSPosed/DenyList y reinicia si hace falta."""
     inst_name = validate_instance_name(args.name)
@@ -1836,6 +1892,11 @@ def main():
     sub = subparsers.add_parser("stop", help="Detiene una instancia existente")
     sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
     sub.set_defaults(func=cmd_stop_instance)
+
+    # delete
+    sub = subparsers.add_parser("delete", help="Detiene y purga por completo una instancia y su partición /data")
+    sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
+    sub.set_defaults(func=cmd_delete_instance)
 
     # sync-scope
     sub = subparsers.add_parser("sync-scope", help="Sincroniza apps post-boot al scope LSPosed/DenyList")

@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import shutil
+import shlex
 import asyncio
 import subprocess
 from pathlib import Path
@@ -335,23 +336,50 @@ async def stop_instance_async(name: str) -> Dict[str, Any]:
 async def delete_instance_async(name: str) -> Dict[str, Any]:
     """Detiene y elimina un contenedor Docker y su carpeta de configuración de forma segura."""
     inst_name = validate_instance_name(name)
-    try:
-        await stop_instance_async(inst_name)
-    except Exception:
-        pass
+    inst_dir = INSTANCES_DIR / inst_name
 
-    container_name = f"redroid-{inst_name}"
-    proc = await asyncio.create_subprocess_exec(
-        "docker", "rm", "-f", container_name,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    await proc.communicate()
+    # 1. Detener contenedor Docker por ambos nombres posibles
+    for cname in [inst_name, f"redroid-{inst_name}"]:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "rm", "-f", cname,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.communicate()
 
-    inst_path = INSTANCES_DIR / inst_name
-    if inst_path.exists():
-        import shutil
-        shutil.rmtree(inst_path, ignore_errors=True)
+    # 2. Desconectar socket ADB
+    meta_path = inst_dir / "meta.json"
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+                port = meta.get("adb_port")
+                if port:
+                    proc = await asyncio.create_subprocess_exec(
+                        "adb", "disconnect", f"127.0.0.1:{port}",
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    await proc.communicate()
+        except Exception:
+            pass
+
+    # 3. Eliminar carpeta con contenedor efímero para superar permisos root en /data
+    if inst_dir.exists():
+        safe_name = shlex.quote(inst_name)
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "run", "--rm",
+            "-v", f"{REPO_ROOT}:/lab",
+            "alpine", "rm", "-rf", f"/lab/instances/{safe_name}",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.communicate()
+
+        # Fallback Python
+        if inst_dir.exists():
+            import shutil
+            shutil.rmtree(inst_dir, ignore_errors=True)
 
     return {"status": "ok", "instance": inst_name, "message": "Instancia eliminada correctamente"}
 

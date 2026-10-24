@@ -1085,6 +1085,23 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Captura de pantalla y streaming scrcpy validados en vivo (`vision_analyze`): El escritorio de Android (Google Search, reloj 00:14, dock con Contactos, Android y Cámara) se visualiza en streaming a 60 FPS en 1080p sin pantalla negra ni diálogos bloqueantes.
 * **Estado:** CORE-010 **completado y validado el 2026-10-24**.
 
+### 70. FIX(CORE-011) — Eliminación Fidedigna de Instancias con Contenedor Efímero Root y Verificación de Integridad de Paquetes en Creación (2026-10-24)
+
+* **Motivación y diagnóstico del fallo:**
+  - Al eliminar una instancia desde el panel web, `shutil.rmtree()` fallaba silenciosamente (`ignore_errors=True`) al intentar borrar archivos internos de `/data/` creados con privilegios `root` o UIDs del sistema Android (`1000`, `1017`, `9998`).
+  - Como consecuencia, el directorio `instances/<nombre>/data` permanecía intacto en el disco. Al volver a crear una instancia con el mismo nombre (ej. `phone-80`), la condición `not (inst_data_dir / "adb").exists()` detectaba la carpeta previa, asumía erróneamente que ya estaba inicializada y omitía la clonación de la base dorada `data-clean`, dejando la instancia desprovista de LSPosed, Aurora Store y herramientas de diagnóstico.
+* **Soluciones implementadas:**
+  1. **Purga real y fidedigna con privilegios root (`manager_bridge.py` y `instance_manager.py`):**
+     - En `delete_instance_async` y `cmd_delete_instance`: Se detiene el contenedor Docker, se desconecta el socket ADB y se ejecuta un contenedor efímero `alpine rm -rf /lab/instances/<nombre>`, garantizando que el 100% de los archivos y subcarpetas (sin importar permisos UID/GID de root o Android) desaparezcan verdaderamente del disco.
+     - Se añadió el comando CLI `python3 tools/instance_manager.py delete <nombre>` para uso manual y scripts de mantenimiento.
+  2. **Verificación de integridad profunda en la creación (`cmd_create_instance`):**
+     - Se reforzó la condición de clonación: no solo revisa que exista `adb/`, sino que valida que `(inst_data_dir / "app")` exista y contenga el catálogo de aplicaciones base (mínimo 5 paquetes).
+     - Si la carpeta contiene datos parciales o corruptos de un intento fallido anterior, se purga automáticamente con root antes de clonar la base completa `data-clean`.
+* **Verificación:**
+  - Se purgó y eliminó `phone-82`, `phone-84` y la instancia de prueba `test-delete-cycle`. Se verificó mediante `ls` que el directorio fue completamente destruido.
+  - Se re-creó `test-delete-cycle` con el mismo nombre y puerto: el script detectó la necesidad de clonación limpia, copió los 28 paquetes de `data-clean/app/`, autorizó las llaves ADB y arrancó de forma impecable.
+* **Estado:** CORE-011 **completado y validado el 2026-10-24**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

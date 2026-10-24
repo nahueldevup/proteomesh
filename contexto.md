@@ -54,8 +54,13 @@ Para tranquilidad del equipo de seguridad y arquitectura, se certifica que:
   - **En `server/services/manager_bridge.py` (`start_instance_async`):** Se agregó una guarda que verifica que la clave ADB exista en `/data/misc/adb/adb_keys` antes de entregar el control al usuario.
 * **Impacto en seguridad:** Positivo. Elimina la necesidad de interacción manual, previene fugas de conexión ADB no autenticada y garantiza que el contenedor levante el launcher sin intervención.
 
-### Problema D: ¿Por qué `phone-80` parecía "desnuda" sin LSPosed ni Aurora?
-* **Causa:** `phone-80` se había inicializado antes con un directorio `instances/phone-80/data` parcial o residual. La comprobación `if not (inst_data_dir / "adb").exists()` detectó la carpeta previa y evitó clonar `data-clean`. Al sincronizar la base limpia oficial `data-clean` en `phone-80`, **los 22 paquetes de auditoría y módulos (LSPosed, Aurora Store, Magisk, DevCheck, Pixelscan, Key Attestation, Fake Wifi, etc.) quedaron 100% operativos y verificados**.
+### Problema D: ¿Por qué `phone-80` parecía "desnuda" sin LSPosed ni Aurora? (Y solución definitiva al eliminar y re-crear)
+* **Causa raíz:** En Linux, la partición `/data/` de Android contiene archivos y carpetas creados con privilegios `root` (`0:0`) o UIDs del sistema (`1000:2000`, `1017:1017`, `9998:9998`). Cuando el backend eliminaba una instancia con `shutil.rmtree()`, fallaba silenciosamente (`Permission denied`), dejando `instances/<nombre>/data` residual en el disco.
+* **El efecto dominó:** Al re-crear una instancia con el mismo nombre (ej. `phone-80`), la condición previa `if not (inst_data_dir / "adb").exists()` detectaba la carpeta residual previa, asumía erróneamente que ya estaba inicializada y saltaba la clonación de `data-clean`, arrancando un Android "desnudo" sin paquetes de usuario ni módulos.
+* **Solución definitiva implementada:**
+  1. **Purga con privilegios root:** Tanto en el backend (`delete_instance_async`) como en la CLI (`python3 tools/instance_manager.py delete <nombre>`), la eliminación ahora usa un contenedor efímero `alpine rm -rf /lab/instances/<nombre>`, destruyendo al 100% todos los archivos sin importar sus permisos o propietario.
+  2. **Verificación profunda en creación:** `cmd_create_instance` ahora comprueba que `data/app` exista y tenga al menos 5 paquetes instalados. Si faltan o están corruptos, purga con root y clona `data-clean` limpiamente desde cero.
+* **Resultado:** Si eliminas y vuelves a crear una instancia con el mismo nombre 1 o 100 veces, la carpeta se purga de verdad y la nueva instancia nace siempre con sus **22 herramientas completas (LSPosed, Magisk, Aurora, DevCheck, Pixelscan, etc.)**.
 
 ---
 
@@ -63,8 +68,8 @@ Para tranquilidad del equipo de seguridad y arquitectura, se certifica que:
 
 | Archivo | Tipo de Cambio | Justificación Técnica |
 |---|---|---|
-| `tools/instance_manager.py` | Core CLI / Lifecycle | Inyección preventiva de `adbkey.pub` en `/data/misc/adb/adb_keys`; auto-recuperación ante `unauthorized`; bypass de SetupWizard en `apply_runtime_defaults`. |
-| `server/services/manager_bridge.py` | Backend Bridge | Endpoint y función `delete_instance_async` (`docker rm -f` + purga de directorio); guarda de ADB key en `start_instance_async`. |
+| `tools/instance_manager.py` | Core CLI / Lifecycle | Subcomando `delete` con purga root en Docker; validación de integridad de paquetes en `cmd_create_instance`; inyección de `adb_keys`; bypass SetupWizard. |
+| `server/services/manager_bridge.py` | Backend Bridge | `delete_instance_async` con purga root en contenedor efímero y desconexión ADB; auto-recuperación de llaves ADB en `start_instance_async`. |
 | `server/routes/instances.py` | FastAPI Routes | Ruta `DELETE /instances/{name}` y soporte de acción masiva `'delete'` en `/instances/group/delete`. |
 | `web/src/App.tsx` | Frontend React | Pausa de sondeo durante la creación; memoización de puertos; contención de viewport `min-h-0`. |
 | `web/src/components/CreateDeviceModal.tsx` | Frontend Modal | Rediseño a Wizard de 3 pasos; eliminación de reset por polling (`prevIsOpenRef`); React Portal en `document.body`; tema OKLCH verde neón. |
