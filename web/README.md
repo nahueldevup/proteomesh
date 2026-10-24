@@ -58,6 +58,18 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
   - Se utiliza la capa libre de **OpenStreetMap** combinada con un filtro CSS de inversión cromática (`brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3)`), logrando un mapa nocturno nítido sin costo ni dependencias de terceros.
   - El botón `"Actualizar GPS"` se reubicó en la cabecera superior del módulo junto a los presets de ciudades (`Buenos Aires`, `São Paulo`, `Miami`, `New York`, `Madrid`, `CDMX`), asegurando máxima visibilidad.
 
+### 6. Estabilidad de Layout en Auditoría de Salud
+* **Problema resuelto:** Previamente, al ejecutar la auditoría de integridad, el reporte dinámico de 7 verificaciones empujaba verticalmente el contenedor hacia abajo, desplazando el botón de acción fuera de la vista y rompiendo la alineación con la pantalla del teléfono.
+* **Solución aplicada:**
+  - El botón `"Ejecutar Diagnóstico"` se trasladó a la cabecera superior de la sección, quedando fijo y siempre visible.
+  - La consola de resultados de auditoría cuenta con dimensiones estables (`min-h-[140px] max-h-[175px] overflow-y-auto`) con scrollbar interno, garantizando cero descuadres (*zero layout shift*) antes, durante y después del test.
+
+### 7. Eliminación Segura de Perfiles con Modal de Confirmación
+* **Ubicación ergonómica:**
+  - **Mosaico (`BulkBar`):** Botón `Trash2` (`variant="danger"`) en el extremo derecho de la barra flotante, protegido por separadores para evitar pulsaciones accidentales.
+  - **Visor enfocado (`FocusView`):** Botón `Trash2` en la base de la cápsula vertical de hardware.
+* **Modal de Confirmación Obligatorio:** Ninguna eliminación se ejecuta de forma directa. Se despliega un diálogo modal en `z-[99999]` con fondo atenuado (`backdrop-blur-sm`), advirtiendo sobre la irreversibilidad de la acción, listando los terminales afectados y requiriendo confirmación explícita antes de invocar la API (`DELETE /instances/{name}` o `POST /instances/group/delete`).
+
 ---
 
 ## 🛠️ Pila Tecnológica

@@ -14,6 +14,8 @@ import {
   VolumeX,
   Send,
   Loader2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -54,8 +56,37 @@ export default function BulkBar({
   const [proxyOpen, setProxyOpen] = useState(false);
   const [proxyValue, setProxyValue] = useState('');
 
+  // Confirm delete modal state
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
   const count = selectedNames.length;
   if (count === 0) return null;
+
+  const handleExecuteDelete = async () => {
+    setBusy('delete');
+    try {
+      const res = await api.groupLifecycle(selectedNames, 'delete');
+      const fails = res.results.filter((r) => !r.ok);
+      if (fails.length === 0) {
+        toast.success(
+          selectedNames.length === 1
+            ? `Perfil '${selectedNames[0]}' eliminado correctamente`
+            : `${selectedNames.length} perfiles eliminados correctamente`
+        );
+      } else {
+        toast.warning(
+          `Eliminados: ${res.succeeded}, fallos: ${fails.length}`
+        );
+      }
+      setConfirmDeleteOpen(false);
+      onClear();
+      onRefresh();
+    } catch (e: any) {
+      toast.error(`Error al eliminar: ${e.message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const runLifecycle = async (action: 'start' | 'stop' | 'restart') => {
     setBusy(action);
@@ -391,6 +422,17 @@ export default function BulkBar({
 
         <Sep />
 
+        {/* Eliminar perfiles seleccionados con modal de confirmación */}
+        <IconBtn
+          icon={Trash2}
+          label={count === 1 ? 'Eliminar perfil seleccionado' : `Eliminar ${count} perfiles seleccionados`}
+          side="top"
+          variant="danger"
+          onClick={() => setConfirmDeleteOpen(true)}
+        />
+
+        <Sep />
+
         {/* Deseleccionar */}
         <IconBtn
           icon={X}
@@ -399,6 +441,66 @@ export default function BulkBar({
           onClick={onClear}
         />
       </div>
+
+      {/* Modal de confirmación para eliminar perfiles */}
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in-0 duration-150">
+          <div
+            className="w-full max-w-md rounded-2xl border border-destructive/40 bg-surface p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-destructive/15 border border-destructive/30 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-sans font-bold text-base text-foreground">
+                  {selectedNames.length === 1
+                    ? `¿Eliminar CloudPhone "${selectedNames[0]}"?`
+                    : `¿Eliminar ${selectedNames.length} CloudPhones seleccionados?`}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Esta acción es irreversible. Se detendrá el contenedor Docker y se eliminarán permanentemente todos los datos y la configuración del dispositivo.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-background/80 p-3 max-h-36 overflow-y-auto font-mono text-xs text-muted-foreground space-y-1.5">
+              {selectedNames.map((name) => (
+                <div key={name} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+                  <span className="text-foreground font-semibold truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border/50">
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => setConfirmDeleteOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={handleExecuteDelete}
+                className="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-xs font-bold text-destructive-foreground hover:bg-destructive/90 transition-opacity disabled:opacity-50 shadow-md shadow-destructive/20"
+              >
+                {busy === 'delete' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                <span>Eliminar definitivamente</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

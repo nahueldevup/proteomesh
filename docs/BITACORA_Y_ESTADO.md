@@ -958,6 +958,27 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Ajuste de aspecto 9:19.5 exacto verificado (`w / h = 0.462`).
 * **Estado:** WEB-005 **completado y validado el 2026-10-23**.
 
+### 65. WEB-006 — Estabilidad de Layout en Auditoría de Salud, Reubicación de Botón de Diagnóstico y Eliminación Segura de Perfiles con Modal (2026-10-23)
+
+* **Motivación y contexto:**
+  - Al ejecutar la prueba de salud y antifraude en la vista enfocada, el contenedor de resultados de auditoría se expandía verticalmente sin restricción, desplazando hacia abajo la tarjeta y empujando el botón "Ejecutar Diagnóstico" fuera del viewport (descuadre de layout).
+  - Asimismo, se requería una acción segura para eliminar uno o múltiples perfiles seleccionados tanto desde la barra flotante de mosaico (`BulkBar`) como desde el visor enfocado (`FocusView`), provista de un modal de confirmación visual para prevenir eliminaciones accidentales de instancias Docker.
+* **Soluciones implementadas:**
+  1. **Estabilidad del layout en "Salud & Antifraude" (`FocusView.tsx`):**
+     - Se reubicó el botón **`Ejecutar Diagnóstico`** a la cabecera superior del módulo (alineado a la derecha de la pestaña), volviéndolo 100% visible y accesible antes, durante y después del test.
+     - Se dotó a la consola de resultados de auditoría de una altura preasignada estable con scroll interno (`flex-1 min-h-[140px] max-h-[175px] overflow-y-auto`). Cuando no hay test ejecutado, muestra un estado vacío elegante con pistas; al completarse las 7 comprobaciones, se renderizan dentro de la caja sin variar la altura global del panel, preservando la alineación simétrica exacta con la pantalla del smartphone a la izquierda.
+  2. **Eliminación masiva e individual de perfiles con modal de confirmación:**
+     - **Backend:** Se implementó `DELETE /instances/{name}` en `server/routes/instances.py` y `manager_bridge.py`, asegurando la detención controlada, eliminación del contenedor Docker (`docker rm -f redroid-<name>`) y borrado seguro de la carpeta `instances/<name>`. Se añadió soporte de acción `delete` en la ruta masiva `POST /instances/group/delete`.
+     - **Frontend `BulkBar.tsx` (Mosaico de Granja):** Se agregó el botón sólo-icono `Trash2` (`variant="danger"`) separado de las acciones de uso cotidiano. Al hacer clic, abre un modal accesible de confirmación (`role="dialog"`) que lista todos los perfiles a eliminar, advierte sobre la irreversibilidad de la acción y ofrece botones `Cancelar` y `Eliminar definitivamente` con spinner de carga.
+     - **Frontend `FocusView.tsx` (Visor enfocado):** Se integró el botón `Trash2` en la base de la cápsula vertical de hardware, permitiendo purgar el perfil actual tras confirmar en su modal contextual y regresando limpiamente al mosaico.
+* **Verificación:**
+  - Compilación: `npm run build` en 373 ms y `oxlint` con 0 errores.
+  - Validación en vivo (`browser_exec` y `vision_analyze`):
+    - Botón "Ejecutar Diagnóstico" verificado en la cabecera del módulo en verde esmeralda.
+    - Ejecución de auditoría verificada: 7 comprobaciones cargadas dentro de la caja de 140px con scroll interno y 0 descuadre del marco.
+    - Apertura, cancelación y confirmación del modal de eliminación verificado en `BulkBar` y `FocusView`.
+* **Estado:** WEB-006 **completado y validado el 2026-10-23**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

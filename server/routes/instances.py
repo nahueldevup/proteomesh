@@ -28,6 +28,7 @@ from server.services.manager_bridge import (
     create_instance_async,
     start_instance_async,
     stop_instance_async,
+    delete_instance_async,
     check_health_sync,
     launch_native_scrcpy,
     get_instance_screenshot,
@@ -77,11 +78,20 @@ async def group_input_key(req: GroupKeyRequest):
     return await group_key_async(req.instances, req.key)
 
 
-@router.post("/group/{action}", response_model=GroupActionResponse, summary="Ciclo de vida masivo (start/stop/restart)")
+@router.post("/group/{action}", response_model=GroupActionResponse, summary="Ciclo de vida masivo (start/stop/restart/delete)")
 async def group_lifecycle(action: str, req: GroupInstancesRequest):
-    if action not in ("start", "stop", "restart"):
-        raise HTTPException(status_code=400, detail="Acción inválida: use start, stop o restart")
+    if action not in ("start", "stop", "restart", "delete"):
+        raise HTTPException(status_code=400, detail="Acción inválida: use start, stop, restart o delete")
     return await group_lifecycle_async(req.instances, action)
+
+
+@router.delete("/{name}", response_model=Dict[str, Any], summary="Eliminar una instancia")
+async def delete_instance(name: str):
+    """Detiene y elimina un contenedor Docker y su carpeta de configuración de forma segura."""
+    try:
+        return await delete_instance_async(name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{name}", response_model=InstanceResponse, summary="Obtener detalle de una instancia")

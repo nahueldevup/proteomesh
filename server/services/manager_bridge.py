@@ -311,6 +311,30 @@ async def stop_instance_async(name: str) -> Dict[str, Any]:
     return {"status": "ok", "instance": name, "message": "Instancia detenida"}
 
 
+async def delete_instance_async(name: str) -> Dict[str, Any]:
+    """Detiene y elimina un contenedor Docker y su carpeta de configuración de forma segura."""
+    inst_name = validate_instance_name(name)
+    try:
+        await stop_instance_async(inst_name)
+    except Exception:
+        pass
+
+    container_name = f"redroid-{inst_name}"
+    proc = await asyncio.create_subprocess_exec(
+        "docker", "rm", "-f", container_name,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    await proc.communicate()
+
+    inst_path = INSTANCES_DIR / inst_name
+    if inst_path.exists():
+        import shutil
+        shutil.rmtree(inst_path, ignore_errors=True)
+
+    return {"status": "ok", "instance": inst_name, "message": "Instancia eliminada correctamente"}
+
+
 def set_instance_location_sync(name: str, update: LocationUpdate) -> LocationResponse:
     """Actualiza la geolocalización en caliente o frío y persiste en disco."""
     inst_name = validate_instance_name(name)
@@ -685,6 +709,8 @@ async def _run_lifecycle(names: List[str], op: str) -> List[Dict[str, Any]]:
                 except Exception:
                     pass
                 await start_instance_async(inst)
+            elif op == "delete":
+                await delete_instance_async(inst)
             return {"instance": inst, "ok": True, "error": None}
         except Exception as e:
             return {"instance": inst, "ok": False, "error": str(e)}

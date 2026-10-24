@@ -20,6 +20,8 @@ import {
   Send,
   Loader2,
   Navigation,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { Instance, ScrcpyStreamInfo, ProxyTestResult } from '../../types';
 import { api } from '../../lib/api';
@@ -84,6 +86,26 @@ export default function FocusView({
   // Health state
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthReport, setHealthReport] = useState<{ ok: boolean; reports: string[] } | null>(null);
+
+  // Delete instance confirmation state
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deletingInstance, setDeletingInstance] = useState(false);
+
+  const handleDeleteThisInstance = async () => {
+    if (!instance) return;
+    setDeletingInstance(true);
+    try {
+      await api.deleteInstance(instance.instance_name);
+      toast.success(`CloudPhone "${instance.instance_name}" eliminado correctamente`);
+      setConfirmDeleteOpen(false);
+      onChanged?.();
+      onBack();
+    } catch (err: any) {
+      toast.error(`Error al eliminar: ${err.message}`);
+    } finally {
+      setDeletingInstance(false);
+    }
+  };
 
   useEffect(() => {
     if (!instance) return;
@@ -479,6 +501,16 @@ export default function FocusView({
                 <IconBtn icon={ExternalLink} label="Abrir scrcpy nativo" side="right" />
               </a>
             )}
+
+            {/* Eliminar CloudPhone */}
+            <div className="my-1 h-px bg-border/60" />
+            <IconBtn
+              icon={Trash2}
+              label="Eliminar CloudPhone"
+              variant="danger"
+              side="right"
+              onClick={() => setConfirmDeleteOpen(true)}
+            />
           </div>
         </div>
 
@@ -686,56 +718,138 @@ export default function FocusView({
 
             {/* Contenido: Tab Salud & Antifraude */}
             {activeTab === 'health' && (
-              <div className="flex flex-col gap-3 pt-3 flex-1">
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <div className="rounded-lg border border-border bg-background p-2.5 space-y-1">
-                    <span className="text-muted-foreground text-[10px]">Pixelscan Checker</span>
-                    <div className="font-bold text-success flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> 100/100 Low Risk
-                    </div>
+              <div className="flex flex-col gap-2.5 pt-2.5 flex-1 min-h-0">
+                {/* Cabecera con título y botón de acción prominente */}
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <span>Auditoría de Integridad y Antifraude</span>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-2.5 space-y-1">
-                    <span className="text-muted-foreground text-[10px]">Root Detection Plus</span>
-                    <div className="font-bold text-success flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> 0/39 Detecciones
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-2.5 space-y-1">
-                    <span className="text-muted-foreground text-[10px]">Framework Root</span>
-                    <div className="font-bold text-foreground">Magisk 30.6 + Zygisk</div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-2.5 space-y-1">
-                    <span className="text-muted-foreground text-[10px]">Módulos Inyectados</span>
-                    <div className="font-bold text-foreground">LSPosed / GmsCompat</div>
-                  </div>
-                </div>
 
-                {healthReport && (
-                  <div className="rounded-md border border-border bg-background p-2.5 text-xs font-mono">
-                    <span className="font-bold">Resultados de auditoría:</span>
-                    <ul className="mt-1 list-disc pl-4 text-muted-foreground space-y-0.5">
-                      {healthReport.reports.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="mt-auto flex justify-end pt-2 border-t border-border">
                   <button
                     disabled={healthChecking}
                     onClick={handleCheckHealth}
-                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+                    className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 shadow-sm shrink-0"
                   >
-                    {healthChecking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                    {healthChecking ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
                     <span>Ejecutar Diagnóstico</span>
                   </button>
+                </div>
+
+                {/* Métricas clave */}
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
+                    <span className="text-muted-foreground text-[10px]">Pixelscan Checker</span>
+                    <div className="font-bold text-success flex items-center gap-1 text-xs">
+                      <CheckCircle2 className="h-3 w-3" /> 100/100 Low Risk
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
+                    <span className="text-muted-foreground text-[10px]">Root Detection Plus</span>
+                    <div className="font-bold text-success flex items-center gap-1 text-xs">
+                      <CheckCircle2 className="h-3 w-3" /> 0/39 Detecciones
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
+                    <span className="text-muted-foreground text-[10px]">Framework Root</span>
+                    <div className="font-bold text-foreground text-xs truncate">Magisk 30.6 + Zygisk</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
+                    <span className="text-muted-foreground text-[10px]">Módulos Inyectados</span>
+                    <div className="font-bold text-foreground text-xs truncate">LSPosed / GmsCompat</div>
+                  </div>
+                </div>
+
+                {/* Consola de resultados con altura estable y scroll interno para prevenir descuadres */}
+                <div className="flex-1 min-h-[140px] max-h-[175px] rounded-lg border border-border bg-background/90 p-2.5 font-mono text-xs overflow-y-auto">
+                  {healthReport ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-primary">
+                        <span>Resultados de auditoría:</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">
+                          {healthReport.reports.length} comprobaciones
+                        </span>
+                      </div>
+                      <ul className="list-disc pl-4 text-muted-foreground space-y-0.5 text-[11px]">
+                        {healthReport.reports.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[110px] flex-col items-center justify-center text-center text-muted-foreground/60 text-xs gap-1.5 p-2">
+                      <CheckCircle2 className="h-6 w-6 text-muted-foreground/30" />
+                      <span>Listo para auditar heurísticas de emulación y root.</span>
+                      <span className="text-[10px] text-muted-foreground/40">
+                        Haz clic en "Ejecutar Diagnóstico" arriba para iniciar el test.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Modal de confirmación para eliminar este CloudPhone */}
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in-0 duration-150">
+          <div
+            className="w-full max-w-md rounded-2xl border border-destructive/40 bg-surface p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-destructive/15 border border-destructive/30 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-sans font-bold text-base text-foreground">
+                  ¿Eliminar CloudPhone "{instance.instance_name}"?
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Esta acción es irreversible. Se detendrá el contenedor Docker y se eliminarán permanentemente todos sus datos, perfiles y configuraciones.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-background/80 p-3 font-mono text-xs text-muted-foreground flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
+              <span className="text-foreground font-semibold">{instance.instance_name}</span>
+              <span className="text-muted-foreground/60 ml-auto">Puerto ADB: :{instance.adb_port}</span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border/50">
+              <button
+                type="button"
+                disabled={deletingInstance}
+                onClick={() => setConfirmDeleteOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletingInstance}
+                onClick={handleDeleteThisInstance}
+                className="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-xs font-bold text-destructive-foreground hover:bg-destructive/90 transition-opacity disabled:opacity-50 shadow-md shadow-destructive/20"
+              >
+                {deletingInstance ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                <span>Eliminar definitivamente</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

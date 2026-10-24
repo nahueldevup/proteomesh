@@ -47,6 +47,11 @@ export const api = {
     return handleResponse<any>(res);
   },
 
+  async deleteInstance(name: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}`, { method: 'DELETE' });
+    return handleResponse<any>(res);
+  },
+
   async getHealth(name: string): Promise<{ instance_name: string; ok: boolean; reports: string[] }> {
     const res = await fetch(`${API_BASE}/instances/${name}/health`);
     return handleResponse<any>(res);
@@ -217,7 +222,7 @@ export const api = {
     return handleResponse<GroupResponse>(res);
   },
 
-  async groupLifecycle(instances: string[], action: 'start' | 'stop' | 'restart'): Promise<GroupResponse> {
+  async groupLifecycle(instances: string[], action: 'start' | 'stop' | 'restart' | 'delete'): Promise<GroupResponse> {
     const res = await fetch(`${API_BASE}/instances/group/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
