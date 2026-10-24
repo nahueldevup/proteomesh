@@ -1102,6 +1102,31 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Se re-creó `test-delete-cycle` con el mismo nombre y puerto: el script detectó la necesidad de clonación limpia, copió los 28 paquetes de `data-clean/app/`, autorizó las llaves ADB y arrancó de forma impecable.
 * **Estado:** CORE-011 **completado y validado el 2026-10-24**.
 
+### 71. FEAT(WEB-012) — Soporte de Tema Claro (Light Theme) Técnico con Conmutador y Persistencia en LocalStorage (2026-10-24)
+
+* **Motivación y diseño:**
+  - Se requería incorporar un modo claro alternativo (*Light Theme*) que mantuviera la sobriedad, elegancia y carácter técnico de la plataforma (tipo Linear/Vercel), accesible mediante un botón de conmutación en la interfaz.
+* **Soluciones implementadas:**
+  1. **Tokens de color OKLCH para Tema Claro (`web/src/index.css`):**
+     - Se definieron las variables para `.light` y `[data-theme="light"]`:
+       - Fondo blanco técnico pulcro: `--background: oklch(0.985 0.003 250)` sobre tapiz de micropuntos grises tenues (`grid-bg`).
+       - Superficies y tarjetas elevadas: `--surface: oklch(1 0 0)` con bordes milimétricos `--border: oklch(0.88 0.008 250)`.
+       - Tipografía de alto contraste: `--foreground: oklch(0.18 0.015 250)` y datos secundarios `--muted-foreground: oklch(0.48 0.02 250)`.
+       - Acento verde esmeralda con contraste WCAG accesible: `--primary: oklch(0.62 0.22 145)` con texto blanco en botones primarios.
+       - Chasis del smartphone en bisel oscuro (`--bezel: oklch(0.2 0.01 250)`) para generar un contraste de figura-fondo realista contra el lienzo claro.
+       - Filtro adaptativo para Leaflet: En modo oscuro aplica inversión cromática nocturna; en modo claro renderiza las teselas de OpenStreetMap en sus colores naturales nítidos (`saturate(1.15) contrast(1.05)`).
+  2. **Conmutadores de Tema y Persistencia:**
+     - En `App.tsx`: Estado `theme ('dark' | 'light')` con carga y guardado automático en `localStorage('pm-theme')`.
+     - Botón de alternancia accesible en la cabecera superior derecha (junto al slider de densidad) y en la barra inferior del sidebar lateral, con iconos dinámicos `Sun` y `Moon`.
+     - Integración en la cabecera de la vista enfocada (`FocusView.tsx`) para alternar tema sin abandonar la inspección del terminal.
+     - Sincronización con el sistema de notificaciones toast (`<Toaster theme={theme} />`).
+* **Verificación:**
+  - `npm run build` en 385 ms con 0 errores.
+  - Verificación en navegador (`browser_exec` & `vision_analyze`):
+    - Conmutación en caliente verificada: `bodyBg` cambia fluidamente entre `oklch(0.155 0.008 250)` (Dark) y `oklch(0.985 0.003 250)` (Light).
+    - Inspección visual confirmando legibilidad, bordes definidos, mapa en colores naturales claros y persistencia en recarga.
+* **Estado:** WEB-012 **completado y validado el 2026-10-24**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

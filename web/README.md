@@ -85,6 +85,17 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
   - Montaje mediante React Portal en `document.body` (`z-[99999]`), con cierre por tecla `Escape` o clic exterior en backdrop.
   - Sustitución de botones azules por tokens OKLCH coherentes con el resto de la interfaz.
 
+### 9. Soporte Completo de Tema Claro (Light Theme)
+* **Tokens OKLCH para Modo Claro:**
+  - Lienzo y fondo: Blanco técnico pulcro (`--background: oklch(0.985 0.003 250)`) con tapiz de micropuntos grises sutiles (`grid-bg`).
+  - Tarjetas y popovers: Blanco puro (`--surface: oklch(1 0 0)`) con bordes de 1px (`--border: oklch(0.88 0.008 250)`).
+  - Tipografía: Charcoal de alto contraste (`--foreground: oklch(0.18 0.015 250)`) y gris slate secundario.
+  - Botones y estados activos: Verde esmeralda accesible (`--primary: oklch(0.62 0.22 145)`).
+  - Mapas adaptativos: En modo claro, Leaflet muestra los azulejos de OpenStreetMap en sus colores naturales (`saturate(1.15) contrast(1.05)`).
+* **Conmutación y Persistencia:**
+  - Botón de alternancia con iconos dinámicos `Sun` y `Moon` disponible en el header superior, barra lateral y cabecera de vista enfocada.
+  - Persistencia automática de la preferencia en `localStorage('pm-theme')`.
+
 ---
 
 ## 🛠️ Pila Tecnológica

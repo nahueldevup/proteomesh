@@ -45,7 +45,9 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-:root {
+:root,
+.dark,
+[data-theme="dark"] {
   --radius: 0.6rem;
   --background: oklch(0.155 0.008 250);
   --foreground: oklch(0.94 0.005 250);
@@ -81,6 +83,45 @@
   --sidebar-border: oklch(0.24 0.01 250);
   --sidebar-ring: oklch(0.86 0.2 145);
   --glow-primary: 0 0 0 2px var(--primary), 0 0 24px -4px color-mix(in oklab, var(--primary) 60%, transparent);
+}
+
+.light,
+[data-theme="light"] {
+  --radius: 0.6rem;
+  --background: oklch(0.985 0.003 250);
+  --foreground: oklch(0.18 0.015 250);
+  --surface: oklch(1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.015 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.015 250);
+  --primary: oklch(0.62 0.22 145);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.005 250);
+  --secondary-foreground: oklch(0.25 0.01 250);
+  --muted: oklch(0.94 0.005 250);
+  --muted-foreground: oklch(0.48 0.02 250);
+  --accent: oklch(0.93 0.008 250);
+  --accent-foreground: oklch(0.18 0.01 250);
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.62 0.22 145);
+  --warning: oklch(0.72 0.18 80);
+  --info: oklch(0.6 0.18 235);
+  --bezel: oklch(0.2 0.01 250);
+  --screen-off: oklch(0.14 0.005 250);
+  --border: oklch(0.88 0.008 250);
+  --input: oklch(0.88 0.008 250);
+  --ring: oklch(0.62 0.22 145);
+  --sidebar: oklch(0.97 0.004 250);
+  --sidebar-foreground: oklch(0.25 0.01 250);
+  --sidebar-primary: oklch(0.62 0.22 145);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.92 0.008 250);
+  --sidebar-accent-foreground: oklch(0.18 0.01 250);
+  --sidebar-border: oklch(0.88 0.008 250);
+  --sidebar-ring: oklch(0.62 0.22 145);
+  --glow-primary: 0 0 0 2px var(--primary), 0 0 18px -4px color-mix(in oklab, var(--primary) 40%, transparent);
 }
 
 @layer base {
@@ -149,6 +190,11 @@
 
 .leaflet-tile-pane {
   filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+.light .leaflet-tile-pane,
+[data-theme="light"] .leaflet-tile-pane {
+  filter: saturate(1.15) contrast(1.05);
 }
 
 .leaflet-control-zoom a {

@@ -11,6 +11,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Cpu,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { api } from './lib/api';
@@ -56,6 +58,29 @@ export function App() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createPresetModel, setCreatePresetModel] = useState<string | undefined>(undefined);
+
+  // Tema Claro / Oscuro con persistencia en localStorage
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('pm-theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.classList.add('light');
+      root.classList.remove('dark');
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.classList.add('dark');
+      root.classList.remove('light');
+      root.setAttribute('data-theme', 'dark');
+    }
+    localStorage.setItem('pm-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  };
 
   // Datos para otras pestañas
   const [templatesCatalog, setTemplatesCatalog] = useState<Record<string, TemplateItem[]>>({});
@@ -160,7 +185,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-screen w-full overflow-hidden bg-background">
-        <Toaster richColors position="top-right" theme="dark" />
+        <Toaster richColors position="top-right" theme={theme} />
 
         {/* ── BARRA LATERAL (IDÉNTICA A LOVABLE APPSHELL) ───────────────────── */}
         <aside
@@ -210,7 +235,7 @@ export function App() {
             })}
           </nav>
 
-          {/* Botones inferiores: +, CMD, Toggle */}
+          {/* Botones inferiores: +, CMD, Tema Claro/Oscuro, Toggle */}
           <div
             className={cn(
               'flex gap-1 border-t border-sidebar-border p-2',
@@ -232,6 +257,12 @@ export function App() {
               label="Comandos (Ctrl+K)"
               side="right"
               onClick={() => toast.info('Consola rápida disponible')}
+            />
+            <IconBtn
+              icon={theme === 'dark' ? Sun : Moon}
+              label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+              side="right"
+              onClick={toggleTheme}
             />
             <IconBtn
               icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose}
@@ -284,16 +315,24 @@ export function App() {
                 onClick={toggleSelectAll}
               />
 
-              {/* Slider de Columnas (min 4, max 12) */}
-              <div className="ml-auto flex w-40 items-center gap-2 font-mono text-xs text-muted-foreground">
-                <Slider
-                  min={4}
-                  max={12}
-                  step={1}
-                  value={[cols]}
-                  onValueChange={(v) => setCols(v[0] ?? 8)}
+              {/* Slider de Columnas (min 4, max 12) + Selector de Tema */}
+              <div className="ml-auto flex items-center gap-3">
+                <div className="flex w-36 items-center gap-2 font-mono text-xs text-muted-foreground">
+                  <Slider
+                    min={4}
+                    max={12}
+                    step={1}
+                    value={[cols]}
+                    onValueChange={(v) => setCols(v[0] ?? 8)}
+                  />
+                  <span>{cols}</span>
+                </div>
+                <div className="h-4 w-px bg-border" />
+                <IconBtn
+                  icon={theme === 'dark' ? Sun : Moon}
+                  label={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+                  onClick={toggleTheme}
                 />
-                <span>{cols}</span>
               </div>
             </header>
           )}
@@ -326,6 +365,8 @@ export function App() {
                 groupInstances={selectedList}
                 groupMode={groupMode}
                 onChanged={fetchInstances}
+                theme={theme}
+                onToggleTheme={toggleTheme}
               />
             </div>
           )}

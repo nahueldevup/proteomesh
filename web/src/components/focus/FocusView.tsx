@@ -21,6 +21,8 @@ import {
   Loader2,
   Navigation,
   Trash2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import type { Instance, ScrcpyStreamInfo, ProxyTestResult } from '../../types';
 import { api } from '../../lib/api';
@@ -41,6 +43,8 @@ interface FocusViewProps {
   groupInstances: string[];
   groupMode: boolean;
   onChanged: () => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 type SubTab = 'gps' | 'proxy' | 'health';
@@ -62,6 +66,8 @@ export default function FocusView({
   groupInstances = [],
   groupMode = false,
   onChanged,
+  theme,
+  onToggleTheme,
 }: FocusViewProps) {
   const [streamInfo, setStreamInfo] = useState<ScrcpyStreamInfo | null>(null);
   const [activeTab, setActiveTab] = useState<SubTab>('gps');
@@ -338,6 +344,16 @@ export default function FocusView({
         <IconBtn icon={ChevronRight} label="Siguiente" onClick={() => handleNavigate(1)} />
         <span className="font-mono font-bold text-foreground text-sm">{instance.instance_name}</span>
         <span className="text-sm text-muted-foreground">{instance.location?.city ?? 'Sin GPS'}</span>
+
+        {onToggleTheme && (
+          <div className="ml-auto flex items-center gap-2">
+            <IconBtn
+              icon={theme === 'dark' ? Sun : Moon}
+              label={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+              onClick={onToggleTheme}
+            />
+          </div>
+        )}
       </header>
 
       {/* ── CUERPO DE LA VISTA ENFOCADA (DISTRIBUCIÓN EXACTA DE LOVABLE) ────── */}
