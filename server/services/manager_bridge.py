@@ -288,6 +288,27 @@ async def start_instance_async(name: str) -> Dict[str, Any]:
     if proc.returncode != 0:
         err = stderr.decode().strip()
         raise RuntimeError(f"Error al iniciar instancia '{name}': {err or out}")
+
+    # Asegurar autorización inmediata de claves ADB del host para prevenir diálogo 'unauthorized'
+    try:
+        host_pub = Path.home() / ".android" / "adbkey.pub"
+        if host_pub.exists():
+            pub_key = host_pub.read_text(encoding="utf-8").strip()
+            sh_cmd = (
+                f"mkdir -p /data/misc/adb && "
+                f"if ! grep -q '{pub_key[:40]}' /data/misc/adb/adb_keys 2>/dev/null; then "
+                f"echo '{pub_key}' >> /data/misc/adb/adb_keys && "
+                f"chown 1000:2000 /data/misc/adb/adb_keys && chmod 640 /data/misc/adb/adb_keys && "
+                f"setprop ctl.restart adbd; fi"
+            )
+            p_auth = await asyncio.create_subprocess_exec(
+                "docker", "exec", name, "sh", "-c", sh_cmd,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await p_auth.communicate()
+    except Exception:
+        pass
+
     return {"status": "ok", "instance": name, "message": "Instancia iniciada correctamente"}
 
 

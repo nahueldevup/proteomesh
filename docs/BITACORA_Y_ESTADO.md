@@ -1057,6 +1057,34 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Inspección visual con `vision_analyze` confirmando estética técnica impecable, contraste accesible y botones verdes.
 * **Estado:** WEB-009 **completado y validado el 2026-10-23**.
 
+### 69. FIX(CORE-010) — Auto-Inyección de Llaves ADB Host y Bypass de SetupWizard para Nuevas Instancias (2026-10-24)
+
+* **Motivación y diagnóstico del fallo:**
+  - Al aprovisionar una nueva instancia (como `phone-80`), el terminal se quedaba en estado *"no termina de arrancar"* y al ingresar a la vista enfocada la pantalla se mostraba completamente en negro.
+  - En la vista mosaico se observó el cuadro de diálogo de seguridad del sistema Android: `¿Permitir depuración por USB?` con huella digital RSA del host.
+  - **Causa raíz:**
+    1. **ADB `unauthorized`:** El directorio `/data/misc/adb/` del contenedor se encontraba vacío o sin la clave pública RSA del cliente ADB del host (`~/.android/adbkey.pub`). Al no estar pre-autorizada, Android trataba la conexión como no confiable, bloqueaba el daemon `adbd` en estado `unauthorized` y desplegaba un diálogo modal exigiendo pulsación física en pantalla.
+    2. **Fallo de streaming scrcpy:** Al estar ADB en `unauthorized`, `scrcpy-server` no podía inicializarse en el contenedor, lo que provocaba que el reproductor H.264 de `ws-scrcpy` permaneciera en pantalla negra sin recibir señal de video.
+    3. **Bloqueo por SetupWizard:** En el primer arranque, la actividad `com.google.android.setupwizard/.SetupWizardActivity` retenía el foco y bloqueaba la carga del launcher del sistema hasta que `device_provisioned` y `user_setup_complete` fueran formalmente declarados.
+* **Soluciones implementadas:**
+  1. **Pre-inyección de claves públicas en creación y arranque (`tools/instance_manager.py`):**
+     - En `cmd_create_instance`: Al clonar y sanitizar `data-clean`, se inyecta automáticamente la clave pública del host (`~/.android/adbkey.pub`) en `/data/misc/adb/adb_keys` con propietario `1000:2000` (`system:shell`) y permisos `640`.
+     - En `connect_adb()`: Si el transporte ADB detecta el estado `unauthorized`, se dispara una rutina de auto-recuperación vía `docker exec` que inyecta la clave pública del host y reinicia `adbd` en caliente (`setprop ctl.restart adbd`), transicionando el socket a `device` de inmediato.
+  2. **Bypass automático de SetupWizard y aprovisionamiento forzado:**
+     - En `apply_runtime_defaults`: Se ejecutan automáticamente al iniciar:
+       `settings put global device_provisioned 1`
+       `settings put secure user_setup_complete 1`
+       `pm disable-user --user 0 com.google.android.setupwizard`
+       `pm disable-user --user 0 com.android.provision`
+       `am start -c android.intent.category.HOME -a android.intent.action.MAIN`
+     - Esto garantiza que el launcher (`Launcher3`) tome el foco instantáneamente sin detenerse en pantallas de bienvenida ni bloquear la visualización.
+  3. **Auto-curación en backend (`server/services/manager_bridge.py`):**
+     - En `start_instance_async`: Se agregó una guarda asíncrona que verifica la existencia de la clave en `/data/misc/adb/adb_keys` y la inyecta antes de entregar el control al frontend.
+* **Verificación:**
+  - En `phone-80`: Tras la inyección de la clave y bypass de aprovisionamiento, `adb devices` cambió de `unauthorized` a `device`.
+  - Captura de pantalla y streaming scrcpy validados en vivo (`vision_analyze`): El escritorio de Android (Google Search, reloj 00:14, dock con Contactos, Android y Cámara) se visualiza en streaming a 60 FPS en 1080p sin pantalla negra ni diálogos bloqueantes.
+* **Estado:** CORE-010 **completado y validado el 2026-10-24**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

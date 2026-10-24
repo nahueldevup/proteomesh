@@ -820,6 +820,23 @@ def cmd_create_instance(args):
     if CLEAN_DATA_DIR.exists() and not (inst_data_dir / "adb").exists():
         print(f"[*] Inicializando sistema de archivos /data desde plantilla base (data-clean)...")
         safe_name = shlex.quote(inst_name)
+
+        # Inyectar siempre la clave pública ADB del host para evitar 'unauthorized' y diálogo interactivo
+        host_pub_path = Path.home() / ".android" / "adbkey.pub"
+        pub_key_cmd = ""
+        if host_pub_path.exists():
+            try:
+                k_str = host_pub_path.read_text(encoding="utf-8").strip()
+                if k_str:
+                    pub_key_cmd = (
+                        f" && mkdir -p /lab/instances/{safe_name}/data/misc/adb && "
+                        f"echo '{k_str}' >> /lab/instances/{safe_name}/data/misc/adb/adb_keys && "
+                        f"chown -R 1000:2000 /lab/instances/{safe_name}/data/misc/adb && "
+                        f"chmod 640 /lab/instances/{safe_name}/data/misc/adb/adb_keys"
+                    )
+            except Exception:
+                pass
+
         sanitize_sh = (
             f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && "
             f"rm -f /lab/instances/{safe_name}/data/property/persistent_properties && "
@@ -827,6 +844,7 @@ def cmd_create_instance(args):
             f"rm -f /lab/instances/{safe_name}/data/system/users/0/settings_ssaid.xml* && "
             f"rm -f /lab/instances/{safe_name}/data/misc/wifi/*.conf* /lab/instances/{safe_name}/data/misc/wifi/*.xml* && "
             f"rm -rf /lab/instances/{safe_name}/data/misc/bluedroid/*"
+            f"{pub_key_cmd}"
         )
         clone_cmd = [
             "docker", "run", "--rm",
@@ -1013,6 +1031,19 @@ def apply_runtime_defaults(adb_s, meta):
     for setting_cmd, value in BG_PROCESS_SETTINGS.items():
         _run(["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
              timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Forzar aprovisionamiento completado y desactivar SetupWizard para garantizar que el launcher cargue inmediatamente
+    _run(["adb", "-s", adb_s, "shell", "settings", "put", "global", "device_provisioned", "1"],
+         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "settings", "put", "secure", "user_setup_complete", "1"],
+         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", "com.google.android.setupwizard"],
+         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", "com.android.provision"],
+         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(["adb", "-s", adb_s, "shell", "am", "start", "-c", "android.intent.category.HOME", "-a", "android.intent.action.MAIN"],
+         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     return w, h, dpi, disabled_count, display_ok
 
 
@@ -1103,6 +1134,23 @@ def cmd_start_instance(args):
         while time.time() < end:
             _run(["adb", "connect", adb_s], timeout=10, capture_output=True, text=True)
             d = _run(["adb", "devices"], timeout=10, capture_output=True, text=True)
+
+            # Si el transporte reporta 'unauthorized', auto-inyectar la clave del host inmediatamente
+            if any(parts[:2] == [adb_s, "unauthorized"] for parts in (line.split() for line in d.stdout.splitlines())):
+                host_pub = Path.home() / ".android" / "adbkey.pub"
+                if host_pub.exists():
+                    pub_key = host_pub.read_text(encoding="utf-8").strip()
+                    sh_cmd = (
+                        f"mkdir -p /data/misc/adb && "
+                        f"echo '{pub_key}' >> /data/misc/adb/adb_keys && "
+                        f"chown 1000:2000 /data/misc/adb/adb_keys && "
+                        f"chmod 640 /data/misc/adb/adb_keys && "
+                        f"setprop ctl.restart adbd"
+                    )
+                    subprocess.run(["docker", "exec", inst_name, "sh", "-c", sh_cmd], timeout=10, capture_output=True)
+                    time.sleep(2)
+                    continue
+
             if any(parts[:2] == [adb_s, "device"] for parts in
                    (line.split() for line in d.stdout.splitlines())):
                 return True
