@@ -773,6 +773,49 @@ async def group_lifecycle_async(names: List[str], op: str) -> Dict[str, Any]:
 
 # ── Streaming nativo scrcpy (ws-scrcpy) ─────────────────────────────────────
 WS_SCRCPY_URL = os.environ.get("WS_SCRCPY_URL", "http://127.0.0.1:8001")
+_ws_scrcpy_proc: Optional[subprocess.Popen] = None
+
+
+def is_ws_scrcpy_running(url: str = WS_SCRCPY_URL) -> bool:
+    """Verifica si el servidor ws-scrcpy responde en el puerto configurado."""
+    base = url.rstrip("/")
+    try:
+        import httpx
+        return httpx.get(f"{base}/", timeout=0.8).status_code < 500
+    except Exception:
+        return False
+
+
+def ensure_ws_scrcpy_daemon() -> bool:
+    """Supervisa y auto-inicia el servicio ws-scrcpy si no está en ejecución."""
+    global _ws_scrcpy_proc
+    if is_ws_scrcpy_running():
+        return True
+
+    script = TOOLS_DIR / "run_ws_scrcpy.sh"
+    if not script.exists():
+        return False
+
+    parsed = urlparse(WS_SCRCPY_URL)
+    port = str(parsed.port or 8001)
+
+    try:
+        _ws_scrcpy_proc = subprocess.Popen(
+            ["bash", str(script), port],
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        import time
+        for _ in range(8):
+            time.sleep(0.4)
+            if is_ws_scrcpy_running():
+                return True
+    except Exception:
+        pass
+
+    return is_ws_scrcpy_running()
 
 
 def get_scrcpy_stream_info(name: str, player: str = "mse") -> Dict[str, Any]:
@@ -789,14 +832,10 @@ def get_scrcpy_stream_info(name: str, player: str = "mse") -> Dict[str, Any]:
         "udid": udid,
         "player": player,
         "ws": inner_ws,
-        "fitToScreen": "true",
     })
-    available = False
-    try:
-        import httpx
-        available = httpx.get(f"{base}/", timeout=0.8).status_code < 500
-    except Exception:
-        available = False
+    available = is_ws_scrcpy_running(base)
+    if not available:
+        available = ensure_ws_scrcpy_daemon()
     return {
         "available": available,
         "provider": "ws-scrcpy",

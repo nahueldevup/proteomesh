@@ -23,14 +23,15 @@ import {
   Trash2,
   Sun,
   Moon,
+  Monitor,
+  Zap,
 } from 'lucide-react';
 import type { Instance, ScrcpyStreamInfo, ProxyTestResult } from '../../types';
 import { api } from '../../lib/api';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
-import { PhoneScreen } from '../farm/PhoneScreen';
-import ScreenStream from './ScreenStream';
+import { InteractiveScreen } from './InteractiveScreen';
 import { MapPicker } from '../MapPicker';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -96,6 +97,7 @@ export default function FocusView({
   // Delete instance confirmation state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deletingInstance, setDeletingInstance] = useState(false);
+  const [streamMode, setStreamMode] = useState<'scrcpy' | 'canvas'>('scrcpy');
 
   const handleDeleteThisInstance = async () => {
     if (!instance) return;
@@ -127,6 +129,7 @@ export default function FocusView({
     }
   }, [instance?.instance_name]);
 
+  // Consulta periódica del streaming de alta fidelidad (ws-scrcpy)
   useEffect(() => {
     if (!instance || !instance.running) {
       setStreamInfo(null);
@@ -134,17 +137,26 @@ export default function FocusView({
     }
     const supportsWebCodecs = typeof window !== 'undefined' && 'VideoDecoder' in window;
     let alive = true;
-    api.getStreamInfo(instance.instance_name, supportsWebCodecs ? 'webcodecs' : 'mse')
-      .then((info) => {
-        if (alive) setStreamInfo(info);
-      })
-      .catch(() => {
-        if (alive) setStreamInfo(null);
-      });
+
+    const checkStream = () => {
+      api.getStreamInfo(instance.instance_name, supportsWebCodecs ? 'webcodecs' : 'mse')
+        .then((info) => {
+          if (alive) setStreamInfo(info);
+        })
+        .catch(() => {
+          if (alive) setStreamInfo(null);
+        });
+    };
+
+    checkStream();
+    // Reintentar si ws-scrcpy estaba arrancando o tras reconexión
+    const retryTimer = window.setInterval(checkStream, 4000);
+
     return () => {
       alive = false;
+      window.clearInterval(retryTimer);
     };
-  }, [instance]);
+  }, [instance?.instance_name, instance?.running]);
 
   if (!instance) {
     return (
@@ -243,6 +255,20 @@ export default function FocusView({
       toast.success('URL abierta');
     } catch {
       toast.error('Error al abrir URL');
+    }
+  };
+
+  const handleLaunchNativeScrcpy = async () => {
+    if (!instance) return;
+    try {
+      const res = await api.launchScrcpy(instance.instance_name);
+      if (res.status === 'success' || res.status === 'ok') {
+        toast.success(res.message || 'Scrcpy nativo iniciado');
+      } else {
+        toast.error(res.message || 'No se pudo iniciar scrcpy');
+      }
+    } catch (err: any) {
+      toast.error(`Fallo al lanzar scrcpy: ${err.message}`);
     }
   };
 
@@ -345,29 +371,63 @@ export default function FocusView({
         <span className="font-mono font-bold text-foreground text-sm">{instance.instance_name}</span>
         <span className="text-sm text-muted-foreground">{instance.location?.city ?? 'Sin GPS'}</span>
 
-        {onToggleTheme && (
-          <div className="ml-auto flex items-center gap-2">
+        {/* Selector de Modo de Streaming (30 FPS Ultra-Baja Latencia vs Fallback HD) */}
+        <div className="ml-auto flex items-center gap-2">
+          {instance.running && (
+            <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5 text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setStreamMode('scrcpy')}
+                className={cn(
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors cursor-pointer',
+                  streamMode === 'scrcpy'
+                    ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title="Streaming Scrcpy nativo (~20ms baja latencia a 30 FPS)"
+              >
+                <Zap className="h-3 w-3" />
+                <span>30 FPS</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStreamMode('canvas')}
+                className={cn(
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors cursor-pointer',
+                  streamMode === 'canvas'
+                    ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title="Modo Captura Continua (Fallback HD)"
+              >
+                <Camera className="h-3 w-3" />
+                <span>HD</span>
+              </button>
+            </div>
+          )}
+
+          {onToggleTheme && (
             <IconBtn
               icon={theme === 'dark' ? Sun : Moon}
               label={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
               onClick={onToggleTheme}
             />
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {/* ── CUERPO DE LA VISTA ENFOCADA (DISTRIBUCIÓN EXACTA DE LOVABLE) ────── */}
       <div className="flex min-h-0 flex-1 gap-4 p-4 overflow-hidden">
         {/* Columna Izquierda: Celular con Bisel Exacto + Cápsula Vertical Única */}
         <div className="flex h-full items-center gap-2">
-          {/* Bisel del Smartphone (Sin bordes negros, sin barras extras) */}
+          {/* Bisel del Smartphone con Pantalla Interactiva Táctil */}
           <div className="h-full rounded-2xl bg-bezel p-1.5 shadow-2xl flex items-center justify-center">
             <div
               style={{ aspectRatio: `${nativeWidth} / ${nativeHeight}` }}
               className="relative h-full overflow-hidden rounded-xl bg-black border border-border/40 select-none flex flex-col"
             >
               {instance.running ? (
-                cleanEmbedUrl ? (
+                streamMode === 'scrcpy' && cleanEmbedUrl ? (
                   <iframe
                     src={cleanEmbedUrl}
                     title={`scrcpy ${instance.instance_name}`}
@@ -375,14 +435,16 @@ export default function FocusView({
                     className="h-full w-full border-0 bg-black select-none pointer-events-auto"
                   />
                 ) : (
-                  <ScreenStream
-                    name={instance.instance_name}
-                    running={instance.running}
-                    active
+                  <InteractiveScreen
+                    instance={instance}
+                    onActionFeedback={(msg) => toast.info(msg, { duration: 1500 })}
                   />
                 )
               ) : (
-                <PhoneScreen instance={instance} compact={false} />
+                <InteractiveScreen
+                  instance={instance}
+                  onActionFeedback={(msg) => toast.info(msg, { duration: 1500 })}
+                />
               )}
             </div>
           </div>
@@ -506,15 +568,24 @@ export default function FocusView({
               </PopoverContent>
             </Popover>
 
-            {/* Visor nativo externo scrcpy (opcional) */}
+            {/* Lanzar Scrcpy Nativo para baja latencia extrema (Ventana externa) */}
+            <IconBtn
+              icon={Monitor}
+              label="Lanzar Scrcpy de escritorio (ventana nativa)"
+              side="right"
+              disabled={!instance.running}
+              onClick={handleLaunchNativeScrcpy}
+            />
+
+            {/* Visor scrcpy web en pestaña dedicada (opcional) */}
             {streamInfo?.available && (
               <a
                 href={streamInfo.embed_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Abrir scrcpy en pestaña dedicada"
+                title="Abrir scrcpy web en pestaña dedicada"
               >
-                <IconBtn icon={ExternalLink} label="Abrir scrcpy nativo" side="right" />
+                <IconBtn icon={ExternalLink} label="Abrir scrcpy web en pestaña" side="right" />
               </a>
             )}
 

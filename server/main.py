@@ -54,6 +54,16 @@ app.include_router(locations_router, prefix=API_PREFIX)
 app.include_router(proxies_router, prefix=API_PREFIX)
 
 
+@app.on_event("startup")
+def startup_event():
+    """Asegura la disponibilidad inmediata de servicios críticos (ws-scrcpy)."""
+    try:
+        from server.services.manager_bridge import ensure_ws_scrcpy_daemon
+        ensure_ws_scrcpy_daemon()
+    except Exception as e:
+        pass
+
+
 @app.get("/", tags=["Estado del Servidor"])
 def root():
     """Endpoint raíz con metadatos del servicio y enlaces a documentación."""

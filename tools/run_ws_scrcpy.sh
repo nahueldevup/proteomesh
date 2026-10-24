@@ -33,6 +33,48 @@ if [ ! -f dist/index.js ]; then
   npm run dist
 fi
 
+# Asegurar parche CSS limpio (sin botones redundantes, object-fit cover, touch directo)
+if [ -f "$WS_DIR/dist/public/main.css" ]; then
+  if ! grep -q "ProteoMesh Clean Frameless Overlay" "$WS_DIR/dist/public/main.css"; then
+    cat >> "$WS_DIR/dist/public/main.css" << 'CSSEOF'
+
+/* ProteoMesh Clean Frameless Overlay */
+.control-buttons-list,
+.control-wrapper {
+  display: none !important;
+}
+
+body.stream,
+.device-view,
+.video,
+canvas.video-layer {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: #000000 !important;
+  object-fit: cover !important;
+  touch-action: none !important;
+  user-select: none !important;
+}
+
+canvas.touch-layer {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  object-fit: cover !important;
+  touch-action: none !important;
+  user-select: none !important;
+  z-index: 1 !important;
+}
+CSSEOF
+  fi
+fi
+
 cat > "$CONFIG" <<EOF
 server:
   - secure: false

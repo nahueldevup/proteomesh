@@ -55,6 +55,6 @@ Thumbs.db
 .agents/
 .venv/
 skills-lock.json
-genfarmer_install.sh
+tools/genfarmer_install.sh
 *.swp
 *~
