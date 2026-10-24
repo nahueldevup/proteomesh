@@ -1,85 +1,83 @@
 import { useEffect, useState } from 'react';
-import { MapPin, Smartphone } from 'lucide-react';
 import type { Instance } from '../../types';
 import { api } from '../../lib/api';
+import { cn } from '../../lib/utils';
+import { PhoneScreen } from '../farm/PhoneScreen';
 
 interface DeviceCardProps {
   instance: Instance;
+  index: number;
   selected: boolean;
-  onToggleSelect: (name: string) => void;
+  onToggleSelect: (name: string, shiftKey?: boolean) => void;
   onOpen: (name: string) => void;
+  syncMode?: boolean;
 }
 
-export default function DeviceCard({ instance, selected, onToggleSelect, onOpen }: DeviceCardProps) {
+export default function DeviceCard({
+  instance,
+  index,
+  selected,
+  onToggleSelect,
+  onOpen,
+  syncMode = false,
+}: DeviceCardProps) {
   const [tick, setTick] = useState(0);
 
+  // Intervalo de recarga de snapshot para dispositivos encendidos
   useEffect(() => {
     if (!instance.running) return;
-    const interval = window.setInterval(() => setTick((t) => t + 1), 5000);
+    const interval = window.setInterval(() => setTick((t) => t + 1), 4000);
     return () => window.clearInterval(interval);
   }, [instance.running, instance.instance_name]);
 
-  const model = instance.template?.split('/')[1] || instance.template || 'CloudPhone';
+  const handleScreenTap = async (relX: number, relY: number) => {
+    if (!syncMode || !instance.running) return;
+    const nativeWidth = Number(instance.display?.width) || 1080;
+    const nativeHeight = Number(instance.display?.height) || 2340;
+    try {
+      await api.sendTap(instance.instance_name, relX * nativeWidth, relY * nativeHeight);
+    } catch (err) {
+      console.error('Error al enviar tap sincronizado:', err);
+    }
+  };
 
   return (
     <div
-      onClick={() => onOpen(instance.instance_name)}
-      className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-zinc-900/40 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40 ${
-        selected
-          ? 'border-blue-500/70 ring-1 ring-blue-500/40'
-          : 'border-zinc-800/80 hover:border-zinc-700'
-      }`}
+      onClick={(e) => onToggleSelect(instance.instance_name, e.shiftKey)}
+      onDoubleClick={() => onOpen(instance.instance_name)}
+      className={cn(
+        'group cursor-pointer select-none rounded-xl bg-bezel p-1 transition',
+        selected ? 'glow-selected' : 'ring-1 ring-border hover:ring-muted-foreground'
+      )}
     >
-      <label
-        onClick={(e) => e.stopPropagation()}
-        className="absolute left-2 top-2 z-20 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/80 backdrop-blur"
-      >
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(instance.instance_name)}
-          className="h-3.5 w-3.5 accent-blue-500"
+      <div className="relative aspect-[9/19.5] overflow-hidden rounded-lg [container-type:inline-size]">
+        <PhoneScreen
+          instance={instance}
+          interactive={syncMode && selected}
+          compact
+          tick={tick}
+          onTap={handleScreenTap}
         />
-      </label>
-
-      <span
-        className={`absolute right-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur ${
-          instance.running
-            ? 'bg-emerald-500/15 text-emerald-400'
-            : 'bg-zinc-900/80 text-zinc-500'
-        }`}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${instance.running ? 'animate-pulse bg-emerald-400' : 'bg-zinc-600'}`} />
-        {instance.running ? 'Online' : 'Offline'}
-      </span>
-
-      <div className="relative flex h-52 items-center justify-center overflow-hidden bg-black/60">
-        {instance.running ? (
-          <img
-            src={api.getScreenUrl(instance.instance_name, tick)}
-            alt={`Pantalla de ${instance.instance_name}`}
-            className="h-full w-full object-contain"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-2 text-zinc-700">
-            <Smartphone size={34} />
-            <span className="text-[10px] uppercase tracking-wider">Apagado</span>
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/70 via-transparent to-transparent" />
+        <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px] text-foreground/80 z-20">
+          {index + 1}
+        </span>
       </div>
 
-      <div className="space-y-1 px-3 pb-3 pt-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-mono text-xs font-semibold text-zinc-100">{instance.instance_name}</span>
-          <span className="shrink-0 font-mono text-[10px] text-zinc-500">:{instance.adb_port}</span>
-        </div>
-        <div className="truncate text-[11px] text-zinc-400">{model}</div>
-        <div className="flex items-center gap-1 truncate text-[11px] text-zinc-500">
-          <MapPin size={11} className="shrink-0 text-blue-400" />
-          <span className="truncate">{instance.location?.city || 'Sin GPS'}</span>
-        </div>
+      <div className="flex items-center gap-1 px-1 pt-1 font-mono text-[9.5px]">
+        <span
+          className={cn(
+            'h-1.5 w-1.5 shrink-0 rounded-full',
+            instance.running
+              ? 'bg-success shadow-[0_0_6px_#4ade80]'
+              : 'bg-muted-foreground/40'
+          )}
+        />
+        <span className="truncate flex-1 text-foreground/90 font-medium" title={instance.instance_name}>
+          {instance.instance_name}
+        </span>
+        <span className="ml-auto shrink-0 text-muted-foreground text-[8.5px]">
+          :{instance.adb_port}
+        </span>
       </div>
     </div>
   );

@@ -1,48 +1,67 @@
 import { useState, useEffect } from 'react';
 import {
   Smartphone,
-  Plus,
-  RefreshCw,
-  Search,
-  MapPin,
-  Shield,
   Layers,
-  CheckCircle2,
+  MapPin,
+  ShieldCheck,
+  Search,
+  CheckSquare,
+  Plus,
+  Command as CmdIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Cpu,
-  LayoutGrid,
 } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 import { api } from './lib/api';
 import type { Instance, TemplateItem, LocationData } from './types';
 import { CreateDeviceModal } from './components/CreateDeviceModal';
 import DeviceGrid from './components/grid/DeviceGrid';
-import GroupActionBar from './components/grid/GroupActionBar';
+import BulkBar from './components/grid/BulkBar';
 import FocusView from './components/focus/FocusView';
+import { TooltipProvider } from './components/ui/tooltip';
+import { IconBtn } from './components/ui/IconBtn';
+import { Slider } from './components/ui/slider';
+import { cn } from './lib/utils';
 
 type ViewMode = 'grid' | 'focus';
+type NavTab = 'instances' | 'templates' | 'locations' | 'proxies';
+
+const NAV = [
+  { id: 'instances' as const, label: 'CloudPhones', icon: Smartphone },
+  { id: 'templates' as const, label: 'Catálogo de modelos', icon: Layers },
+  { id: 'locations' as const, label: 'Mapa y ubicaciones', icon: MapPin },
+  { id: 'proxies' as const, label: 'Verificador de proxies', icon: ShieldCheck },
+];
 
 export function App() {
-  const [activeNav, setActiveNav] = useState<'instances' | 'templates' | 'locations' | 'proxies'>('instances');
+  const [activeNav, setActiveNav] = useState<NavTab>('instances');
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'stopped'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
 
-  // Vista Mosaico / Enfocado
+  // Mosaico vs Enfocado
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [focusedName, setFocusedName] = useState<string | null>(null);
+
+  // Columnas dinámicas del mosaico (8 por defecto, como en Lovable)
+  const [cols, setCols] = useState(8);
 
   // Selección múltiple y control de grupo
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState(false);
 
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // Barra lateral colapsable (colapsada por defecto como en Lovable)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
-  // Standalone tab data
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createPresetModel, setCreatePresetModel] = useState<string | undefined>(undefined);
+
+  // Datos para otras pestañas
   const [templatesCatalog, setTemplatesCatalog] = useState<Record<string, TemplateItem[]>>({});
   const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
 
   const fetchInstances = async () => {
-    setLoading(true);
     try {
       const data = await api.getInstances();
       setInstances(data);
@@ -53,14 +72,12 @@ export function App() {
       });
     } catch (err) {
       console.error('Error fetching instances:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchInstances();
-    const interval = setInterval(fetchInstances, 8000);
+    const interval = setInterval(fetchInstances, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -81,8 +98,8 @@ export function App() {
       (inst.location?.city || '').toLowerCase().includes(q) ||
       String(inst.adb_port).includes(q);
 
-    if (statusFilter === 'running') return matchesSearch && inst.running;
-    if (statusFilter === 'stopped') return matchesSearch && !inst.running;
+    if (statusFilter === 'online') return matchesSearch && inst.running;
+    if (statusFilter === 'offline') return matchesSearch && !inst.running;
     return matchesSearch;
   });
 
@@ -90,6 +107,9 @@ export function App() {
   const existingPorts = instances.map((i) => i.adb_port);
   const focusedInstance = instances.find((i) => i.instance_name === focusedName) ?? null;
   const selectedList = [...selectedNames];
+  const allFilteredSelected =
+    filteredInstances.length > 0 &&
+    filteredInstances.every((i) => selectedNames.has(i.instance_name));
 
   const toggleSelect = (name: string) => {
     setSelectedNames((prev) => {
@@ -102,13 +122,24 @@ export function App() {
 
   const toggleSelectAll = () => {
     const visible = filteredInstances.map((i) => i.instance_name);
-    const allSelected = visible.length > 0 && visible.every((n) => selectedNames.has(n));
-    setSelectedNames((prev) => {
-      const next = new Set(prev);
-      if (allSelected) visible.forEach((n) => next.delete(n));
-      else visible.forEach((n) => next.add(n));
-      return next;
-    });
+    if (allFilteredSelected) {
+      setSelectedNames((prev) => {
+        const next = new Set(prev);
+        visible.forEach((n) => next.delete(n));
+        return next;
+      });
+    } else {
+      setSelectedNames((prev) => {
+        const next = new Set(prev);
+        visible.forEach((n) => next.add(n));
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedNames(new Set());
+    setGroupMode(false);
   };
 
   const openFocus = (name: string) => {
@@ -116,238 +147,229 @@ export function App() {
     setViewMode('focus');
   };
 
-  const handleGroupAction = async (action: 'start' | 'stop' | 'restart') => {
-    await api.groupLifecycle(selectedList, action);
-    await fetchInstances();
+  const handleOpenCreateWithModel = (modelId: string) => {
+    setCreatePresetModel(modelId);
+    setIsCreateOpen(true);
   };
 
-  const isFullBleed = activeNav === 'instances' && viewMode === 'focus';
-
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 font-sans text-zinc-100 select-none">
-      {/* ── BARRA LATERAL ─────────────────────────────────────────────────── */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-950">
-        <div className="flex items-center gap-3 border-b border-zinc-800/80 p-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold tracking-wider text-white shadow-lg shadow-blue-500/20">
-            PM
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-zinc-100">
-              <span>PROTEOMESH</span>
-              <span className="rounded border border-blue-500/20 bg-blue-500/10 px-1 py-0.2 font-mono text-[10px] text-blue-400">
-                v1.0
-              </span>
+    <TooltipProvider delayDuration={150}>
+      <div className="flex h-screen w-full overflow-hidden bg-background">
+        <Toaster richColors position="top-right" theme="dark" />
+
+        {/* ── BARRA LATERAL (IDÉNTICA A LOVABLE APPSHELL) ───────────────────── */}
+        <aside
+          className={cn(
+            'flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200',
+            sidebarCollapsed ? 'w-14' : 'w-56'
+          )}
+        >
+          {/* Logo / Cabecera */}
+          <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary font-mono text-xs font-bold text-primary-foreground">
+              PM
             </div>
-            <div className="text-[11px] text-zinc-500">CloudPhone Platform</div>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-1 p-3">
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-            Gestión de Flota
-          </div>
-
-          {[
-            { id: 'instances', label: 'CloudPhones', icon: Smartphone, count: instances.length },
-            { id: 'templates', label: 'Catálogo de Modelos', icon: Layers, count: 17 },
-            { id: 'locations', label: 'Mapa & Ubicaciones', icon: MapPin },
-            { id: 'proxies', label: 'Verificador de Proxies', icon: Shield },
-          ].map((item) => {
-            const Icon = item.icon;
-            const isActive = activeNav === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveNav(item.id as typeof activeNav)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                  isActive
-                    ? 'border border-blue-500/20 bg-blue-600/10 text-blue-400 shadow-sm'
-                    : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+            {!sidebarCollapsed && (
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold tracking-wide">PROTEOMESH</div>
+                <div className="font-mono text-[10px] text-muted-foreground">
+                  {onlineCount}/{instances.length} online
                 </div>
-                {item.count !== undefined && (
-                  <span
-                    className={`rounded px-1.5 py-0.2 font-mono text-[10px] ${
-                      isActive ? 'bg-blue-500/20 text-blue-300' : 'bg-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    {item.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+              </div>
+            )}
+          </div>
 
-        <div className="space-y-1.5 border-t border-zinc-800/80 bg-zinc-900/20 p-3 text-[11px] text-zinc-500">
-          <div className="flex items-center justify-between">
-            <span>Motor Android:</span>
-            <span className="font-mono text-zinc-400">13 / API 33</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Root Hiding:</span>
-            <span className="flex items-center gap-1 text-emerald-400">
-              <CheckCircle2 className="h-3 w-3" /> 100/100
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Render Mode:</span>
-            <span className="font-mono text-zinc-400">Guest 30 FPS</span>
-          </div>
-        </div>
-      </aside>
+          {/* Navegación */}
+          <nav className="flex flex-1 flex-col gap-1 p-2">
+            {NAV.map((n) => {
+              const active = activeNav === n.id;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    setActiveNav(n.id);
+                    if (n.id === 'instances') setViewMode('grid');
+                  }}
+                  title={sidebarCollapsed ? n.label : undefined}
+                  className={cn(
+                    'flex h-9 items-center gap-3 rounded-md px-2.5 text-sm transition-colors text-left',
+                    active
+                      ? 'bg-sidebar-accent text-primary'
+                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                  )}
+                >
+                  <n.icon className="h-4 w-4 shrink-0" />
+                  {!sidebarCollapsed && <span className="truncate">{n.label}</span>}
+                </button>
+              );
+            })}
+          </nav>
 
-      {/* ── ÁREA PRINCIPAL ────────────────────────────────────────────────── */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-zinc-950">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-zinc-800/80 bg-zinc-900/30 px-6">
-          {activeNav === 'instances' && viewMode === 'grid' ? (
-            <div className="flex max-w-md flex-1 items-center gap-3">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+          {/* Botones inferiores: +, CMD, Toggle */}
+          <div
+            className={cn(
+              'flex gap-1 border-t border-sidebar-border p-2',
+              sidebarCollapsed ? 'flex-col items-center' : 'items-center'
+            )}
+          >
+            <IconBtn
+              icon={Plus}
+              label="Crear CloudPhone"
+              variant="primary"
+              side="right"
+              onClick={() => {
+                setCreatePresetModel(undefined);
+                setIsCreateOpen(true);
+              }}
+            />
+            <IconBtn
+              icon={CmdIcon}
+              label="Comandos (Ctrl+K)"
+              side="right"
+              onClick={() => toast.info('Consola rápida disponible')}
+            />
+            <IconBtn
+              icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose}
+              label={sidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
+              side="right"
+              className={sidebarCollapsed ? '' : 'ml-auto'}
+              onClick={() => setSidebarCollapsed((v) => !v)}
+            />
+          </div>
+        </aside>
+
+        {/* ── ÁREA PRINCIPAL ───────────────────────────────────────────────── */}
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Cabecera / Toolbar (Exacta de Lovable) */}
+          {activeNav === 'instances' && viewMode === 'grid' && (
+            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 bg-background">
+              {/* Buscador */}
+              <div className="relative w-64 min-w-0">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <input
-                  type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por ID, modelo, ciudad, puerto..."
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/80 py-1.5 pl-8 pr-3 text-xs text-zinc-100 transition-colors placeholder:text-zinc-500 focus:border-blue-500/80 focus:outline-none"
+                  placeholder="Buscar…"
+                  className="h-9 w-full rounded-full border border-input bg-surface pl-8 pr-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
 
-              <div className="flex shrink-0 items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5 text-[11px]">
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`rounded px-2 py-1 font-medium transition-colors ${
-                    statusFilter === 'all' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setStatusFilter('running')}
-                  className={`rounded px-2 py-1 font-medium transition-colors ${
-                    statusFilter === 'running' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Online ({onlineCount})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('stopped')}
-                  className={`rounded px-2 py-1 font-medium transition-colors ${
-                    statusFilter === 'stopped' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Offline ({instances.length - onlineCount})
-                </button>
+              {/* Filtro segmentado: Todos / Online / Offline */}
+              <div className="flex rounded-full border border-border p-0.5 text-xs bg-background">
+                {(['all', 'online', 'offline'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setStatusFilter(f)}
+                    className={cn(
+                      'rounded-full px-3.5 py-1 text-xs transition-colors',
+                      statusFilter === f
+                        ? 'bg-accent text-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {f === 'all' ? 'Todos' : f === 'online' ? 'Online' : 'Offline'}
+                  </button>
+                ))}
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
-              {activeNav === 'instances' && (
-                <>
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                  <span>Vista enfocada</span>
-                </>
-              )}
-            </div>
+
+              {/* Botón Seleccionar Todo */}
+              <IconBtn
+                icon={CheckSquare}
+                label="Seleccionar todo (Ctrl+A)"
+                onClick={toggleSelectAll}
+              />
+
+              {/* Slider de Columnas (min 4, max 12) */}
+              <div className="ml-auto flex w-40 items-center gap-2 font-mono text-xs text-muted-foreground">
+                <Slider
+                  min={4}
+                  max={12}
+                  step={1}
+                  value={[cols]}
+                  onValueChange={(v) => setCols(v[0] ?? 8)}
+                />
+                <span>{cols}</span>
+              </div>
+            </header>
           )}
 
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={fetchInstances}
-              className="rounded-lg border border-zinc-800 p-2 text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
-              title="Actualizar datos"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-400' : ''}`} />
-            </button>
-
-            <button
-              onClick={() => setIsCreateOpen(true)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] hover:bg-blue-500 active:scale-[0.98]"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Crear CloudPhone</span>
-            </button>
-          </div>
-        </header>
-
-        <div
-          className={
-            isFullBleed
-              ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
-              : 'flex-1 overflow-y-auto p-6'
-          }
-        >
+          {/* Cuerpo Central */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <div>
-              <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
-                  <div className="text-[11px] font-medium text-zinc-500">Total CloudPhones</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-zinc-100">{instances.length}</div>
-                </div>
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
-                  <div className="text-[11px] font-medium text-zinc-500">Instancias Conectadas</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-emerald-400">{onlineCount}</div>
-                </div>
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
-                  <div className="text-[11px] font-medium text-zinc-500">Límite RAM Seguro</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-zinc-100">2.5 GB / inst</div>
-                </div>
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
-                  <div className="text-[11px] font-medium text-zinc-500">Tasa de Refresco</div>
-                  <div className="mt-1 font-mono text-xl font-bold text-blue-400">30 FPS (Opt.)</div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/20">
-                <DeviceGrid
-                  instances={filteredInstances}
-                  selected={selectedNames}
-                  onToggleSelect={toggleSelect}
-                  onOpen={openFocus}
-                  onToggleSelectAll={toggleSelectAll}
-                />
-              </div>
+            <div className="grid-bg flex-1 overflow-auto p-4 pb-24">
+              <DeviceGrid
+                instances={filteredInstances}
+                selected={selectedNames}
+                cols={cols}
+                syncMode={groupMode}
+                onToggleSelect={toggleSelect}
+                onOpen={openFocus}
+                onSelectAll={toggleSelectAll}
+                onClearSelection={clearSelection}
+                onOpenCreate={() => setIsCreateOpen(true)}
+              />
             </div>
           )}
 
+          {/* Pestaña: CloudPhone en Vista Enfocada */}
           {activeNav === 'instances' && viewMode === 'focus' && (
-            <FocusView
-              instance={focusedInstance}
-              onBack={() => setViewMode('grid')}
-              groupInstances={selectedList}
-              groupMode={groupMode}
-              onChanged={fetchInstances}
-            />
+            <div className="flex-1 overflow-hidden">
+              <FocusView
+                instance={focusedInstance}
+                instances={filteredInstances}
+                onBack={() => setViewMode('grid')}
+                onSelectInstance={openFocus}
+                groupInstances={selectedList}
+                groupMode={groupMode}
+                onChanged={fetchInstances}
+              />
+            </div>
           )}
 
+          {/* Pestaña: Catálogo de Modelos */}
           {activeNav === 'templates' && (
-            <div className="space-y-6">
+            <div className="flex-1 overflow-auto p-4 space-y-6">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-100">Catálogo de 17 Plantillas Oficiales de Hardware</h3>
-                <p className="text-xs text-zinc-500">Especificaciones CMOS, sensores MEMS y TACs oficiales</p>
+                <h3 className="text-sm font-bold text-foreground">
+                  Catálogo Oficial de 17 Dispositivos Móviles
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Plantillas de hardware certificadas (SoC, GPU, sensores y displays oficiales)
+                </p>
               </div>
 
               {Object.entries(templatesCatalog).map(([brand, models]) => (
                 <div key={brand} className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
                     <Smartphone className="h-3.5 w-3.5" />
-                    <span>{brand} ({models.length} modelos)</span>
+                    <span>
+                      {brand} ({models.length} modelos)
+                    </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {models.map((m) => (
-                      <div key={m.id} className="space-y-1.5 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3.5">
-                        <div className="text-xs font-semibold text-zinc-100">{m.name}</div>
-                        <div className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
-                          <Cpu className="h-3 w-3 text-zinc-500" />
-                          <span>{m.soc_model}</span>
+                      <div
+                        key={m.id}
+                        className="flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-muted-foreground/40"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-card-foreground">{m.name}</span>
+                            <IconBtn
+                              icon={Plus}
+                              label={`Crear CloudPhone ${m.name}`}
+                              size="sm"
+                              variant="primary"
+                              onClick={() => handleOpenCreateWithModel(m.id)}
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                            <Cpu className="h-3 w-3 text-muted-foreground" />
+                            <span>{m.soc_model}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between border-t border-zinc-800 pt-1 text-[11px] text-zinc-500">
+                        <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-[10px] text-muted-foreground">
                           <span>{m.gpu_renderer}</span>
-                          <span className="font-mono text-zinc-400">{m.screen}</span>
+                          <span className="font-mono">{m.screen}</span>
                         </div>
                       </div>
                     ))}
@@ -357,76 +379,97 @@ export function App() {
             </div>
           )}
 
+          {/* Pestaña: Mapa y Geolocalización */}
           {activeNav === 'locations' && (
-            <div className="space-y-4">
+            <div className="flex-1 overflow-auto p-4 space-y-4">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-100">Explorador de Geolocalización Global</h3>
-                <p className="text-xs text-zinc-500">20 presets mundiales integrados en el motor de ProteoMesh</p>
+                <h3 className="text-sm font-bold text-foreground">Presets de Geolocalización Global</h3>
+                <p className="text-xs text-muted-foreground">
+                  Coordenadas y zonas horarias validadas para simulación física
+                </p>
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {Object.entries(locationPresets).map(([key, loc]) => (
-                  <div key={key} className="space-y-1 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-                    <div className="flex items-center gap-1.5 text-xs font-medium capitalize text-zinc-200">
-                      <MapPin className="h-3 w-3 shrink-0 text-blue-400" />
-                      <span>{key}</span>
+                  <div
+                    key={key}
+                    className="space-y-1.5 rounded-xl border border-border bg-card p-3.5 transition-all hover:border-muted-foreground/40"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold capitalize text-card-foreground">
+                        {loc.city}
+                      </span>
+                      <MapPin className="h-3.5 w-3.5 text-primary" />
                     </div>
-                    <div className="truncate text-[11px] text-zinc-400">{loc.city}</div>
-                    <div className="font-mono text-[10px] text-zinc-500">
+                    <div className="font-mono text-[10px] text-muted-foreground">
                       {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
                     </div>
-                    <div className="truncate font-mono text-[10px] text-zinc-500">{loc.timezone}</div>
+                    <div className="truncate font-mono text-[10px] text-muted-foreground">
+                      {loc.timezone}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Pestaña: Proxies */}
           {activeNav === 'proxies' && (
-            <div className="mx-auto max-w-xl space-y-4 py-8">
-              <div className="space-y-1 text-center">
-                <Shield className="mx-auto h-8 w-8 text-blue-400" />
-                <h3 className="text-sm font-semibold text-zinc-100">Verificador Asíncrono de Proxies Residenciales</h3>
-                <p className="text-xs text-zinc-500">Prueba la latencia, IP pública de salida y país antes de asignarlo</p>
-              </div>
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mx-auto max-w-xl space-y-4 py-8">
+                <div className="space-y-1 text-center">
+                  <ShieldCheck className="mx-auto h-8 w-8 text-primary" />
+                  <h3 className="text-sm font-bold text-foreground">
+                    Verificador de Proxies Residenciales
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Comprueba latencia, IP pública y país antes de asignarlo
+                  </p>
+                </div>
 
-              <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-                <label className="block text-xs font-medium text-zinc-300">Cadena de Proxy SOCKS5 / HTTP</label>
-                <input
-                  type="text"
-                  placeholder="socks5://user:pass@host:port o ip:port:user:pass"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 font-mono text-xs text-zinc-100 focus:border-blue-500 focus:outline-none"
-                />
-                <button className="w-full rounded-lg bg-blue-600 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-500/20 hover:bg-blue-500">
-                  Ejecutar Test de Conexión
-                </button>
+                <div className="space-y-3 rounded-xl border border-border bg-card p-5">
+                  <label className="block text-xs font-medium text-foreground">
+                    Cadena de Proxy SOCKS5 / HTTP
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="socks5://user:pass@host:port"
+                    className="h-9 w-full rounded-md border border-input bg-surface px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button
+                    onClick={() => toast.info('Función de test activa')}
+                    className="h-9 w-full rounded-md bg-primary text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity"
+                  >
+                    Ejecutar Test de Conexión
+                  </button>
+                </div>
               </div>
             </div>
           )}
-        </div>
-      </main>
+        </main>
 
-      <CreateDeviceModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onSuccess={fetchInstances}
-        existingPorts={existingPorts}
-      />
-
-      {activeNav === 'instances' && selectedNames.size > 1 && viewMode === 'grid' && (
-        <GroupActionBar
-          count={selectedNames.size}
-          selectedNames={selectedList}
-          groupMode={groupMode}
-          onToggleGroupMode={() => setGroupMode((g) => !g)}
-          onClear={() => {
-            setSelectedNames(new Set());
-            setGroupMode(false);
-          }}
-          onAction={handleGroupAction}
+        {/* Modal de Creación */}
+        <CreateDeviceModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+          onSuccess={fetchInstances}
+          existingPorts={existingPorts}
+          presetModel={createPresetModel}
         />
-      )}
-    </div>
+
+        {/* Barra Flotante de Acciones en Lote (Idéntica a Lovable) */}
+        {activeNav === 'instances' && viewMode === 'grid' && selectedNames.size > 0 && (
+          <BulkBar
+            selectedNames={selectedList}
+            groupMode={groupMode}
+            onToggleGroupMode={() => setGroupMode((g) => !g)}
+            onClear={clearSelection}
+            onRefresh={fetchInstances}
+            locationPresets={locationPresets}
+          />
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 

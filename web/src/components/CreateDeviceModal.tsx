@@ -22,6 +22,7 @@ interface CreateDeviceModalProps {
   onClose: () => void;
   onSuccess: () => void;
   existingPorts: number[];
+  presetModel?: string;
 }
 
 const TABS = ['hardware', 'carrier', 'location', 'proxy', 'limits'] as const;
@@ -40,6 +41,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   onClose,
   onSuccess,
   existingPorts,
+  presetModel,
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('hardware');
 
@@ -81,10 +83,11 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    setActiveTab('hardware');
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setProxyTestResult(null);
+    if (presetModel) {
+      setSelectedModel(presetModel);
+      const b = presetModel.split('/')[0];
+      if (b) setSelectedBrand(b);
+    }
 
     // Calcular siguiente puerto libre
     let nextPort = 5580;

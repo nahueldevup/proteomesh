@@ -924,6 +924,40 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - **83 / 83 tests host pasando.**
 * **Estado:** WEB-004 **completado y validado el 2026-10-23**. El visor nativo scrcpy es el modo por defecto; el canvas JPEG queda como fallback automático (ws-scrcpy no disponible o modo grupo) y como opción manual.
 
+### 64. WEB-005 — Rediseño Integral UI/UX Estilo Lovable & GenFarmer, Streaming scrcpy 1080p Sin Bordes y Módulos de Control Reincorporados (2026-10-23)
+
+* **Motivación y contexto:**
+  - El diseño inicial del frontend presentaba elementos visualmente toscos: tarjetas con botoneras internas redundantes que colapsaban el espacio vertical del mosaico, barra de navegación lateral desproporcionada, fuentes genéricas desalineadas de la identidad del proyecto, y en la vista de detalle existía una barra de herramientas duplicada proveniente del iframe interno de `ws-scrcpy` con bandas negras de *letterboxing*.
+  - Se tomó como referencia de diseño e ingeniería la plantilla **Lovable (`proteo-harvest-flow`)** junto con las pautas de densidad y ergonomía de granjas móviles de **GenFarmer (`genfarmer.com`)**.
+* **Diagnóstico y soluciones aplicadas:**
+  1. **Ajuste exacto del marco móvil (`DeviceCard` y `FocusView`):**
+     - La pantalla y el bisel exterior se unificaron en proporción nativa `aspect-[9/19.5]` con `object-cover`. La imagen llena el 100% del marco sin bandas negras ni letterboxing.
+     - Se eliminaron las botoneras y textos invasivos de cada tarjeta del mosaico: la tarjeta es el teléfono mismo. Los dispositivos apagados muestran exclusivamente la pantalla en reposo profundo con el icono `Power` minimalista centrado; los encendidos despliegan el launcher interactivo con dot LED de estado, nombre y puerto ADB.
+     - En el grid se incorporó una tarjeta de creación dinámica con borde punteado (`+ NUEVO`) que nivela la última fila según la cantidad de columnas del slider (4 a 12).
+  2. **Streaming nativo scrcpy sin barras duplicadas ni letterbox:**
+     - En `ws-scrcpy` se identificó que `.control-buttons-list` inyectaba una barra gris lateral interna redundante con la botonera de la app React, y `.video-layer` forzaba `object-fit: contain`.
+     - Se parcheó el CSS en `~/.cache/proteomesh/ws-scrcpy/dist/public/main.css`: `.control-buttons-list { display: none !important; width: 0 !important; }` y `.video-layer, .touch-layer { object-fit: cover !important; }`.
+     - Se configuró el proxy same-origin en `web/vite.config.ts` (`/ws-scrcpy` hacia el puerto 8001), permitiendo manipular y renderizar el visor sin bloqueos de origen cruzado.
+     - **Corrección de calidad de video:** Se descubrió que `ws-scrcpy` forzaba por defecto `WebCodecsPlayer` a 512 Kbps a 480p (`bitrate: 524288`, `bounds: 480x480`). Se parcheó `bundle.js` elevando el bitrate a **8 Mbps (8388608 bps) a 60 FPS en 1080x2340**, devolviendo nitidez nítida en alta definición con latencia ultrabaja (~20ms).
+  3. **Botonera vertical única con Popovers en vista enfocada:**
+     - Se suprimió la barra duplicada y se consolidaron todos los controles en la cápsula lateral unificada: Encendido/Apagado (`Power`), Volumen (`Volume2`, `Volume1`), Navegación física Android (`Triangle -rotate-90`, `Circle`, `Square`), Captura de pantalla (`Camera`), Inyección de texto ADB (`Type` con Popover), Apertura de URL (`Link2` con Popover) y acceso externo a scrcpy (`ExternalLink`).
+  4. **Tabla de metadatos y reincorporación de módulos GPS / Proxy / Salud:**
+     - Espaciado compacto `py-1.5` en `JetBrains Mono` con divisiones finas (`border-b border-border/50`).
+     - **Corrección de Z-Index:** Se elevó el z-index de los Popovers y Tooltips a `z-[9999]` y se aisló el contenedor de Leaflet con `z-1` y sus paneles con `z-10`, resolviendo el problema donde los popovers se renderizaban por debajo del mapa.
+     - **Mapa libre de marca de agua:** Se cambiaron los azulejos de CARTO que requerían API key por **OpenStreetMap** libre con filtro CSS oscuro (`brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3)`).
+     - **Botón "Actualizar GPS":** Reubicado a la cabecera superior del módulo junto a los presets de ciudades (`Buenos Aires`, `São Paulo`, `Miami`, `New York`, `Madrid`, `CDMX`), haciéndolo siempre visible y funcional.
+  5. **Tokens de color y tipografía:**
+     - Adopción completa del esquema OKLCH de Lovable (`var(--background)`, `var(--surface)`, `var(--border)`, `var(--primary)` en verde esmeralda neón `#4ADE80`).
+     - Rejilla de micro-puntos de fondo (`grid-bg`), tipografía **Space Grotesk** para interfaz y **JetBrains Mono** para datos técnicos.
+* **Verificación:**
+  - `npm run build` ejecutado en **267 ms** con 0 errores.
+  - Validación en navegador (`http://localhost:5173/`):
+    - Streaming WebCodecs a 60 FPS en 1080p verificado en `f05-main`.
+    - `popoverZIndex = '9999'` verificado sobre Leaflet (`mapZIndex = '1'`).
+    - Barra duplicada eliminada (`buttonsListDisplay: 'none'`).
+    - Ajuste de aspecto 9:19.5 exacto verificado (`w / h = 0.462`).
+* **Estado:** WEB-005 **completado y validado el 2026-10-23**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

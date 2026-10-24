@@ -12,6 +12,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/ws-scrcpy': {
+        target: 'http://127.0.0.1:8001',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/ws-scrcpy/, ''),
+      },
     },
   },
 })

@@ -9,6 +9,8 @@ interface MapPickerProps {
   onChange: (lat: number, lon: number, cityName?: string) => void;
   className?: string;
   height?: string;
+  showPresets?: boolean;
+  showInfoOverlay?: boolean;
 }
 
 // Presets rapidos para saltar a ciudades clave
@@ -30,6 +32,8 @@ export const MapPicker: React.FC<MapPickerProps> = ({
   onChange,
   className,
   height = '320px',
+  showPresets = true,
+  showInfoOverlay = true,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -54,14 +58,14 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     if (!mapContainerRef.current || isInitializedRef.current) return;
     isInitializedRef.current = true;
 
-    // Icono personalizado con pulso
+    // Icono personalizado en verde esmeralda con pulso (ProteoMesh)
     const customIcon = L.divIcon({
       className: 'proteomesh-marker',
       html: `
         <div style="position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px;">
-          <div style="position:absolute;width:32px;height:32px;background:rgba(59,130,246,0.2);border-radius:50%;animation:pm-pulse 2s ease-out infinite;"></div>
-          <div style="position:absolute;width:20px;height:20px;background:rgba(59,130,246,0.1);border-radius:50%;animation:pm-pulse 2s ease-out infinite 0.3s;"></div>
-          <div style="position:relative;width:12px;height:12px;background:#3b82f6;border:2.5px solid #ffffff;border-radius:50%;box-shadow:0 0 12px rgba(59,130,246,0.6);"></div>
+          <div style="position:absolute;width:32px;height:32px;background:rgba(16,185,129,0.25);border-radius:50%;animation:pm-pulse 2s ease-out infinite;"></div>
+          <div style="position:absolute;width:20px;height:20px;background:rgba(16,185,129,0.15);border-radius:50%;animation:pm-pulse 2s ease-out infinite 0.3s;"></div>
+          <div style="position:relative;width:12px;height:12px;background:#10b981;border:2.5px solid #ffffff;border-radius:50%;box-shadow:0 0 12px rgba(16,185,129,0.7);"></div>
         </div>
       `,
       iconSize: [36, 36],
@@ -78,13 +82,10 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     // Zoom en esquina inferior derecha
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Attribution minima
-    L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
-
-    // Tiles CartoDB Dark Matter (100% gratuitos, sin API key)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+    // Tiles libres OpenStreetMap (sin API Key, estilizados en oscuro por CSS)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      subdomains: 'abc',
       maxZoom: 19,
     }).addTo(map);
 
@@ -159,37 +160,41 @@ export const MapPicker: React.FC<MapPickerProps> = ({
 
   return (
     <div className="relative w-full space-y-2">
-      {/* Presets rapidos */}
-      <div className="flex flex-wrap gap-1">
-        {QUICK_PRESETS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => handlePresetClick(p)}
-            className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
-              Math.abs(latitude - p.lat) < 0.01 && Math.abs(longitude - p.lon) < 0.01
-                ? 'bg-blue-600/20 border-blue-500/40 text-blue-300'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {/* Presets rapidos (opcional) */}
+      {showPresets && (
+        <div className="flex flex-wrap gap-1">
+          {QUICK_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => handlePresetClick(p)}
+              className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
+                Math.abs(latitude - p.lat) < 0.01 && Math.abs(longitude - p.lon) < 0.01
+                  ? 'bg-primary/20 border-primary/40 text-primary font-medium'
+                  : 'bg-surface border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Contenedor del mapa */}
-      <div className={className || "rounded-lg overflow-hidden border border-zinc-800"} style={{ height }}>
+      <div className={className || "rounded-lg overflow-hidden border border-border"} style={{ height }}>
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       </div>
 
-      {/* Overlay de info */}
-      <div className="absolute top-10 left-2 z-[1000] bg-zinc-900/90 backdrop-blur-md px-2.5 py-1 rounded border border-zinc-800 text-[11px] text-zinc-300 flex items-center gap-1.5 shadow-lg pointer-events-none">
-        <MapPin className="w-3 h-3 text-blue-400" />
-        <span className="font-medium text-zinc-100 truncate max-w-[140px]">{city || 'Ubicacion fijada'}</span>
-        <span className="text-zinc-500 font-mono">
-          {latitude.toFixed(4)}, {longitude.toFixed(4)}
-        </span>
-      </div>
+      {/* Overlay de info (opcional) */}
+      {showInfoOverlay && (
+        <div className="absolute top-10 left-2 z-[10] bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-md border border-border text-[11px] text-foreground flex items-center gap-1.5 shadow-lg pointer-events-none">
+          <MapPin className="w-3 h-3 text-primary" />
+          <span className="font-medium truncate max-w-[140px]">{city || 'Ubicación fijada'}</span>
+          <span className="text-muted-foreground font-mono">
+            {latitude.toFixed(4)}, {longitude.toFixed(4)}
+          </span>
+        </div>
+      )}
 
       {/* Hint */}
       <div className="flex items-center gap-1 text-[10px] text-zinc-600">

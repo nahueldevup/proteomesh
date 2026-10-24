@@ -98,7 +98,7 @@ export default function ScreenStream({ name, running, fps = 3, active = true, on
   return (
     <canvas
       ref={canvasRef}
-      className="h-full w-full object-contain"
+      className="h-full w-full object-cover select-none pointer-events-none"
       width={270}
       height={585}
     />

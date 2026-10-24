@@ -225,4 +225,28 @@ export const api = {
     });
     return handleResponse<GroupResponse>(res);
   },
+
+  async groupText(instances: string[], text: string): Promise<{ success: number; failed: number }> {
+    const results = await Promise.allSettled(instances.map((name) => api.sendText(name, text)));
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    return { success, failed: results.length - success };
+  },
+
+  async groupLaunchUrl(instances: string[], url: string): Promise<{ success: number; failed: number }> {
+    const results = await Promise.allSettled(instances.map((name) => api.launchUrl(name, url)));
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    return { success, failed: results.length - success };
+  },
+
+  async groupSetLocation(instances: string[], payload: any): Promise<{ success: number; failed: number }> {
+    const results = await Promise.allSettled(instances.map((name) => api.setInstanceLocation(name, payload)));
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    return { success, failed: results.length - success };
+  },
+
+  async groupSetProxy(instances: string[], payload: any): Promise<{ success: number; failed: number }> {
+    const results = await Promise.allSettled(instances.map((name) => api.setInstanceProxy(name, payload)));
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    return { success, failed: results.length - success };
+  },
 };
