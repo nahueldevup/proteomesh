@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Smartphone, Plus } from 'lucide-react';
-import type { Instance } from '../../types';
+import type { Instance, UsbNetworkOverview } from '../../types';
 import DeviceCard from './DeviceCard';
 
 interface DeviceGridProps {
@@ -13,6 +13,8 @@ interface DeviceGridProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onOpenCreate?: () => void;
+  usbOverview?: UsbNetworkOverview | null;
+  onNetworkChange?: () => void;
 }
 
 export default function DeviceGrid({
@@ -25,6 +27,8 @@ export default function DeviceGrid({
   onSelectAll,
   onClearSelection,
   onOpenCreate,
+  usbOverview,
+  onNetworkChange,
 }: DeviceGridProps) {
   const lastSelectedRef = useRef<string | null>(null);
 
@@ -89,6 +93,8 @@ export default function DeviceGrid({
           syncMode={syncMode}
           onToggleSelect={handleSelectWithShift}
           onOpen={onOpen}
+          usbOverview={usbOverview}
+          onNetworkChange={onNetworkChange}
         />
       ))}
       {onOpenCreate && (
@@ -98,7 +104,7 @@ export default function DeviceGrid({
           className="group flex flex-col items-center justify-center aspect-[9/19.5] rounded-xl border border-dashed border-border/70 hover:border-primary/60 bg-bezel/40 hover:bg-bezel/80 cursor-pointer transition-all select-none text-muted-foreground hover:text-primary p-2"
           title="Crear nuevo CloudPhone"
         >
-          <div className="grid h-8 w-8 place-items-center rounded-md border border-border group-hover:border-primary/50 group-hover:bg-primary/10 transition-colors">
+          <div className="grid h-8 w-8 place-items-center rounded-md border border-border group-hover:border-emerald-500/50 group-hover:bg-emerald-500/10 transition-colors">
             <Plus className="h-4 w-4" />
           </div>
           <span className="mt-2 font-mono text-[9px] font-semibold tracking-wider opacity-70 group-hover:opacity-100 uppercase">

@@ -9,12 +9,13 @@ import {
   Link2,
   PackagePlus,
   MapPin,
-  Globe,
   X,
   VolumeX,
   Send,
   Loader2,
   Trash2,
+  ShieldAlert,
+  Usb,
 } from 'lucide-react';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -53,8 +54,6 @@ export default function BulkBar({
   const [apkValue, setApkValue] = useState('');
 
   const [gpsOpen, setGpsOpen] = useState(false);
-  const [proxyOpen, setProxyOpen] = useState(false);
-  const [proxyValue, setProxyValue] = useState('');
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -172,41 +171,33 @@ export default function BulkBar({
     }
   };
 
-  const handleSetProxy = async () => {
-    if (!proxyValue.trim()) return;
-    const raw = proxyValue.trim();
-    setProxyOpen(false);
-    setProxyValue('');
-    const toastId = toast.loading(`Configurando proxy en ${count} dispositivos...`);
+  const handleBatchQuarantine = async () => {
+    setBusy('quarantine');
+    const toastId = toast.loading(`Aislando ${count} CloudPhones y liberando módems USB...`);
     try {
-      let type = 'socks5';
-      let host = '';
-      let port = 1080;
-      let username: string | undefined;
-      let password: string | undefined;
-
-      if (raw.includes('://')) {
-        const parsed = new URL(raw);
-        type = parsed.protocol.replace(':', '');
-        host = parsed.hostname;
-        port = Number(parsed.port) || (type === 'socks5' ? 1080 : 8080);
-        if (parsed.username) username = decodeURIComponent(parsed.username);
-        if (parsed.password) password = decodeURIComponent(parsed.password);
-      } else {
-        const parts = raw.split(':');
-        host = parts[0];
-        port = Number(parts[1]) || 1080;
-        if (parts.length >= 4) {
-          username = parts[2];
-          password = parts[3];
-        }
-      }
-
-      await api.groupSetProxy(selectedNames, { type, host, port, username, password });
-      toast.success(`Proxy asignado a ${count} dispositivos`, { id: toastId });
+      await api.batchQuarantine(selectedNames);
+      toast.success(`${count} CloudPhones puestos en cuarentena segura`, { id: toastId });
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al asignar proxy en lote', { id: toastId });
+      toast.error(err instanceof Error ? err.message : 'Error al aislar en lote', { id: toastId });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleBatchClaim = async () => {
+    setBusy('claim');
+    const toastId = toast.loading(`Reclamando conexiones USB para ${count} CloudPhones...`);
+    try {
+      for (const name of selectedNames) {
+        await api.claimUsb(name).catch(() => {});
+      }
+      toast.success(`Solicitudes de USB enviadas para ${count} CloudPhones`, { id: toastId });
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al reclamar USB en lote', { id: toastId });
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -391,34 +382,23 @@ export default function BulkBar({
           </PopoverContent>
         </Popover>
 
-        {/* Cambiar Proxy */}
-        <Popover open={proxyOpen} onOpenChange={setProxyOpen}>
-          <PopoverTrigger asChild>
-            <div>
-              <IconBtn
-                icon={Globe}
-                label="Cambiar proxy"
-                side="top"
-                variant={proxyOpen ? 'active' : 'ghost'}
-              />
-            </div>
-          </PopoverTrigger>
-          <PopoverContent side="top" className="w-72 p-2">
-            <div className="mb-2 text-xs text-muted-foreground">Configurar Proxy</div>
-            <div className="flex gap-1">
-              <input
-                type="text"
-                autoFocus
-                value={proxyValue}
-                onChange={(e) => setProxyValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSetProxy()}
-                placeholder="socks5://host:port"
-                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono"
-              />
-              <IconBtn icon={Send} label="Aplicar" variant="primary" onClick={handleSetProxy} />
-            </div>
-          </PopoverContent>
-        </Popover>
+        {/* Reclamar Conexión USB en Lote */}
+        <IconBtn
+          icon={busy === 'claim' ? Loader2 : Usb}
+          label="Reclamar conexión USB en lote"
+          side="top"
+          disabled={busy !== null}
+          onClick={handleBatchClaim}
+        />
+
+        {/* Poner en Cuarentena / Soltar Red en Lote */}
+        <IconBtn
+          icon={busy === 'quarantine' ? Loader2 : ShieldAlert}
+          label="Soltar red / Poner en cuarentena"
+          side="top"
+          disabled={busy !== null}
+          onClick={handleBatchQuarantine}
+        />
 
         <Sep />
 

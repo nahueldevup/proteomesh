@@ -8,9 +8,9 @@ const variants: Record<IconBtnVariant, string> = {
   ghost: 'text-foreground/80 hover:text-foreground hover:bg-accent',
   solid: 'bg-secondary text-secondary-foreground hover:bg-accent border border-border',
   primary: 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm font-bold',
-  danger: 'text-destructive hover:bg-destructive/15',
-  success: 'text-success hover:bg-success/15',
-  active: 'bg-primary/15 text-primary ring-1 ring-primary/40',
+  danger: 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/15',
+  success: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15',
+  active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/40',
 };
 
 interface IconBtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {

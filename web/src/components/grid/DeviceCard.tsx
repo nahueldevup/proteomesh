@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { Instance } from '../../types';
+import { Usb, ShieldAlert, RotateCw, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import type { Instance, UsbNetworkOverview } from '../../types';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { PhoneScreen } from '../farm/PhoneScreen';
@@ -11,6 +13,8 @@ interface DeviceCardProps {
   onToggleSelect: (name: string, shiftKey?: boolean) => void;
   onOpen: (name: string) => void;
   syncMode?: boolean;
+  usbOverview?: UsbNetworkOverview | null;
+  onNetworkChange?: () => void;
 }
 
 export default function DeviceCard({
@@ -20,8 +24,13 @@ export default function DeviceCard({
   onToggleSelect,
   onOpen,
   syncMode = false,
+  usbOverview,
+  onNetworkChange,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
+  const [actionStatus, setActionStatus] = useState<'idle' | 'rotating' | 'claiming' | 'quarantining'>('idle');
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Intervalo de recarga de snapshot para dispositivos encendidos
   useEffect(() => {
@@ -29,6 +38,19 @@ export default function DeviceCard({
     const interval = window.setInterval(() => setTick((t) => t + 1), 4000);
     return () => window.clearInterval(interval);
   }, [instance.running, instance.instance_name]);
+
+  // Cerrar menú contextual al hacer clic en cualquier lugar
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClose = () => setShowContextMenu(false);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, [showContextMenu]);
+
+  // Derivar estado de red desde el overview global
+  const isWaiting = Boolean(usbOverview?.waiting_queue?.includes(instance.instance_name));
+  const waitingPos = isWaiting ? (usbOverview!.waiting_queue.indexOf(instance.instance_name) + 1) : null;
+  const assignedDev = usbOverview?.devices?.find((d) => d.assigned_instance === instance.instance_name);
 
   const handleScreenTap = async (relX: number, relY: number) => {
     if (!syncMode || !instance.running) return;
@@ -41,12 +63,78 @@ export default function DeviceCard({
     }
   };
 
+  const handleClaimUsb = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowContextMenu(false);
+    if (!instance.running) {
+      toast.error('Iniciá el CloudPhone antes de asignarle red');
+      return;
+    }
+    setActionStatus('claiming');
+    const toastId = toast.loading(`Reclamando módem USB para ${instance.instance_name}...`);
+    try {
+      const res = await api.claimUsb(instance.instance_name);
+      if (res.status === 'waiting') {
+        toast.info(res.message || `En cola de espera (#${res.queue_position})`, { id: toastId });
+      } else {
+        toast.success(`USB conectado (${res.public_ip})`, { id: toastId });
+      }
+      onNetworkChange?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al reclamar USB', { id: toastId });
+    } finally {
+      setActionStatus('idle');
+    }
+  };
+
+  const handleQuarantine = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowContextMenu(false);
+    setActionStatus('quarantining');
+    const toastId = toast.loading(`Aislando ${instance.instance_name} y liberando módem...`);
+    try {
+      await api.quarantineInstance(instance.instance_name);
+      toast.success(`Cuarentena activa para ${instance.instance_name}`, { id: toastId });
+      onNetworkChange?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al aislar instancia', { id: toastId });
+    } finally {
+      setActionStatus('idle');
+    }
+  };
+
+  const handleRotateIp = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowContextMenu(false);
+    setActionStatus('rotating');
+    const toastId = toast.loading(`Rotando IP en ${instance.instance_name} (Modo Avión)...`);
+    try {
+      const res = await api.rotateInstanceIp(instance.instance_name);
+      toast.success(`Nueva IP obtenida: ${res.new_ip}`, { id: toastId });
+      onNetworkChange?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al rotar IP', { id: toastId });
+    } finally {
+      setActionStatus('idle');
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!instance.running) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setShowContextMenu(true);
+  };
+
   return (
     <div
       onClick={(e) => onToggleSelect(instance.instance_name, e.shiftKey)}
       onDoubleClick={() => onOpen(instance.instance_name)}
+      onContextMenu={handleContextMenu}
       className={cn(
-        'group cursor-pointer select-none rounded-xl bg-bezel p-1 transition',
+        'group relative cursor-pointer select-none rounded-xl bg-bezel p-1 transition',
         selected ? 'glow-selected' : 'ring-1 ring-border hover:ring-muted-foreground'
       )}
     >
@@ -58,9 +146,131 @@ export default function DeviceCard({
           tick={tick}
           onTap={handleScreenTap}
         />
+
+        {/* Índice numérico superior izquierdo */}
         <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px] text-foreground/80 z-20">
           {index + 1}
         </span>
+
+        {/* Badge de Estado de Red NET-USB-001 superior derecho */}
+        <div className="absolute right-1 top-1 z-20 flex items-center">
+          {actionStatus === 'rotating' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-600 dark:bg-emerald-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md animate-pulse">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              ROTANDO...
+            </span>
+          ) : actionStatus === 'claiming' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-600 dark:bg-emerald-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md animate-pulse">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              RECLAMANDO...
+            </span>
+          ) : actionStatus === 'quarantining' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-rose-600 dark:bg-rose-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md animate-pulse">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              AISLANDO...
+            </span>
+          ) : assignedDev ? (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-emerald-600 dark:bg-emerald-700 text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-md backdrop-blur-xs"
+              title={`Conectado por ${assignedDev.iface} (${assignedDev.carrier})`}
+            >
+              <span className="h-1 w-1 rounded-full bg-white animate-pulse" />
+              {assignedDev.iface} • {assignedDev.public_ip || 'USB'}
+            </span>
+          ) : isWaiting ? (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-600 dark:bg-amber-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md backdrop-blur-xs animate-pulse">
+              ESPERANDO #{waitingPos}
+            </span>
+          ) : instance.running ? (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-950/85 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 text-[8px] font-bold shadow-md backdrop-blur-xs">
+              <ShieldAlert className="h-2.5 w-2.5" />
+              CUARENTENA
+            </span>
+          ) : null}
+        </div>
+
+        {/* Acciones Rápidas en Hover al fondo de la pantalla */}
+        {instance.running && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-1.5 inset-x-1.5 z-30 hidden group-hover:flex items-center justify-center gap-1 rounded-md bg-background/90 p-1 backdrop-blur-xs border border-border/80 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+          >
+            {assignedDev ? (
+              <>
+                <button
+                  onClick={handleRotateIp}
+                  disabled={actionStatus !== 'idle'}
+                  title="Forzar rotación de IP por Modo Avión ADB"
+                  className="flex-1 flex items-center justify-center gap-1 rounded border border-border bg-surface hover:bg-surface-hover px-1.5 py-1 text-[9px] font-semibold text-foreground transition-colors"
+                >
+                  <RotateCw className="h-2.5 w-2.5 text-primary" />
+                  <span>Rotar IP</span>
+                </button>
+                <button
+                  onClick={handleQuarantine}
+                  disabled={actionStatus !== 'idle'}
+                  title="Soltar módem y poner en cuarentena"
+                  className="flex-1 flex items-center justify-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-1.5 py-1 text-[9px] font-semibold text-rose-600 dark:text-rose-400 transition-colors"
+                >
+                  <ShieldAlert className="h-2.5 w-2.5" />
+                  <span>Soltar</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleClaimUsb}
+                disabled={actionStatus !== 'idle'}
+                title="Reclamar módem USB físico disponible"
+                className="w-full flex items-center justify-center gap-1 rounded bg-primary hover:opacity-90 px-1.5 py-1 text-[9px] font-bold text-primary-foreground transition-opacity"
+              >
+                <Usb className="h-2.5 w-2.5" />
+                <span>Reclamar USB</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Menú Contextual (Clic Secundario) */}
+        {showContextMenu && instance.running && (
+          <div
+            style={{ top: Math.min(menuPos.y, 160), left: Math.min(menuPos.x, 80) }}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute z-50 w-36 rounded-lg border border-border bg-popover p-1 shadow-xl animate-in fade-in zoom-in-95 duration-100 text-xs font-sans text-popover-foreground"
+          >
+            <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground border-b border-border/50 uppercase tracking-wider">
+              Red USB Módem
+            </div>
+            {assignedDev ? (
+              <>
+                <button
+                  onClick={handleRotateIp}
+                  disabled={actionStatus !== 'idle'}
+                  className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  <RotateCw className="h-3 w-3 text-primary" />
+                  <span>Rotar IP (Avión)</span>
+                </button>
+                <button
+                  onClick={handleQuarantine}
+                  disabled={actionStatus !== 'idle'}
+                  className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10"
+                >
+                  <ShieldAlert className="h-3 w-3 text-rose-500" />
+                  <span>Soltar Red / Cuarentena</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleClaimUsb}
+                disabled={actionStatus !== 'idle'}
+                className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+              >
+                <Usb className="h-3 w-3" />
+                <span>Reclamar USB</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1 px-1 pt-1 font-mono text-[9.5px]">
@@ -68,7 +278,7 @@ export default function DeviceCard({
           className={cn(
             'h-1.5 w-1.5 shrink-0 rounded-full',
             instance.running
-              ? 'bg-success shadow-[0_0_6px_#4ade80]'
+              ? 'bg-emerald-500'
               : 'bg-muted-foreground/40'
           )}
         />

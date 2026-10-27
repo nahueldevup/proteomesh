@@ -206,7 +206,7 @@ export function InteractiveScreen({
       {ripple && (
         <span
           key={ripple.key}
-          className="pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 animate-tap rounded-full border-2 border-primary bg-primary/40 z-30 shadow-[0_0_12px_var(--primary)]"
+          className="pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 animate-tap rounded-full border-2 border-emerald-400 bg-emerald-500/30 z-30 shadow-xs"
           style={{ left: `${ripple.x * 100}%`, top: `${ripple.y * 100}%` }}
         />
       )}

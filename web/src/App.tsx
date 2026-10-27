@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Smartphone,
   Layers,
@@ -13,27 +13,30 @@ import {
   Cpu,
   Sun,
   Moon,
+  Usb,
+  Clock,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { api } from './lib/api';
-import type { Instance, TemplateItem, LocationData } from './types';
+import type { Instance, TemplateItem, LocationData, UsbNetworkOverview } from './types';
 import { CreateDeviceModal } from './components/CreateDeviceModal';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
 import FocusView from './components/focus/FocusView';
+import UsbNetworkCenter from './components/network/UsbNetworkCenter';
 import { TooltipProvider } from './components/ui/tooltip';
 import { IconBtn } from './components/ui/IconBtn';
 import { Slider } from './components/ui/slider';
 import { cn } from './lib/utils';
 
 type ViewMode = 'grid' | 'focus';
-type NavTab = 'instances' | 'templates' | 'locations' | 'proxies';
+type NavTab = 'instances' | 'network' | 'templates' | 'locations' | 'proxies';
 
 const NAV = [
   { id: 'instances' as const, label: 'CloudPhones', icon: Smartphone },
+  { id: 'network' as const, label: 'Centro de Red USB', icon: Usb },
   { id: 'templates' as const, label: 'Catálogo de modelos', icon: Layers },
   { id: 'locations' as const, label: 'Mapa y ubicaciones', icon: MapPin },
-  { id: 'proxies' as const, label: 'Verificador de proxies', icon: ShieldCheck },
 ];
 
 export function App() {
@@ -85,6 +88,26 @@ export function App() {
   // Datos para otras pestañas
   const [templatesCatalog, setTemplatesCatalog] = useState<Record<string, TemplateItem[]>>({});
   const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
+
+  // Estado del Pool de Red USB y Cola FIFO (NET-USB-001)
+  const [usbOverview, setUsbOverview] = useState<UsbNetworkOverview | null>(null);
+
+  const fetchUsbOverview = useCallback(async () => {
+    try {
+      const data = await api.getUsbNetworkStatus();
+      setUsbOverview(data);
+    } catch {
+      // Silenciar si la API aún no está disponible
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsbOverview();
+    const interval = setInterval(() => {
+      fetchUsbOverview();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchUsbOverview]);
 
   const fetchInstances = async () => {
     try {
@@ -308,6 +331,33 @@ export function App() {
                 ))}
               </div>
 
+              {/* Indicador de Pool USB en Tiempo Real (NET-USB-001) */}
+              <div className="flex items-center gap-1.5 pl-1">
+                <button
+                  onClick={() => setActiveNav('network')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-hover transition-colors"
+                  title="Abrir Centro de Red USB"
+                >
+                  <Usb className="h-3.5 w-3.5 text-primary" />
+                  <span>
+                    USB Libres:{' '}
+                    <strong className={cn(usbOverview && usbOverview.summary.free_usb > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-muted-foreground')}>
+                      {usbOverview ? `${usbOverview.summary.free_usb}/${usbOverview.summary.total_usb}` : '—'}
+                    </strong>
+                  </span>
+                </button>
+                {usbOverview && usbOverview.summary.waiting_count > 0 && (
+                  <button
+                    onClick={() => setActiveNav('network')}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/30 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                    title="Ver CloudPhones en cola de espera"
+                  >
+                    <Clock className="h-3 w-3" />
+                    <span>En espera: {usbOverview.summary.waiting_count}</span>
+                  </button>
+                )}
+              </div>
+
               {/* Botón Seleccionar Todo */}
               <IconBtn
                 icon={CheckSquare}
@@ -350,6 +400,8 @@ export function App() {
                 onSelectAll={toggleSelectAll}
                 onClearSelection={clearSelection}
                 onOpenCreate={() => setIsCreateOpen(true)}
+                usbOverview={usbOverview}
+                onNetworkChange={fetchUsbOverview}
               />
             </div>
           )}
@@ -459,7 +511,17 @@ export function App() {
             </div>
           )}
 
-          {/* Pestaña: Proxies */}
+          {/* Pestaña: Centro de Red USB & Historial de IPs (NET-USB-001) */}
+          {activeNav === 'network' && (
+            <UsbNetworkCenter
+              instances={instances}
+              onSelectInstance={(name) => {
+                openFocus(name);
+              }}
+            />
+          )}
+
+          {/* Pestaña: Proxies (Legado / Fase Futura) */}
           {activeNav === 'proxies' && (
             <div className="flex-1 overflow-auto p-6">
               <div className="mx-auto max-w-xl space-y-4 py-8">

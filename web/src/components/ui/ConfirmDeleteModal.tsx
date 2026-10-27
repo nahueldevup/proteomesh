@@ -58,7 +58,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
       >
         {/* Cabecera compacta y sobria */}
         <div className="flex items-start gap-3">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400">
             <AlertTriangle className="h-4 w-4" />
           </div>
           <div className="space-y-0.5 min-w-0">
@@ -75,7 +75,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
         <div className="rounded-md border border-border/60 bg-background/70 p-2.5 max-h-32 overflow-y-auto font-mono text-xs text-muted-foreground space-y-1">
           {instances.map((name) => (
             <div key={name} className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
               <span className="text-foreground font-semibold truncate">{name}</span>
             </div>
           ))}
@@ -95,7 +95,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="flex h-8 items-center gap-1.5 rounded-md bg-destructive px-3 font-mono text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 transition-opacity disabled:opacity-50 shadow-sm"
+            className="flex h-8 items-center gap-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 font-mono text-xs font-semibold transition-opacity disabled:opacity-50 shadow-sm"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

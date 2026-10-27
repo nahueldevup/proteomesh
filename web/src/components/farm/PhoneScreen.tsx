@@ -111,7 +111,7 @@ export function PhoneScreen({
       {ripple && (
         <span
           key={ripple.key}
-          className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 animate-tap rounded-full border-2 border-primary bg-primary/30 z-30"
+          className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 animate-tap rounded-full border-2 border-emerald-400 bg-emerald-500/30 z-30"
           style={{ left: `${ripple.x * 100}%`, top: `${ripple.y * 100}%` }}
         />
       )}

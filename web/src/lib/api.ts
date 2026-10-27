@@ -1,4 +1,17 @@
-import type { Instance, TemplateItem, Carrier, LocationData, ProxyTestResult, ScrcpyLaunchResult, GroupResponse, ScrcpyStreamInfo } from '../types';
+import type {
+  Instance,
+  TemplateItem,
+  Carrier,
+  LocationData,
+  ProxyTestResult,
+  ScrcpyLaunchResult,
+  GroupResponse,
+  ScrcpyStreamInfo,
+  UsbNetworkOverview,
+  UsbPhysicalPhone,
+  InstanceUsbNetworkState,
+  IpLedgerResponse,
+} from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -120,6 +133,83 @@ export const api = {
   async removeInstanceProxy(name: string): Promise<any> {
     const res = await fetch(`${API_BASE}/instances/${name}/proxy`, { method: 'DELETE' });
     return handleResponse<any>(res);
+  },
+
+  // =========================================================
+  // NET-USB-001: Red USB Dinámica, Cuarentena e Historial de IPs
+  // =========================================================
+  async getUsbNetworkStatus(): Promise<UsbNetworkOverview> {
+    const res = await fetch(`${API_BASE}/network/status`);
+    return handleResponse<UsbNetworkOverview>(res);
+  },
+
+  async getUsbDevices(): Promise<{ devices: UsbPhysicalPhone[] }> {
+    const res = await fetch(`${API_BASE}/network/usb`);
+    return handleResponse<{ devices: UsbPhysicalPhone[] }>(res);
+  },
+
+  async getInstanceUsbNetworkState(name: string): Promise<InstanceUsbNetworkState> {
+    const res = await fetch(`${API_BASE}/instances/${name}/network/state`);
+    return handleResponse<InstanceUsbNetworkState>(res);
+  },
+
+  async claimUsb(name: string, preferredSerial?: string, stealFrom?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/network/claim-usb`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        preferred_serial: preferredSerial || null,
+        steal_from: stealFrom || null,
+      }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async quarantineInstance(name: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/network/quarantine`, { method: 'POST' });
+    return handleResponse<any>(res);
+  },
+
+  async rotateInstanceIp(name: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/network/rotate-ip`, { method: 'POST' });
+    return handleResponse<any>(res);
+  },
+
+  async batchQuarantine(instances: string[]): Promise<any> {
+    const res = await fetch(`${API_BASE}/network/batch-quarantine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async testUsbRotation(serial: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/network/usb/test-rotation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serial }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async getIpLedger(limit: number = 150, activeOnly: boolean = false): Promise<IpLedgerResponse> {
+    const res = await fetch(`${API_BASE}/network/ip-ledger?limit=${limit}&active_only=${activeOnly}`);
+    return handleResponse<IpLedgerResponse>(res);
+  },
+
+  async setIpLedgerTtl(ttl: string): Promise<{ status: string; ttl: string }> {
+    const res = await fetch(`${API_BASE}/network/ip-ledger/ttl`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl }),
+    });
+    return handleResponse<{ status: string; ttl: string }>(res);
+  },
+
+  async purgeIpLedger(): Promise<{ status: string; purged: number }> {
+    const res = await fetch(`${API_BASE}/network/ip-ledger/purge`, { method: 'POST' });
+    return handleResponse<{ status: string; purged: number }>(res);
   },
 
   // Control Interactivo y Pantalla

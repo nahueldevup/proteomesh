@@ -11,11 +11,11 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
-  Globe,
+  Usb,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { MapPicker } from './MapPicker';
-import type { TemplateItem, Carrier, ProxyTestResult } from '../types';
+import type { TemplateItem, Carrier } from '../types';
 import { cn } from '../lib/utils';
 
 interface CreateDeviceModalProps {
@@ -28,7 +28,7 @@ interface CreateDeviceModalProps {
 
 const STEPS = [
   { id: 'device' as const, label: '1. Dispositivo & SIM', icon: Smartphone },
-  { id: 'location' as const, label: '2. GPS & Proxy', icon: MapPin },
+  { id: 'location' as const, label: '2. Geolocalización GPS', icon: MapPin },
   { id: 'review' as const, label: '3. Recursos & Crear', icon: Zap },
 ];
 type StepId = typeof STEPS[number]['id'];
@@ -66,13 +66,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [longitude, setLongitude] = useState(-58.381592);
   const [altitude] = useState(25.0);
   const [city, setCity] = useState('Buenos Aires');
-  const [timezone, setTimezone] = useState('America/Argentina/Buenos_Aires');
-
-  // Proxy
-  const [rawProxy, setRawProxy] = useState('');
-  const [testingProxy, setTestingProxy] = useState(false);
-  const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
-  const [autoSyncProxyLocation, setAutoSyncProxyLocation] = useState(true);
+  const [timezone] = useState('America/Argentina/Buenos_Aires');
 
   // Catalogs
   const [templates, setTemplates] = useState<Record<string, TemplateItem[]>>({});
@@ -147,27 +141,6 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     if (!isFirstStep) setActiveStep(STEPS[currentStepIndex - 1].id);
   };
 
-  // Test de Proxy
-  const handleTestProxy = async () => {
-    if (!rawProxy.trim()) return;
-    setTestingProxy(true);
-    setProxyTestResult(null);
-    try {
-      const res = await api.testProxy({ proxy_url: rawProxy.trim() });
-      setProxyTestResult(res);
-      if (res.ok && res.latitude && res.longitude && autoSyncProxyLocation) {
-        setLatitude(res.latitude);
-        setLongitude(res.longitude);
-        setCity(`${res.city || ''}, ${res.country || ''}`.replace(/^, |, $/g, '').trim() || 'Proxy Location');
-        if (res.timezone) setTimezone(res.timezone);
-      }
-    } catch (err: any) {
-      setProxyTestResult({ ok: false, error: err.message });
-    } finally {
-      setTestingProxy(false);
-    }
-  };
-
   // Enviar Creación
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -205,10 +178,6 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         },
       };
 
-      if (rawProxy.trim()) {
-        payload.raw_proxy = rawProxy.trim();
-      }
-
       await api.createInstance(payload);
       setSuccessMessage(`CloudPhone "${name}" creado con éxito`);
       setTimeout(() => {
@@ -241,7 +210,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         {/* Cabecera Técnica Lovable */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-background/50 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-md border border-primary/30 bg-primary/10 text-primary">
+            <div className="grid h-8 w-8 place-items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <Smartphone className="h-4 w-4" />
             </div>
             <div>
@@ -274,7 +243,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                 className={cn(
                   'flex items-center gap-2 py-2.5 px-3.5 text-xs font-mono font-medium border-b-2 transition-all shrink-0',
                   isActive
-                    ? 'border-primary text-primary bg-primary/10 font-semibold'
+                    ? 'border-primary text-primary bg-emerald-500/10 font-semibold'
                     : isPast
                     ? 'border-transparent text-foreground hover:text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -295,18 +264,18 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
           {/* Mensajes de error/éxito */}
           {errorMessage && (
-            <div className="p-3 bg-destructive/15 border border-destructive/30 rounded-md text-xs text-destructive flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-md text-xs text-rose-600 dark:text-rose-400 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-500" />
               <div className="flex-1 font-mono">{errorMessage}</div>
-              <button onClick={() => setErrorMessage(null)} className="text-destructive/70 hover:text-destructive">
+              <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-300">
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-3 bg-primary/15 border border-primary/30 rounded-md text-xs text-primary flex items-center gap-2 font-mono">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-md text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2 font-mono">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
               <span>{successMessage}</span>
             </div>
           )}
@@ -354,7 +323,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                         min={1024}
                         max={65535}
                       />
-                      <span className={cn('text-[10px] mt-1 block', existingPorts.includes(port) ? 'text-destructive font-semibold' : 'text-muted-foreground')}>
+                      <span className={cn('text-[10px] mt-1 block', existingPorts.includes(port) ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-muted-foreground')}>
                         {existingPorts.includes(port) ? 'Puerto en uso' : 'Mapeado al 5555 del contenedor'}
                       </span>
                     </div>
@@ -400,7 +369,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                             className={cn(
                               'h-8 px-4 rounded-md border text-xs font-medium capitalize transition-all',
                               selectedBrand === brand
-                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
                                 : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-accent'
                             )}
                           >
@@ -420,7 +389,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                               className={cn(
                                 'p-2.5 rounded-md border cursor-pointer transition-all',
                                 isSelected
-                                  ? 'bg-primary/10 border-primary text-foreground'
+                                  ? 'bg-emerald-500/10 border-primary text-foreground'
                                   : 'bg-background/60 border-border hover:border-muted-foreground/40 text-muted-foreground'
                               )}
                             >
@@ -504,68 +473,15 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Sección de Proxy Residencial */}
-                  <div className="space-y-2 pt-2 border-t border-border/60">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <Globe className="h-3.5 w-3.5 text-primary" />
-                        <span>Proxy Residencial SOCKS5 / HTTP (Opcional)</span>
-                      </label>
-                      <span className="text-[10px] text-muted-foreground">Vacío = Conexión directa</span>
+                  {/* Red USB & Cuarentena en T=0 (NET-USB-001) */}
+                  <div className="space-y-1.5 pt-2 border-t border-border/60">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                      <Usb className="h-4 w-4 text-primary" />
+                      <span>Protección de Red: Cuarentena en T=0</span>
                     </div>
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={rawProxy}
-                        onChange={(e) => setRawProxy(e.target.value)}
-                        placeholder="socks5://user:pass@host:port o host:port:user:pass"
-                        className="flex-1 h-8.5 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleTestProxy}
-                        disabled={testingProxy || !rawProxy.trim()}
-                        className="h-8.5 px-3.5 rounded-md border border-border bg-secondary text-xs font-mono font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40 flex items-center gap-1.5"
-                      >
-                        {testingProxy && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
-                        <span>Probar</span>
-                      </button>
-                    </div>
-
-                    {proxyTestResult && (
-                      <div
-                        className={cn(
-                          'p-2.5 rounded-md border text-xs font-mono',
-                          proxyTestResult.ok
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                            : 'border-destructive/40 bg-destructive/10 text-destructive'
-                        )}
-                      >
-                        {proxyTestResult.ok ? (
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold">
-                              ✓ IP: {proxyTestResult.ip} · País: {proxyTestResult.country}
-                            </span>
-                            <span>{proxyTestResult.latency_ms} ms</span>
-                          </div>
-                        ) : (
-                          <span>Error: {proxyTestResult.error || 'Fallo de conexión'}</span>
-                        )}
-                      </div>
-                    )}
-
-                    <label className="flex items-center gap-2 cursor-pointer pt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={autoSyncProxyLocation}
-                        onChange={(e) => setAutoSyncProxyLocation(e.target.checked)}
-                        className="rounded border-border text-primary focus:ring-0 h-3.5 w-3.5"
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        Sincronizar coordenadas GPS automáticamente con la IP del proxy
-                      </span>
-                    </label>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      El CloudPhone arrancará aislado del host en la cadena DOCKER-USER. Las apps no tendrán salida a Internet hasta reclamar un módem USB físico en el Centro de Red. El streaming táctil y ADB permanecen siempre activos en la red local.
+                    </p>
                   </div>
                 </div>
               )}
@@ -588,7 +504,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                             className={cn(
                               'flex-1 h-8 rounded-md border font-mono text-xs transition-colors',
                               memoryLimit === p
-                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
                                 : 'bg-background border-border text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -614,7 +530,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                             className={cn(
                               'flex-1 h-8 rounded-md border font-mono text-xs transition-colors',
                               cpuLimit === c.value
-                                ? 'bg-primary/15 border-primary text-primary font-bold'
+                                ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
                                 : 'bg-background border-border text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -672,8 +588,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                         <span className="text-foreground">{city} ({latitude.toFixed(2)}, {longitude.toFixed(2)})</span>
                       </div>
                       <div className="flex justify-between border-b border-border/30 py-1">
-                        <span className="text-muted-foreground">Proxy:</span>
-                        <span className="text-foreground">{rawProxy ? 'Residencial' : 'Directo (Host)'}</span>
+                        <span className="text-muted-foreground">Red / Aislamiento:</span>
+                        <span className="text-foreground">Cuarentena T=0 (Módem USB)</span>
                       </div>
                     </div>
                   </div>

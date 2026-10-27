@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -15,7 +15,6 @@ import {
   Link2,
   ExternalLink,
   MapPin,
-  Shield,
   CheckCircle2,
   Send,
   Loader2,
@@ -25,8 +24,11 @@ import {
   Moon,
   Monitor,
   Zap,
+  Usb,
+  ShieldAlert,
+  RotateCw,
 } from 'lucide-react';
-import type { Instance, ScrcpyStreamInfo, ProxyTestResult } from '../../types';
+import type { Instance, ScrcpyStreamInfo, InstanceUsbNetworkState } from '../../types';
 import { api } from '../../lib/api';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -48,7 +50,7 @@ interface FocusViewProps {
   onToggleTheme?: () => void;
 }
 
-type SubTab = 'gps' | 'proxy' | 'health';
+type SubTab = 'gps' | 'network' | 'health';
 
 const QUICK_CITIES = [
   { name: 'Buenos Aires', lat: -34.603722, lon: -58.381592, tz: 'America/Argentina/Buenos_Aires' },
@@ -85,10 +87,25 @@ export default function FocusView({
   const [mapCity, setMapCity] = useState('Buenos Aires');
   const [mapBusy, setMapBusy] = useState(false);
 
-  // Proxy state
-  const [proxyInput, setProxyInput] = useState('');
-  const [testingProxy, setTestingProxy] = useState(false);
-  const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
+  // Network / USB state (NET-USB-001)
+  const [networkState, setNetworkState] = useState<InstanceUsbNetworkState | null>(null);
+  const [networkBusy, setNetworkBusy] = useState(false);
+
+  const fetchNetworkState = useCallback(async () => {
+    if (!instance) return;
+    try {
+      const st = await api.getInstanceUsbNetworkState(instance.instance_name);
+      setNetworkState(st);
+    } catch {
+      // Silenciar si no está disponible
+    }
+  }, [instance?.instance_name]);
+
+  useEffect(() => {
+    fetchNetworkState();
+    const interval = window.setInterval(fetchNetworkState, 5000);
+    return () => window.clearInterval(interval);
+  }, [fetchNetworkState]);
 
   // Health state
   const [healthChecking, setHealthChecking] = useState(false);
@@ -121,11 +138,6 @@ export default function FocusView({
       setMapLat(instance.location.latitude);
       setMapLon(instance.location.longitude);
       setMapCity(instance.location.city || 'Buenos Aires');
-    }
-    if (instance.proxy) {
-      setProxyInput(`${instance.proxy.type}://${instance.proxy.host}:${instance.proxy.port}`);
-    } else {
-      setProxyInput('');
     }
   }, [instance?.instance_name]);
 
@@ -291,36 +303,55 @@ export default function FocusView({
     }
   };
 
-  const handleTestProxy = async () => {
-    if (!proxyInput.trim()) return;
-    setTestingProxy(true);
-    setProxyTestResult(null);
+  const handleQuarantine = async () => {
+    if (!instance) return;
+    setNetworkBusy(true);
+    const toastId = toast.loading('Poniendo en cuarentena y liberando módem...');
     try {
-      const res = await api.testProxy({ raw: proxyInput.trim() });
-      setProxyTestResult(res);
-      if (res.ok) toast.success(`Proxy operativo · Latencia: ${res.latency_ms ?? 0}ms`);
-      else toast.error(res.error || 'Fallo en la prueba de proxy');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al probar proxy');
+      await api.quarantineInstance(instance.instance_name);
+      toast.success('Instancia en cuarentena segura (ADB y scrcpy activos)', { id: toastId });
+      await fetchNetworkState();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al aislar instancia', { id: toastId });
     } finally {
-      setTestingProxy(false);
+      setNetworkBusy(false);
     }
   };
 
-  const handleSaveProxy = async () => {
-    if (!proxyInput.trim()) {
-      await api.removeInstanceProxy(instance.instance_name);
-      toast.success('Proxy removido');
-      onChanged();
-      return;
-    }
-    const toastId = toast.loading('Guardando proxy en la instancia...');
+  const handleClaimUsb = async () => {
+    if (!instance) return;
+    setNetworkBusy(true);
+    const toastId = toast.loading('Reclamando conexión de módem USB...');
     try {
-      await api.setInstanceProxy(instance.instance_name, { raw: proxyInput.trim() });
-      toast.success('Proxy guardado correctamente', { id: toastId });
+      const res = await api.claimUsb(instance.instance_name);
+      if (res.status === 'waiting') {
+        toast.info(res.message || 'Instancia en cola FIFO de espera', { id: toastId });
+      } else {
+        toast.success(`Conexión USB activa · IP: ${res.public_ip}`, { id: toastId });
+      }
+      await fetchNetworkState();
       onChanged();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al guardar proxy', { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Fallo al reclamar módem USB', { id: toastId });
+    } finally {
+      setNetworkBusy(false);
+    }
+  };
+
+  const handleRotateIp = async () => {
+    if (!instance) return;
+    setNetworkBusy(true);
+    const toastId = toast.loading('Rotando IP móvil vía Modo Avión (ADB)...');
+    try {
+      const res = await api.rotateInstanceIp(instance.instance_name);
+      toast.success(`Nueva IP móvil obtenida: ${res.new_ip}`, { id: toastId });
+      await fetchNetworkState();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al rotar IP', { id: toastId });
+    } finally {
+      setNetworkBusy(false);
     }
   };
 
@@ -612,7 +643,8 @@ export default function FocusView({
                 ['IMEI', identity.imei ?? '351689227998429'],
                 ['Grupo', instance.carrier ?? 'ar_personal'],
                 ['Serial', identity.serial ?? 'R58RACBDED'],
-                ['Proxy', instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—'],
+                ['Proxy', instance.proxy?.exit_ip ? `${instance.proxy.exit_ip} (${instance.proxy.type.toUpperCase()})` : (instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—')],
+                ['Red USB', networkState?.public_ip ? `${networkState.public_ip} (Módem USB)` : (networkState?.state === 'QUARANTINE' ? 'Cuarentena (Aislado)' : (networkState?.state === 'WAITING_USB' ? `En Cola (#${networkState.queue_position})` : 'Cuarentena T=0'))],
                 ['Teléfono', identity.phone_number ?? '+549****3997'],
                 ['Zona horaria', instance.location?.timezone ?? 'America/Argentina/Buenos_Aires'],
               ].map(([k, v]) => (
@@ -645,16 +677,16 @@ export default function FocusView({
               </button>
 
               <button
-                onClick={() => setActiveTab('proxy')}
+                onClick={() => setActiveTab('network')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                  activeTab === 'proxy'
+                  activeTab === 'network'
                     ? 'bg-accent text-foreground font-semibold border border-border'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                 )}
               >
-                <Shield className="h-3.5 w-3.5 text-primary" />
-                <span>Proxy Residencial</span>
+                <Usb className="h-3.5 w-3.5 text-primary" />
+                <span>Red USB & Cuarentena</span>
               </button>
 
               <button
@@ -689,7 +721,7 @@ export default function FocusView({
                         className={cn(
                           'rounded px-2 py-0.5 text-[10px] font-mono transition-colors border',
                           mapCity === c.name
-                            ? 'bg-primary/20 text-primary border-primary/40 font-semibold'
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-semibold'
                             : 'border-border bg-background text-muted-foreground hover:text-foreground'
                         )}
                       >
@@ -735,83 +767,121 @@ export default function FocusView({
               </div>
             )}
 
-            {/* Contenido: Tab Proxy */}
-            {activeTab === 'proxy' && (
-              <div className="flex flex-col gap-3 pt-2.5 flex-1 min-h-0">
-                {/* Cabecera con título y botones de acción unificados (idéntico a GPS y Salud) */}
+            {/* Contenido: Tab Red USB & Cuarentena (NET-USB-001) */}
+            {activeTab === 'network' && (
+              <div className="flex flex-col gap-3 pt-2.5 flex-1 min-h-0 overflow-y-auto">
                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50 shrink-0 flex-wrap">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <Shield className="h-4 w-4 text-primary" />
-                    <span>Configuración de Proxy Residencial</span>
+                    <Usb className="h-4 w-4 text-primary" />
+                    <span>Red Dinámica por Anclaje USB</span>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {instance.proxy && (
+                    {networkState?.state === 'CONNECTED_USB' ? (
+                      <>
+                        <button
+                          onClick={handleRotateIp}
+                          disabled={networkBusy}
+                          className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+                        >
+                          {networkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3 text-primary" />}
+                          <span>Rotar IP (Modo Avión)</span>
+                        </button>
+                        <button
+                          onClick={handleQuarantine}
+                          disabled={networkBusy}
+                          className="flex h-7 items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors disabled:opacity-40"
+                        >
+                          <ShieldAlert className="h-3 w-3 text-rose-500" />
+                          <span>Soltar Red</span>
+                        </button>
+                      </>
+                    ) : (
                       <button
-                        onClick={() => {
-                          setProxyInput('');
-                          handleSaveProxy();
-                        }}
-                        className="h-7 rounded-md border border-border bg-background px-2.5 font-mono text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        onClick={handleClaimUsb}
+                        disabled={networkBusy}
+                        className="flex h-7 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity shadow-sm disabled:opacity-40"
                       >
-                        Quitar Proxy
+                        {networkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Usb className="h-3 w-3" />}
+                        <span>Reclamar Conexión USB</span>
                       </button>
                     )}
-                    <button
-                      onClick={handleSaveProxy}
-                      className="flex h-7 items-center gap-1.5 rounded-md bg-primary px-3 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
-                    >
-                      <Send className="h-3 w-3" />
-                      <span>Guardar Proxy</span>
-                    </button>
                   </div>
                 </div>
 
-                <div className="space-y-1 shrink-0">
-                  <label className="text-xs font-medium text-foreground">
-                    Cadena de Proxy SOCKS5 / HTTP
-                  </label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Formato: socks5://user:pass@host:port o host:port:user:pass
+                {/* Tarjeta de Estado Principal */}
+                <div className={cn(
+                  'rounded-xl border p-4 space-y-2.5 transition-all bg-surface',
+                  networkState?.state === 'CONNECTED_USB'
+                    ? 'border-emerald-500/40 ring-1 ring-emerald-500/15'
+                    : networkState?.state === 'WAITING_USB'
+                    ? 'border-amber-500/40 ring-1 ring-amber-500/15'
+                    : 'border-border'
+                )}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Estado de Conexión
+                    </span>
+                    {networkState?.state === 'CONNECTED_USB' ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Conectado a Celular USB
+                      </span>
+                    ) : networkState?.state === 'WAITING_USB' ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                        Esperando USB (#{networkState?.queue_position || 1})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        <ShieldAlert className="h-3 w-3 text-amber-500" />
+                        Cuarentena (Sin Internet)
+                      </span>
+                    )}
+                  </div>
+
+                  {networkState?.state === 'CONNECTED_USB' && (
+                    <div className="space-y-1.5 pt-1 border-t border-border/40 font-mono text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">IP Pública de Salida:</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{networkState.public_ip || 'Validando...'}</span>
+                      </div>
+                      {networkState.assigned_usb && (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Módem Físico:</span>
+                            <span className="text-foreground">{(networkState.assigned_usb as any).model || 'Android'} ({(networkState.assigned_usb as any).serial})</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Interfaz / Gateway:</span>
+                            <span className="text-foreground">{(networkState.assigned_usb as any).iface} · {(networkState.assigned_usb as any).gateway}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Operadora Móvil:</span>
+                            <span className="text-foreground">{(networkState.assigned_usb as any).carrier || 'Móvil'}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {networkState?.state !== 'CONNECTED_USB' && (
+                    <p className="text-xs text-muted-foreground leading-relaxed pt-1 border-t border-border/40">
+                      El contenedor está aislado por la regla de cortafuegos DOCKER-USER en el host CachyOS. Ningún paquete puede filtrarse hacia la red doméstica. ADB local y ws-scrcpy continúan funcionando normalmente.
+                    </p>
+                  )}
+                </div>
+
+                {/* Explicación de Evasión & Anti-Fraude */}
+                <div className="rounded-lg border border-border bg-surface p-3 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground text-[11px]">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                    <span>Hardening Kernel Transparente (Sin Detección de Proxy)</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Las aplicaciones dentro del CloudPhone ven exclusivamente la interfaz física <code className="text-primary font-mono">eth0</code> (enmascarada como wlan0 por el módulo nativo). No existen interfaces <code className="text-primary font-mono">tun0</code> ni flags VPN en Android.
                   </p>
                 </div>
-
-                <div className="flex gap-2 shrink-0">
-                  <input
-                    type="text"
-                    value={proxyInput}
-                    onChange={(e) => setProxyInput(e.target.value)}
-                    placeholder="socks5://user:pass@127.0.0.1:1080"
-                    className="h-8.5 flex-1 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <button
-                    disabled={testingProxy || !proxyInput.trim()}
-                    onClick={handleTestProxy}
-                    className="flex h-8.5 items-center gap-1 rounded-md border border-border bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-40"
-                  >
-                    {testingProxy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    <span>Probar</span>
-                  </button>
-                </div>
-
-                {proxyTestResult && (
-                  <div
-                    className={cn(
-                      'rounded-md p-2.5 text-xs font-mono border shrink-0',
-                      proxyTestResult.ok
-                        ? 'border-success/40 bg-success/10 text-success'
-                        : 'border-destructive/40 bg-destructive/10 text-destructive'
-                    )}
-                  >
-                    {proxyTestResult.ok ? (
-                      <div>
-                        IP Salida: {proxyTestResult.ip} · Latencia: {proxyTestResult.latency_ms}ms · País: {proxyTestResult.country ?? 'OK'}
-                      </div>
-                    ) : (
-                      <div>Error: {proxyTestResult.error || 'No se pudo conectar al proxy'}</div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
@@ -843,13 +913,13 @@ export default function FocusView({
                 <div className="grid grid-cols-2 gap-2 text-xs font-mono shrink-0">
                   <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
                     <span className="text-muted-foreground text-[10px]">Pixelscan Checker</span>
-                    <div className="font-bold text-success flex items-center gap-1 text-xs">
+                    <div className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-xs">
                       <CheckCircle2 className="h-3 w-3" /> 100/100 Low Risk
                     </div>
                   </div>
                   <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
                     <span className="text-muted-foreground text-[10px]">Root Detection Plus</span>
-                    <div className="font-bold text-success flex items-center gap-1 text-xs">
+                    <div className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-xs">
                       <CheckCircle2 className="h-3 w-3" /> 0/39 Detecciones
                     </div>
                   </div>

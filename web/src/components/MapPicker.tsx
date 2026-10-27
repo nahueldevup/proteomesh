@@ -170,7 +170,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({
               onClick={() => handlePresetClick(p)}
               className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
                 Math.abs(latitude - p.lat) < 0.01 && Math.abs(longitude - p.lon) < 0.01
-                  ? 'bg-primary/20 border-primary/40 text-primary font-medium'
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-medium'
                   : 'bg-surface border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40'
               }`}
             >

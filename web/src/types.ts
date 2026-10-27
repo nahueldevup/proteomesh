@@ -13,6 +13,7 @@ export interface ProxyConfig {
   port: number;
   username?: string | null;
   password?: string | null;
+  exit_ip?: string | null;
 }
 
 export interface ProxyTestResult {
@@ -107,4 +108,125 @@ export interface GroupResponse {
   total: number;
   succeeded: number;
   results: GroupActionResult[];
+}
+
+export interface RouteItem {
+  id: number;
+  label: string;
+  type: string;
+  host: string;
+  port: number;
+  username?: string | null;
+  auth?: boolean;
+  enabled: boolean;
+  status: 'active' | 'idle' | 'disabled';
+  assigned_instance?: string | null;
+  exit_ip?: string | null;
+  latency_ms?: number | null;
+  created_at?: string;
+}
+
+export interface UsbDevice {
+  serial: string;
+  state: string;
+  model?: string | null;
+  tether_enabled?: boolean;
+  usb_state?: string | null;
+  supported: boolean;
+  phase: number;
+}
+
+export interface RoutesOverview {
+  routes: RouteItem[];
+  usb_devices: UsbDevice[];
+  leases: Array<{
+    id: number;
+    instance_id: string;
+    exit_ip: string;
+    transport: string;
+    metadata?: Record<string, unknown>;
+    acquired_at?: string;
+  }>;
+  summary: { routes: number; active: number; quarantined: number };
+}
+
+export interface InstanceNetworkStatus {
+  instance: string;
+  running: boolean;
+  has_proxy: boolean;
+  proxy?: ProxyConfig | null;
+  lease?: {
+    exit_ip: string;
+    transport: string;
+    metadata?: Record<string, unknown>;
+    acquired_at?: string;
+  } | null;
+  tunnel_active: boolean;
+  quarantined: boolean;
+  usb_attached?: boolean;
+  state: 'routed' | 'quarantined' | 'direct' | 'pending' | string;
+  exit_ip?: string | null;
+  latency_ms?: number | null;
+  last_error?: string | null;
+  updated_at?: string | null;
+}
+
+// NET-USB-001 Types
+export interface UsbPhysicalPhone {
+  serial: string;
+  iface: string;
+  model: string;
+  carrier: string;
+  network_type: string;
+  battery: string;
+  mobile_data: boolean;
+  airplane_mode: boolean;
+  gateway?: string | null;
+  subnet?: string | null;
+  assigned_instance?: string | null;
+  status: 'idle' | 'assigned' | 'rotating' | 'error';
+  public_ip?: string | null;
+}
+
+export interface UsbNetworkSummary {
+  total_usb: number;
+  free_usb: number;
+  assigned_usb: number;
+  waiting_count: number;
+  ttl: string;
+}
+
+export interface UsbNetworkOverview {
+  summary: UsbNetworkSummary;
+  waiting_queue: string[];
+  devices: UsbPhysicalPhone[];
+}
+
+export interface IpLedgerEntry {
+  id: number;
+  ip: string;
+  instance_name: string;
+  usb_id: string;
+  carrier?: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  is_active: boolean;
+}
+
+export interface IpLedgerResponse {
+  ttl: string;
+  total_entries: number;
+  entries: IpLedgerEntry[];
+}
+
+export interface InstanceUsbNetworkState {
+  instance: string;
+  running: boolean;
+  state: 'QUARANTINE' | 'WAITING_USB' | 'RELEASING' | 'ROTATING_IP' | 'CONNECTED_USB' | 'OFFLINE' | string;
+  assigned_usb?: Record<string, unknown> | null;
+  public_ip?: string | null;
+  queue_position?: number | null;
+  message?: string | null;
+  updated_at?: string | null;
 }
