@@ -29,3 +29,9 @@ CORS_ORIGINS: List[str] = [
     "http://127.0.0.1:5173",
     "*",
 ]
+
+# Configuración de Red USB (NET-USB-001)
+USB_ROTATE_MAX_ATTEMPTS = 5
+USB_IP_TTL_DEFAULT = "7d"
+USB_MOBILE_FORCE_DATA = True
+PM_ENABLE_SOCKS5_UI = False

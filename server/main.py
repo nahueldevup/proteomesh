@@ -1,8 +1,12 @@
 """
 ProteoMesh Platform API — Servidor Backend FastAPI
 """
+import logging
+import subprocess
 import sys
 from pathlib import Path
+
+logger = logging.getLogger("proteomesh.main")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,6 +30,8 @@ from server.routes import (
     locations_router,
     instances_router,
     proxies_router,
+    routes_router,
+    network_router,
 )
 
 app = FastAPI(
@@ -52,16 +58,37 @@ app.include_router(templates_router, prefix=API_PREFIX)
 app.include_router(carriers_router, prefix=API_PREFIX)
 app.include_router(locations_router, prefix=API_PREFIX)
 app.include_router(proxies_router, prefix=API_PREFIX)
+app.include_router(network_router, prefix=API_PREFIX)
+app.include_router(routes_router, prefix=API_PREFIX)
 
 
 @app.on_event("startup")
 def startup_event():
-    """Asegura la disponibilidad inmediata de servicios críticos (ws-scrcpy)."""
+    """Asegura la disponibilidad de servicios críticos y reconcilia estado vs kernel (FRAG-01)."""
     try:
         from server.services.manager_bridge import ensure_ws_scrcpy_daemon
         ensure_ws_scrcpy_daemon()
     except Exception as e:
-        pass
+        logger.warning(f"No se pudo inicializar ws-scrcpy en arranque: {e}")
+
+    try:
+        from server.services.network.lease_registry import lease_registry
+        from server.services.network.host_firewall import host_firewall
+
+        res = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            running = set(line.strip() for line in res.stdout.splitlines() if line.strip())
+            released = lease_registry.reconcile(running)
+            if released > 0:
+                logger.info(f"[Startup] Se liberaron {released} leases de IP huérfanos.")
+            host_firewall.reconcile(running)
+    except Exception as e:
+        logger.error(f"[Startup] Error en reconciliación de red/leases: {e}")
 
 
 @app.get("/", tags=["Estado del Servidor"])

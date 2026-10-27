@@ -30,6 +30,8 @@ from typing import Optional
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 TEMPLATES_DIR = BASE_DIR / "templates"
 CARRIERS_DIR = BASE_DIR / "carriers"
 INSTANCES_DIR = BASE_DIR / "instances"
@@ -951,7 +953,7 @@ def cmd_create_instance(args):
     print(f"    --sysctl net.ipv6.conf.default.disable_ipv6=1 \\")
     print(f"    -v {inst_dir.resolve()}/data:/data \\")
     print(f"    -v {profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro \\")
-    print(f"    -p {args.port}:5555 \\")
+    print(f"    -p 127.0.0.1:{args.port}:5555 \\")
     print(f"    proteomesh:latest \\")
     print(f"    androidboot.redroid_gpu_mode=guest \\")
     print(f"    androidboot.use_redroid_c2=1 \\")
@@ -983,6 +985,27 @@ def container_ip(inst_name):
               "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", inst_name],
              timeout=10, capture_output=True, text=True)
     return r.stdout.strip()
+
+
+def predict_next_container_ip() -> Optional[str]:
+    """Predice la próxima IP que Docker asignará en la red bridge por defecto (VULN-01)."""
+    try:
+        r = _run(["docker", "network", "inspect", "bridge"], timeout=10, capture_output=True, text=True)
+        if r.returncode != 0:
+            return None
+        data = json.loads(r.stdout)[0]
+        used = set()
+        for c in data.get("Containers", {}).values():
+            ip = c.get("IPv4Address", "").split("/")[0]
+            if ip:
+                used.add(ip)
+        for i in range(2, 65534):
+            candidate = f"172.17.{i // 256}.{i % 256}"
+            if candidate not in used:
+                return candidate
+    except Exception:
+        pass
+    return None
 
 
 def container_network_ok(inst_name):
@@ -1128,7 +1151,7 @@ def cmd_start_instance(args):
         "-v", f"{inst_dir.resolve()}/data:/data",
         "-v", f"{profile_out.resolve()}:/system/etc/proteomesh_profile.json:ro",
         "-v", f"{inst_dir.resolve()}:/proteomesh/bundle:ro",
-        "-p", f"{port}:5555",
+        "-p", f"127.0.0.1:{port}:5555",
         "proteomesh:latest",
         "androidboot.redroid_gpu_mode=guest",
         "androidboot.use_redroid_c2=1",
@@ -1138,14 +1161,57 @@ def cmd_start_instance(args):
         f"androidboot.redroid_fps={rfps}"
     ])
 
+    # Pre-cuarentena en T=0 (VULN-01): Bloquea salida externa en DOCKER-USER ANTES del docker run
+    pred_ip = predict_next_container_ip()
+    if pred_ip:
+        try:
+            from server.services.network.host_firewall import host_firewall
+            host_firewall.apply_quarantine_sync(inst_name, pred_ip)
+            print(f"[*] Pre-cuarentena T=0 armada para {inst_name} en {pred_ip}.")
+        except Exception as e:
+            print(f"[!] Advertencia al pre-aplicar cuarentena T=0: {e}")
+
     res = subprocess.run(run_cmd, capture_output=True, text=True)
     if res.returncode != 0:
+        if pred_ip:
+            try:
+                from server.services.network.host_firewall import host_firewall
+                host_firewall.cleanup_instance_sync(inst_name, pred_ip)
+            except Exception:
+                pass
         print(f"[!] Error al iniciar Docker: {res.stderr.strip()}")
         return
 
     cid = res.stdout.strip()[:12]
     print(f"[✓] Contenedor {cid} iniciado correctamente.")
     adb_s = f"127.0.0.1:{port}"
+
+    # Cuarentena en T=0 (Cero Contaminación con el Host - NET-USB-001):
+    # Verificación y reaseguro de la IP final tras el arranque. ADB y ws-scrcpy quedan 100% preservados.
+    cip = container_ip(inst_name)
+    if cip:
+        try:
+            from server.services.network.host_firewall import host_firewall
+            if cip != pred_ip:
+                if pred_ip:
+                    host_firewall.cleanup_instance_sync(inst_name, pred_ip)
+                host_firewall.apply_quarantine_sync(inst_name, cip)
+            print(f"[✓] Cuarentena en T=0 confirmada para {inst_name} ({cip}) en el Host (ADB/scrcpy preservados).")
+        except Exception as e:
+            print(f"[!] Advertencia al aplicar cuarentena en host: {e}")
+
+    # Si la instancia tiene una ruta SOCKS configurada (modo legado), aplicar cuarentena adicional
+    if meta.get("proxy"):
+        print("[*] Ruta configurada: aplicando aislamiento de transporte...")
+        try:
+            import asyncio
+            from server.services.proxy_service import proxy_service
+            asyncio.run(proxy_service.quarantine(inst_name))
+            print("[✓] Cuarentena de transporte activa.")
+        except Exception as e:
+            print(f"[!] No se pudo aislar la instancia: {e}")
+            subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            raise SystemExit(1)
 
     def connect_adb():
         """Conecta ADB con reintentos hasta que el transporte figure como 'device'."""
@@ -1357,6 +1423,26 @@ def cmd_start_instance(args):
     if display_ok:
         print("[✓] Overrides finales de pantalla verificados.")
 
+    # ── Aplicar túnel de red / proxy configurado en meta.json ──────────────
+    if meta.get("proxy"):
+        print(f"[*] Validando y aplicando ruta de red ({meta['proxy'].get('type', 'socks5')})...")
+        try:
+            import asyncio
+            from server.services.proxy_service import proxy_service
+            asyncio.run(proxy_service.apply_from_meta(inst_name))
+            print(f"[✓] Ruta validada y enrutamiento transparente activado.")
+        except Exception as e:
+            from server.services.network.transport import QuarantineError
+            if isinstance(e, QuarantineError):
+                print(f"[!] No se pudo aislar la instancia ({e}).")
+                print("[!] Sin cuarentena no se expone la IP real: se detiene el contenedor.")
+                subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["adb", "disconnect", adb_s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                raise SystemExit(1)
+            print(f"[!] RUTA NO VALIDADA: {e}")
+            print(f"[!] La instancia sigue ENCENDIDA y EN CUARENTENA (sin salida a Internet).")
+            print(f"[!] ADB y scrcpy siguen operativos. Reintentá la asignación desde la sección Rutas.")
+
     net_ok, net_msg = container_network_ok(inst_name)
     if net_ok:
         print(f"[✓] Red host→contenedor OK ({net_msg})")
@@ -1373,8 +1459,32 @@ def cmd_start_instance(args):
 def cmd_stop_instance(args):
     """Detiene y elimina el contenedor Docker de la instancia."""
     inst_name = validate_instance_name(args.name)
+    cip = container_ip(inst_name)
     print(f"[*] Deteniendo contenedor '{inst_name}'...")
     subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Limpiar cortafuegos del host y liberar enrutamiento
+    try:
+        from server.services.network.host_firewall import host_firewall
+        host_firewall.cleanup_instance_sync(inst_name, cip)
+    except Exception:
+        pass
+
+    # Liberar asignación USB si existía
+    try:
+        usb_tether = INSTANCES_DIR / inst_name / "usb_tether.json"
+        if usb_tether.exists():
+            usb_tether.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    # Liberar lease de IP en el registro
+    try:
+        from server.services.network.lease_registry import lease_registry
+        lease_registry.release(inst_name)
+    except Exception:
+        pass
+
     print(f"[✓] Instancia '{inst_name}' detenida (los datos de /data se conservan en disco).")
 
 
@@ -1387,6 +1497,20 @@ def cmd_delete_instance(args):
     # 1. Detener Docker
     for cname in [inst_name, f"redroid-{inst_name}"]:
         subprocess.run(["docker", "rm", "-f", cname], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Limpiar cortafuegos del host
+    try:
+        from server.services.network.host_firewall import host_firewall
+        host_firewall.cleanup_instance_sync(inst_name, None)
+    except Exception:
+        pass
+
+    # Liberar lease de IP en el registro
+    try:
+        from server.services.network.lease_registry import lease_registry
+        lease_registry.release(inst_name)
+    except Exception:
+        pass
 
     # 2. Desconectar socket ADB
     meta_file = inst_dir / "meta.json"

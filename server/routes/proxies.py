@@ -15,7 +15,9 @@ from server.services.proxy_service import (
     test_proxy_connection,
     set_instance_proxy,
     parse_proxy_string,
+    proxy_service,
 )
+from server.services.network.lease_registry import IpConflictError
 from server.services.manager_bridge import get_single_instance
 
 router = APIRouter(prefix="", tags=["Proxies Residenciales"])
@@ -35,16 +37,11 @@ async def test_proxy(req: ProxyTestRequest):
     return await test_proxy_connection(proxy_config, timeout_sec=10.0)
 
 
-@router.get("/instances/{name}/proxy", response_model=Dict[str, Any], summary="Obtener proxy configurado en una instancia")
-def get_instance_proxy(name: str):
-    """Retorna la configuración de proxy asignada a la instancia (o null si conecta directo)."""
+@router.get("/instances/{name}/proxy", response_model=Dict[str, Any], summary="Obtener estado detallado del proxy de una instancia")
+async def get_instance_proxy(name: str):
+    """Retorna la configuración de proxy asignada, lease activo y estado del túnel kernel."""
     try:
-        inst = get_single_instance(name)
-        return {
-            "instance": name,
-            "has_proxy": inst.proxy is not None,
-            "proxy": inst.proxy.model_dump() if inst.proxy else None
-        }
+        return await proxy_service.get_proxy_status(name)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -52,8 +49,9 @@ def get_instance_proxy(name: str):
 @router.post("/instances/{name}/proxy", response_model=Dict[str, Any], summary="Asignar o actualizar proxy de una instancia")
 async def update_instance_proxy(name: str, req: InstanceProxyUpdate):
     """
-    Asigna un proxy a la instancia. Si auto_sync_location=True, automáticamente
-    prueba el proxy y sincroniza el GPS y timezone del CloudPhone para coincidir con la IP del proxy.
+    Asigna un proxy a la instancia con reserva exclusiva de IP.
+    Si la IP pública ya está tomada por otra instancia activa, retorna 409 Conflict.
+    Si auto_sync_location=True, sincroniza automáticamente el GPS y timezone.
     """
     try:
         proxy_config: Optional[ProxyConfig] = None
@@ -63,6 +61,8 @@ async def update_instance_proxy(name: str, req: InstanceProxyUpdate):
             proxy_config = req.proxy
 
         return await set_instance_proxy(name, proxy_config, auto_sync_location=req.auto_sync_location)
+    except IpConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
@@ -73,9 +73,9 @@ async def update_instance_proxy(name: str, req: InstanceProxyUpdate):
 
 @router.delete("/instances/{name}/proxy", response_model=Dict[str, Any], summary="Remover proxy de una instancia")
 async def remove_instance_proxy(name: str):
-    """Elimina la configuración de proxy de la instancia (vuelve a conexión directa)."""
+    """Elimina la configuración de proxy, desmonta el túnel tun0 y libera el lease de IP."""
     try:
-        return await set_instance_proxy(name, proxy_config=None, auto_sync_location=False)
+        return await proxy_service.disconnect_proxy(name)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

@@ -4,6 +4,7 @@ Puente de servicios Python nativos hacia el motor ProteoMesh
 import os
 import sys
 import json
+import fcntl
 import shutil
 import shlex
 import asyncio
@@ -310,7 +311,12 @@ async def start_instance_async(name: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    return {"status": "ok", "instance": name, "message": "Instancia iniciada correctamente"}
+    return {
+        "status": "ok",
+        "instance": name,
+        "quarantined": ("EN CUARENTENA" in out or "RUTA NO VALIDADA" in out),
+        "message": "Instancia iniciada correctamente"
+    }
 
 
 async def stop_instance_async(name: str) -> Dict[str, Any]:
@@ -330,6 +336,14 @@ async def stop_instance_async(name: str) -> Dict[str, Any]:
     if proc.returncode != 0:
         err = stderr.decode().strip()
         raise RuntimeError(f"Error al detener instancia '{name}': {err}")
+
+    # Liberar lease de IP en el registro
+    try:
+        from server.services.network.lease_registry import lease_registry
+        lease_registry.release(name)
+    except Exception:
+        pass
+
     return {"status": "ok", "instance": name, "message": "Instancia detenida"}
 
 
@@ -337,6 +351,13 @@ async def delete_instance_async(name: str) -> Dict[str, Any]:
     """Detiene y elimina un contenedor Docker y su carpeta de configuración de forma segura."""
     inst_name = validate_instance_name(name)
     inst_dir = INSTANCES_DIR / inst_name
+
+    # Liberar lease de IP en el registro
+    try:
+        from server.services.network.lease_registry import lease_registry
+        lease_registry.release(inst_name)
+    except Exception:
+        pass
 
     # 1. Detener contenedor Docker por ambos nombres posibles
     for cname in [inst_name, f"redroid-{inst_name}"]:
@@ -391,49 +412,61 @@ def set_instance_location_sync(name: str, update: LocationUpdate) -> LocationRes
     if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
         raise FileNotFoundError(f"Instancia '{inst_name}' no existe")
 
-    with open(inst_dir / "meta.json", "r", encoding="utf-8") as f:
-        meta = json.load(f)
+    meta_path = inst_dir / "meta.json"
+    lock_path = meta_path.with_suffix(".lock")
 
-    carrier_tz = None
-    profile_path = inst_dir / "profile.json"
-    profile_data = {}
-    if profile_path.exists():
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
         try:
-            with open(profile_path, "r", encoding="utf-8") as f:
-                profile_data = json.load(f)
-            carrier_tz = profile_data.get("telephony", {}).get("timezone")
-        except Exception:
-            pass
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
 
-    if update.latitude is not None and update.longitude is not None:
-        loc = {
-            "city": update.city or f"Coordenadas ({update.latitude:.4f}, {update.longitude:.4f})",
-            "latitude": float(update.latitude),
-            "longitude": float(update.longitude),
-            "altitude": float(update.altitude if update.altitude is not None else 25.0),
-            "accuracy": 4.2,
-            "timezone": update.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
-        }
-    elif update.location:
-        loc = parse_location(update.location, default_tz=carrier_tz)
-        if update.city:
-            loc["city"] = update.city
-        if update.timezone:
-            loc["timezone"] = update.timezone
-        if update.altitude is not None:
-            loc["altitude"] = float(update.altitude)
-    else:
-        raise ValueError("Debes especificar 'location' (preset o 'lat,lon') o 'latitude' y 'longitude'.")
+            carrier_tz = None
+            profile_path = inst_dir / "profile.json"
+            profile_data = {}
+            if profile_path.exists():
+                try:
+                    with open(profile_path, "r", encoding="utf-8") as f:
+                        profile_data = json.load(f)
+                    carrier_tz = profile_data.get("telephony", {}).get("timezone")
+                except Exception:
+                    pass
 
-    # Persistir en meta.json y profile.json
-    meta["location"] = loc
-    with open(inst_dir / "meta.json", "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
+            if update.latitude is not None and update.longitude is not None:
+                loc = {
+                    "city": update.city or f"Coordenadas ({update.latitude:.4f}, {update.longitude:.4f})",
+                    "latitude": float(update.latitude),
+                    "longitude": float(update.longitude),
+                    "altitude": float(update.altitude if update.altitude is not None else 25.0),
+                    "accuracy": 4.2,
+                    "timezone": update.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
+                }
+            elif update.location:
+                loc = parse_location(update.location, default_tz=carrier_tz)
+                if update.city:
+                    loc["city"] = update.city
+                if update.timezone:
+                    loc["timezone"] = update.timezone
+                if update.altitude is not None:
+                    loc["altitude"] = float(update.altitude)
+            else:
+                raise ValueError("Debes especificar 'location' (preset o 'lat,lon') o 'latitude' y 'longitude'.")
 
-    if profile_data:
-        profile_data["location"] = loc
-        with open(profile_path, "w", encoding="utf-8") as f:
-            json.dump(profile_data, f, indent=2)
+            # Persistir en meta.json y profile.json bajo lock
+            meta["location"] = loc
+            tmp_meta = meta_path.with_suffix(".tmp")
+            with open(tmp_meta, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            os.replace(tmp_meta, meta_path)
+
+            if profile_data:
+                profile_data["location"] = loc
+                tmp_prof = profile_path.with_suffix(".tmp")
+                with open(tmp_prof, "w", encoding="utf-8") as f:
+                    json.dump(profile_data, f, indent=2)
+                os.replace(tmp_prof, profile_path)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
     # Inyectar si el contenedor está en ejecución
     check_cid = subprocess.run(

@@ -4,12 +4,13 @@ Test suite para el servicio y endpoints de Proxies Residenciales
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from server.services.proxy_service import parse_proxy_string
+from server.services.proxy_service import parse_proxy_string, proxy_service
 from server.models.schemas import ProxyConfig
 
 try:
@@ -70,6 +71,25 @@ class ProxyApiEndpointsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
+        import json, shutil
+        cls.inst_dir = REPO_ROOT / "instances" / "_test_proxy_api"
+        if cls.inst_dir.exists():
+            shutil.rmtree(cls.inst_dir, ignore_errors=True)
+        cls.inst_dir.mkdir(parents=True)
+        (cls.inst_dir / "meta.json").write_text(json.dumps({
+            "instance_name": "_test_proxy_api",
+            "template": "templates/samsung/a54x.json",
+            "carrier": "ar_personal",
+            "adb_port": 5599,
+            "limits": {"memory": "2.5g", "cpus": "0-3"},
+            "display": {"width": 1080, "height": 2340, "dpi": 450},
+        }), encoding="utf-8")
+        (cls.inst_dir / "profile.json").write_text("{}", encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.inst_dir, ignore_errors=True)
 
     def test_test_proxy_endpoint_invalid_format(self):
         res = self.client.post("/api/v1/proxies/test", json={"proxy_url": "formato_invalido"})
@@ -80,34 +100,36 @@ class ProxyApiEndpointsTest(unittest.TestCase):
 
     def test_get_and_update_instance_proxy(self):
         # 1. Obtener proxy inicial de f05-main (debe ser null o existente)
-        res_init = self.client.get("/api/v1/instances/f05-main/proxy")
+        res_init = self.client.get("/api/v1/instances/_test_proxy_api/proxy")
         self.assertEqual(res_init.status_code, 200)
 
-        # 2. Asignar proxy residencial (desactivando auto_sync_location para test offline)
+        # 2. Asignar proxy residencial (offline: no tocar contenedores reales)
         payload = {
             "raw_proxy": "socks5://res_user:res_pass@198.51.100.50:1080",
             "auto_sync_location": False
         }
-        res_set = self.client.post("/api/v1/instances/f05-main/proxy", json=payload)
-        self.assertEqual(res_set.status_code, 200)
-        set_data = res_set.json()
-        self.assertEqual(set_data["status"], "ok")
-        self.assertEqual(set_data["proxy"]["host"], "198.51.100.50")
-        self.assertEqual(set_data["proxy"]["port"], 1080)
-        self.assertEqual(set_data["proxy"]["username"], "res_user")
+        with patch.object(proxy_service, "_container_running", return_value=False):
+            res_set = self.client.post("/api/v1/instances/_test_proxy_api/proxy", json=payload)
+            self.assertEqual(res_set.status_code, 200)
+            set_data = res_set.json()
+            self.assertEqual(set_data["status"], "ok")
+            self.assertEqual(set_data["proxy"]["host"], "198.51.100.50")
+            self.assertEqual(set_data["proxy"]["port"], 1080)
+            self.assertEqual(set_data["proxy"]["username"], "res_user")
 
         # 3. Verificar que get_instance_proxy y get_single_instance reflejan el proxy
-        res_get = self.client.get("/api/v1/instances/f05-main/proxy")
+        res_get = self.client.get("/api/v1/instances/_test_proxy_api/proxy")
         self.assertEqual(res_get.status_code, 200)
         self.assertTrue(res_get.json()["has_proxy"])
         self.assertEqual(res_get.json()["proxy"]["host"], "198.51.100.50")
 
         # 4. Remover proxy de la instancia
-        res_del = self.client.delete("/api/v1/instances/f05-main/proxy")
-        self.assertEqual(res_del.status_code, 200)
+        with patch.object(proxy_service, "_container_running", return_value=False):
+            res_del = self.client.delete("/api/v1/instances/_test_proxy_api/proxy")
+            self.assertEqual(res_del.status_code, 200)
 
         # 5. Verificar que quedó sin proxy
-        res_after = self.client.get("/api/v1/instances/f05-main/proxy")
+        res_after = self.client.get("/api/v1/instances/_test_proxy_api/proxy")
         self.assertEqual(res_after.status_code, 200)
         self.assertFalse(res_after.json()["has_proxy"])
         self.assertIsNone(res_after.json()["proxy"])

@@ -118,6 +118,8 @@ class ProxyConfig(BaseModel):
 
 class ProxyTestRequest(BaseModel):
     proxy_url: Optional[str] = Field(default=None, description="Cadena de proxy (ej: socks5://user:pass@ip:port o ip:port:user:pass)")
+    raw: Optional[str] = Field(default=None, description="Alias para proxy_url")
+    raw_proxy: Optional[str] = Field(default=None, description="Alias para proxy_url")
     type: Optional[str] = Field(default="socks5", description="Tipo por defecto si no viene en URL")
     host: Optional[str] = None
     port: Optional[int] = None
