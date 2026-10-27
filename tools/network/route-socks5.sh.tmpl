@@ -1,0 +1,86 @@
+#!/system/bin/sh
+# Script de enrutamiento transparente SOCKS5 a nivel kernel vía tun2socks
+# No utiliza VPN de Android (sin flag TRANSPORT_VPN ni diálogo modal).
+# Tráfico local Docker/ADB (172.17.0.0/16) queda preservado en eth0.
+
+set -e
+
+IP_CMD="/data/local/tmp/ip_bin/ip"
+[ -x "$IP_CMD" ] || IP_CMD="ip"
+
+PROXY_URL="__PROXY_URL__"
+PROXY_HOST_IP="__PROXY_HOST_IP__"
+LOG_LEVEL="__LOG_LEVEL__"
+[ -z "$LOG_LEVEL" ] && LOG_LEVEL="warning"
+
+# Detectar interfaz física de salida hacia el host
+MAIN_IFACE=$( $IP_CMD link show | awk -F': ' '/eth0/ {print "eth0"; exit}' )
+[ -z "$MAIN_IFACE" ] && MAIN_IFACE="eth0"
+
+# 1. Limpieza de túnel previo si existiera
+$IP_CMD rule del table 99 2>/dev/null || true
+$IP_CMD route flush table 99 2>/dev/null || true
+if [ -f /data/local/tmp/tun2socks.pid ]; then
+  kill $(cat /data/local/tmp/tun2socks.pid) 2>/dev/null || true
+  rm -f /data/local/tmp/tun2socks.pid
+fi
+pkill -f "tun2socks -device tun0" 2>/dev/null || true
+$IP_CMD link del dev tun0 2>/dev/null || true
+
+# 2. Crear y configurar la interfaz virtual tun0
+$IP_CMD tuntap add mode tun dev tun0
+$IP_CMD link set dev tun0 up
+$IP_CMD addr add 198.18.0.1/15 dev tun0
+
+# 3. Iniciar el demonio tun2socks
+/data/local/tmp/tun2socks -device tun0 -proxy "$PROXY_URL" -interface "$MAIN_IFACE" -loglevel "$LOG_LEVEL" > /data/local/tmp/tun2socks.log 2>&1 &
+TUN_PID=$!
+echo $TUN_PID > /data/local/tmp/tun2socks.pid
+
+# 4. Configurar tabla de enrutamiento 99 (excluir tráfico local y del servidor proxy)
+$IP_CMD route add 172.17.0.0/16 dev "$MAIN_IFACE" table 99
+$IP_CMD route add 127.0.0.0/8 dev lo table 99
+if [ -n "$PROXY_HOST_IP" ] && [ "$PROXY_HOST_IP" != "127.0.0.1" ] && [ "$PROXY_HOST_IP" != "172.17.0.1" ]; then
+  $IP_CMD route add "$PROXY_HOST_IP" dev "$MAIN_IFACE" table 99 2>/dev/null || true
+fi
+$IP_CMD route add default dev tun0 table 99
+
+# 5. Activar regla de enrutamiento con prioridad superior
+$IP_CMD rule add from all table 99 prio 9000
+
+# 5b. DNS: redirigir UDP/TCP 53 al puente DNS-over-TCP del host (solo si existe)
+DNS_BRIDGE_HOST="__DNS_BRIDGE_HOST__"
+DNS_BRIDGE_PORT="__DNS_BRIDGE_PORT__"
+if [ -n "$DNS_BRIDGE_PORT" ]; then
+  IPT="/system/bin/iptables"
+  [ -x "$IPT" ] || IPT="iptables"
+  $IPT -t nat -D OUTPUT -j PM_DNS 2>/dev/null || true
+  $IPT -t nat -F PM_DNS 2>/dev/null || true
+  $IPT -t nat -X PM_DNS 2>/dev/null || true
+  $IPT -t nat -N PM_DNS
+  $IPT -t nat -A PM_DNS -p udp --dport 53 -j DNAT --to-destination "$DNS_BRIDGE_HOST:$DNS_BRIDGE_PORT"
+  $IPT -t nat -A PM_DNS -p tcp --dport 53 -j DNAT --to-destination "$DNS_BRIDGE_HOST:$DNS_BRIDGE_PORT"
+  $IPT -t nat -I OUTPUT 1 -j PM_DNS
+
+  # El tráfico DNAT sale con source 198.18.0.1 (tun0); sin MASQUERADE la
+  # respuesta del puente DNS no tiene ruta de vuelta al contenedor.
+  $IPT -t nat -D POSTROUTING -j PM_DNS_SNAT 2>/dev/null || true
+  $IPT -t nat -F PM_DNS_SNAT 2>/dev/null || true
+  $IPT -t nat -X PM_DNS_SNAT 2>/dev/null || true
+  $IPT -t nat -N PM_DNS_SNAT
+  $IPT -t nat -A PM_DNS_SNAT -o "$MAIN_IFACE" -p udp --dport "$DNS_BRIDGE_PORT" -j MASQUERADE
+  $IPT -t nat -A PM_DNS_SNAT -o "$MAIN_IFACE" -p tcp --dport "$DNS_BRIDGE_PORT" -j MASQUERADE
+  $IPT -t nat -I POSTROUTING 1 -j PM_DNS_SNAT
+fi
+
+# 6. Auto-verificación de arranque de tun2socks
+sleep 0.3
+if ! kill -0 $TUN_PID 2>/dev/null; then
+  echo "Error: tun2socks falló al iniciar." >&2
+  $IP_CMD rule del table 99 2>/dev/null || true
+  $IP_CMD route flush table 99 2>/dev/null || true
+  $IP_CMD link del dev tun0 2>/dev/null || true
+  exit 1
+fi
+
+echo "TUN2SOCKS_ROUTING_APPLIED_OK"

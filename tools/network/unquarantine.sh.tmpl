@@ -1,0 +1,12 @@
+#!/system/bin/sh
+# Levanta la cuarentena de red (permite salida directa). Idempotente.
+
+IPT="/system/bin/iptables"
+[ -x "$IPT" ] || IPT="iptables"
+CHAIN="PM_QUARANTINE"
+
+$IPT -D OUTPUT -j "$CHAIN" 2>/dev/null || true
+$IPT -F "$CHAIN" 2>/dev/null || true
+$IPT -X "$CHAIN" 2>/dev/null || true
+
+echo "PM_QUARANTINE_REMOVED"

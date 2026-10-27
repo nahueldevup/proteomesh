@@ -1,0 +1,32 @@
+#!/system/bin/sh
+# Desmontaje del enrutamiento transparente SOCKS5 y restauración de rutas normales
+
+IP_CMD="/data/local/tmp/ip_bin/ip"
+[ -x "$IP_CMD" ] || IP_CMD="ip"
+
+# 1. Eliminar regla y tabla 99
+$IP_CMD rule del table 99 2>/dev/null || true
+$IP_CMD route flush table 99 2>/dev/null || true
+
+# 1b. Eliminar redirección DNS (puente DNS-over-TCP)
+IPT="/system/bin/iptables"
+[ -x "$IPT" ] || IPT="iptables"
+$IPT -t nat -D OUTPUT -j PM_DNS 2>/dev/null || true
+$IPT -t nat -F PM_DNS 2>/dev/null || true
+$IPT -t nat -X PM_DNS 2>/dev/null || true
+$IPT -t nat -D POSTROUTING -j PM_DNS_SNAT 2>/dev/null || true
+$IPT -t nat -F PM_DNS_SNAT 2>/dev/null || true
+$IPT -t nat -X PM_DNS_SNAT 2>/dev/null || true
+
+# 2. Detener proceso tun2socks
+if [ -f /data/local/tmp/tun2socks.pid ]; then
+  kill $(cat /data/local/tmp/tun2socks.pid) 2>/dev/null || true
+  rm -f /data/local/tmp/tun2socks.pid
+fi
+pkill -f "tun2socks -device tun0" 2>/dev/null || true
+
+# 3. Eliminar interfaz tun0
+$IP_CMD link set dev tun0 down 2>/dev/null || true
+$IP_CMD link del dev tun0 2>/dev/null || true
+
+echo "TUN2SOCKS_TEARDOWN_OK"

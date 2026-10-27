@@ -1,0 +1,21 @@
+#!/system/bin/sh
+# Cuarentena de red: bloquea toda salida a Internet preservando el plano local
+# (host Docker 172.17.0.0/16, loopback y por ende ADB/scrcpy). Idempotente.
+# No usa VPN de Android ni toca settings http_proxy.
+
+IPT="/system/bin/iptables"
+[ -x "$IPT" ] || IPT="iptables"
+CHAIN="PM_QUARANTINE"
+
+$IPT -D OUTPUT -j "$CHAIN" 2>/dev/null || true
+$IPT -F "$CHAIN" 2>/dev/null || true
+$IPT -X "$CHAIN" 2>/dev/null || true
+
+$IPT -N "$CHAIN" || exit 1
+$IPT -A "$CHAIN" -o lo -j RETURN || exit 1
+$IPT -A "$CHAIN" -o tun0 -j RETURN || exit 1
+$IPT -A "$CHAIN" -d 172.17.0.1/32 -j RETURN || exit 1
+$IPT -A "$CHAIN" -j DROP || exit 1
+$IPT -I OUTPUT 1 -j "$CHAIN" || exit 1
+
+echo "PM_QUARANTINE_OK"
