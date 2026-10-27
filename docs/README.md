@@ -43,6 +43,10 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
    * Tokens de diseño OKLCH (modo oscuro técnico y modo claro de alta legibilidad).
    * Integración same-origin `/ws-scrcpy` y pipeline de interacción táctil directa por WebSocket.
 
+9. **[USB_MOBILE_TRANSPORT_ROADMAP.md](./USB_MOBILE_TRANSPORT_ROADMAP.md)**
+   * Diseño de Fase 2 para usar teléfonos físicos por USB como módems de datos móviles.
+   * Reutilización de `Transport(ABC)` e `IpLeaseRegistry`, rotación de IP por modo avión y enrutamiento por `usbX`.
+
 ---
 
 ## 🗄️ Archivos de Referencia Histórica (en `docs/historico/`)

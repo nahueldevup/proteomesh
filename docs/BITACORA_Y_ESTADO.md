@@ -1146,6 +1146,99 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
     - Cero bandas negras, respuesta táctil directa y botón fallback `HD` disponible.
 * **Estado:** WEB-013 **completado y validado el 2026-10-24**.
 
+### 73. FEAT(PROXY-003) — Cuarentena de Red y Catálogo de Rutas (2026-10-25)
+
+* **Motivación:** apagar el contenedor ante un fallo de ruta era demasiado brusco. El requisito correcto es que la instancia siga encendida y operativa por ADB/scrcpy, pero **sin ninguna salida a Internet** hasta validar la ruta SOCKS5 (o USB-Mobile en Fase 2).
+* **Cuarentena de red (`tools/network/quarantine.sh.tmpl`):**
+  - Cadena `PM_QUARANTINE` enganchada en `OUTPUT` de iptables dentro del contenedor.
+  - `RETURN` para loopback, `tun0` y `172.17.0.0/16` (host/ADB/scrcpy); `DROP` para todo lo demás.
+  - No usa VPN de Android, no toca `http_proxy` y no genera flags `TRANSPORT_VPN`.
+  - Idempotente; el desmontaje inverso vive en `unquarantine.sh.tmpl`.
+  - Se cargan automáticamente `tun`, `ip_tables` e `iptable_filter` (modprobe host o fallback Alpine) porque CachyOS no los tenía precargados.
+* **Arranque seguro (`instance_manager.py`):**
+  - Si `meta.json` tiene ruta, la cuarentena se aplica **inmediatamente después de `docker run`**, antes de ADB, cerrando la ventana de fuga.
+  - Si la ruta no valida, la instancia **no se apaga**: queda encendida y en cuarentena; solo se libera el lease. Excepción: si la propia cuarentena no se puede aplicar, se detiene el contenedor (fail-closed real).
+* **Validación de egress (`Socks5Transport.validate_egress`):**
+  - Tras levantar `tun2socks`, se consulta `ifconfig.me/ip` y `api.ipify.org` **desde dentro del contenedor**.
+  - La IP observada debe coincidir con la reservada en `IpLeaseRegistry`. Si no coincide o no hay respuesta, se desmonta el túnel, se vuelve a cuarentena y se devuelve error.
+  - Esto evita declarar “routed” un túnel que arrancó pero no transporta paquetes.
+* **Catálogo de rutas (`server/services/network/route_store.py` + `/api/v1/routes`):**
+  - SQLite `instances/routes.db` en modo WAL, permisos `600`.
+  - Contraseñas guardadas en el servidor y **nunca devueltas** por la API (solo `auth: true`).
+  - Operaciones: listar, crear, borrar, probar, asignar a instancia y liberar (cuarentena por defecto).
+  - Estado por ruta: instancia asignada, IP de salida, latencia y `active/idle/disabled`.
+* **UI “Rutas y salidas” (`RoutesPage.tsx`):**
+  - Métricas de rutas, activas, cuarentena y módems USB.
+  - Alta de cuenta SOCKS5, tabla con endpoint/IP/latencia/instancia/estado, acciones de probar/asignar/liberar/eliminar (confirmación en dos pasos).
+  - Panel USB con detección de teléfonos físicos (`adb devices -l`), marcado como Fase 2.
+  - Aviso explícito de que una ruta inválida deja la instancia en cuarentena, no apagada.
+* **Verificación en vivo:**
+  - Ruta `Argentina - VPNJantit` asignada a `f05-main`: IP `38.54.45.142`, latencia ~370 ms, ADB operativo.
+  - Ruta rota `198.51.100.99:1080`: `POST assign` devuelve error, contenedor sigue `Up`, sin Internet (`nc: Timeout`), ADB responde `ADB_OK` y estado `quarantined`.
+  - Suite host: **100 tests pasando** (+60 subtests). Build frontend **367 ms**, lint 0 errores.
+* **Estado:** PROXY-003 **completado y validado el 2026-10-25**.
+
+### 74. FIX(PROXY-004) — Puente DNS-over-TCP para Túneles SSH (2026-10-26)
+
+* **Síntoma:** con la ruta SOCKS5 de USA activa, el túnel TCP funcionaba (HTTP a una IP devolvía `193.106.248.90`) pero Android no resolvía dominios: `ping google.com` → `unknown host`.
+* **Causa raíz:** `ssh -D` implementa SOCKS5 **solo TCP**, sin `UDP ASSOCIATE`. Android resuelve por UDP contra `8.8.8.8:53`; tun2socks reenvía ese UDP al proxy, OpenSSH lo descarta y el DNS queda sin respuesta. No era un fallo de la ruta ni del servidor VPNJantit.
+* **Solución implementada — DNS-over-TCP por el mismo túnel:**
+  1. `start_ssh_tunnel.sh` agrega `-L 127.0.0.1:<puerto+5000>:8.8.8.8:53` al mismo SSH.
+  2. `tools/network/dns_bridge.py` escucha UDP/TCP en `0.0.0.0:<puerto+6000>` y convierte cada consulta a DNS-over-TCP hacia el forward anterior. El DNS sale por el servidor SSH, no por el resolver del host.
+  3. `route-socks5.sh.tmpl` agrega en el contenedor `DNAT` de UDP/TCP 53 hacia `172.17.0.1:<bridge>` y un `MASQUERADE` en `POSTROUTING` hacia `eth0`.
+  4. **Por qué el MASQUERADE:** la consulta DNAT sale con source `198.18.0.1` (tun0); sin enmascarar, la respuesta del puente no tiene ruta de vuelta al contenedor.
+  5. El túnel registra su puente en `~/.config/proteomesh/dns_bridges/<puerto_socks>`; solo los túneles SSH registrados reciben DNAT. Un SOCKS5 remoto con UDP nativo no se toca.
+  6. El supervisor vigila y relanza el puente DNS igual que el SSH.
+* **Operación:** ambos túneles (Argentina 1088 → DNS 7088, USA 1089 → DNS 7089) conviven y cada instancia usa el DNS del país de su ruta.
+* **Verificación en vivo:** `f05-main` con ruta USA (`193.106.248.90`), `ping google.com` resuelve, HTTP por dominio devuelve la IP de USA. NAT/DNAT y MASQUERADE confirmados dentro del contenedor.
+* **Tests:** **101 tests host pasando** (+60 subtests). Build frontend **538 ms**.
+* **Estado:** PROXY-004 **completado y validado el 2026-10-26**.
+
+### 75. FEAT(USB-001) — Enganche USB-Mobile v0 sin Interfaz VPN (2026-10-26)
+
+* **Objetivo:** usar un teléfono físico conectado por USB como salida de red de una instancia ReDroid, sin crear `tun0` ni activar VPN en Android.
+* **Implementación (`tools/network/usb_tether.sh`):**
+  - Detección automática de la interfaz de tethering USB (segunda default route; ej. `enp48s0f3u2`, gateway `10.74.180.139`).
+  - **Host:** policy routing por IP del contenedor (`ip rule from 172.17.0.2 lookup 202`) con tabla propia por instancia; default vía la interfaz USB. Docker ya aplica MASQUERADE para `172.17.0.0/16`.
+  - **Contenedor:** tabla 101 con default `via 172.17.0.1`, regla `prio 7000`; DNS `53 -> gateway del teléfono:53` vía DNAT.
+  - **Sin `tun0`:** solo queda `eth0`; las apps no ven una interfaz de VPN.
+  - Un módem no puede alimentar dos instancias: el script rechaza el enganche si la misma interfaz ya está asignada a otra.
+  - Estado persistido en `instances/<nombre>/usb_tether.json`.
+* **Integración:**
+  - `ProxyService.configure_socks5()` y `apply_from_meta()` desmontan el USB antes de aplicar una ruta SOCKS, evitando que se pisen.
+  - API: `GET /instances/{name}/usb`, `POST /instances/{name}/usb/attach`, `POST /instances/{name}/usb/detach`.
+  - UI “Rutas y salidas”: botón **Enganchar/Desenganchar** del módem USB a la instancia destino.
+* **Verificación en vivo:**
+  - Teléfono Samsung `SM-A035M` (`R8MT80206XH`) por USB; interfaz `enp48s0f3u2`.
+  - `f05-main` con HTTP/DNS funcionando por el teléfono: IP `179.238.41.229` (el teléfono estaba compartiendo Wi-Fi), `ping google.com` resuelve y no existe `tun0`.
+  - Asignar la ruta SOCKS USA desmontó el USB y devolvió `193.106.248.90`; liberar la ruta y reenganchar volvió a la IP del teléfono.
+* **Pendiente Fase 2:** activar datos móviles (hoy `mobile_data=0`), apagar Wi-Fi del teléfono, rotación de IP por modo avión y reserva en `IpLeaseRegistry` con `transport=usb_mobile`.
+* **Tests:** **101 host pasando**; build **287 ms**.
+* **Estado:** USB-001 v0 **completado y validado el 2026-10-26** (tethering Wi-Fi; móvil pendiente de habilitar datos).
+
+### 76. AUDIT & FIX — Remediación Integral de Seguridad, Aislamiento T=0 y Enrutamiento USB (2026-10-27)
+
+* **Auditoría Técnica Externa:** Inspección línea por línea en disco de vulnerabilidades reportadas en el informe de arquitectura y seguridad.
+* **Remediación de Seguridad (VULN-01 a VULN-05):**
+  - **VULN-02 (ADB en Loopback):** Restringido el mapeo de puertos a `127.0.0.1:{port}:5555` en `tools/instance_manager.py`. Eliminada la exposición en `0.0.0.0` hacia redes LAN/Wi-Fi físicas.
+  - **VULN-03 (SOCKS5 y DNS Bridge):** Restringido el binding de OpenSSH y `dns_bridge.py` a la puerta de enlace interna `172.17.0.1` en `start_ssh_tunnel.sh` y `dns_bridge.py`.
+  - **VULN-04 (Inyección de Comandos):** Implementada validación regex estricta (`_validate_net_params`) en `server/services/network/host_firewall.py` para todos los métodos de cuarentena, enrutamiento USB y limpieza antes de invocar el contenedor `proteomesh-netctl`.
+  - **VULN-01 (Ventana de Fuga T=0):** Implementada pre-cuarentena en `tools/instance_manager.py`: `predict_next_container_ip()` calcula la IP de Docker y pre-inserta la regla en `DOCKER-USER` **antes** de ejecutar `docker run`. Cero paquetes escapan hacia el ISP doméstico al encender Android.
+  - **VULN-05 (Aislamiento Lateral Inter-Contenedor):** Reemplazada la excepción `172.17.0.0/16` por `172.17.0.1/32` en `host_firewall.py` y `quarantine.sh.tmpl`. Los contenedores en cuarentena no pueden realizar escaneo ni ataques laterales a otros contenedores.
+* **Poda de Código Muerto y Sobre-Ingeniería (YAGNI):**
+  - Eliminado el stub `UsbMobileTransport` en `server/services/network/transport.py` y `proxy_service.py` (la implementación real vive en `usb_network_service.py`).
+  - Eliminado componente huérfano `RoutesPage.tsx` (~490 líneas) y saneadas las funciones `@deprecated` en `web/src/lib/api.ts`.
+* **Robustez Operativa (FRAG-01 a FRAG-05):**
+  - **FRAG-01:** Reconciliación en arranque en `server/main.py:startup_event` purgando leases de IP huérfanos en `leases.db` y reglas `PM_NET_*` residuales en `DOCKER-USER`.
+  - **FRAG-02:** Mutaciones de `meta.json` protegidas con cerrojo `fcntl.flock` y reemplazo atómico en `proxy_service.py` y `manager_bridge.py`.
+  - **FRAG-03:** Agregado `asyncio.wait_for(timeout=30)` con kill forzado en `routes.py`, y optimización de `usb_tether.sh` usando `proteomesh-netctl`.
+  - **FRAG-05:** Erradicación de bloques `pass` silenciosos en manejo de excepciones de red, sustituidos por logging estructurado.
+* **Verificación y Pruebas:**
+  - Suite de 107 tests unitarios host pasando en verde (`.venv/bin/pytest tests/`).
+  - Compilación web limpia en 322 ms (0 errores TypeScript/Vite).
+  - Enrutamiento USB verificado con módem físico `enp48s0f3u2` en `phone-82`: 0% pérdida de paquetes (ping 8.8.8.8 ~50ms).
+* **Estado:** Remediación de Auditoría **100% completada y validada el 2026-10-27**.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

@@ -239,3 +239,55 @@ React (5173) ──REST──► FastAPI (8000) ──subprocess──► instan
 - Un solo cliente de video scrcpy por dispositivo: una ventana nativa abierta en el host puede competir con ws-scrcpy.
 - El visor nativo no aplica al control de grupo ni a la descarga de captura.
 - El render del invitado se mantiene en 30 FPS (`RENDER_FPS`), por lo que pedir más FPS al visor no mejora la fluidez real.
+
+---
+
+## 6. Arquitectura de Red, Aislamiento T=0 y Enrutamiento USB Móvil
+
+### 6.1 Principios e Invariantes de Seguridad de Red
+
+ProteoMesh implementa un aislamiento de red multinivel que garantiza **Cero Contaminación con la red del Host**:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ Contenedor ReDroid (Android 13 Guest)                                  │
+│ - Interfaz: eth0 (172.17.0.X)                                          │
+│ - Sin túneles VPN internos ni marcas TRANSPORT_VPN observables por apps│
+│ - PM_QUARANTINE (OUTPUT drop excepto 172.17.0.1/32)                    │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ veth
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Host Linux Kernel (DOCKER-USER & Policy Routing)                       │
+│                                                                        │
+│ 1. DOCKER-USER Chain:                                                  │
+│    -s 172.17.0.X -j PM_NET_<instancia>                                 │
+│                                                                        │
+│ 2. PM_NET_<instancia> Chain:                                           │
+│    -d 172.17.0.1/32 -j RETURN                 (Permite ADB, ws-scrcpy) │
+│    -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN                │
+│    -o <usb_iface> -j RETURN                   (Permite SOLO módem USB) │
+│    -j DROP                                    (Bloqueo total a ISP)    │
+│                                                                        │
+│ 3. Linux Policy Routing:                                               │
+│    ip rule add from 172.17.0.X lookup <table_id> prio 1000             │
+│    ip route replace default via <gateway> dev <usb_iface> table <id>   │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                 ┌─────────────────┴─────────────────┐
+                 ▼                                   ▼
+       Módem USB Físico RNDIS              Drop Inmediato (ISP Host)
+     (Salida de Datos Móviles)           (wlan0 / enp34s0 Bloqueadas)
+```
+
+1. **Pre-cuarentena en T=0 (VULN-01):**
+   Antes de invocar `docker run`, `instance_manager.py` predice la próxima IP en el bridge Docker (`predict_next_container_ip`) y registra la regla de bloqueo en `DOCKER-USER`. Cuando el contenedor arranca y envía sus primeros paquetes de inicialización, estos son descartados inmediatamente en el kernel del host antes de que Android complete el boot.
+2. **Aislamiento de Puertos de Gestión (VULN-02 y VULN-03):**
+   - El daemon ADB de cada contenedor (`5555/tcp`) se publica exclusivamente en loopback local: `127.0.0.1:{adb_port}`.
+   - Los túneles SSH de salida y puentes DNS (`dns_bridge.py`) escuchan únicamente en la interfaz interna del puente Docker (`172.17.0.1`).
+3. **Aislamiento Lateral Inter-Contenedor (VULN-05):**
+   Tanto en la cadena `PM_NET_*` del host como en `PM_QUARANTINE` del contenedor, la regla de exclusión está acotada estrictamente a la IP del host (`172.17.0.1/32`), impidiendo que un contenedor comprometido pueda escanear o atacar otros contenedores en `172.17.0.0/16`.
+4. **Reconciliación Automática en Arranque (FRAG-01):**
+   FastAPI ejecuta una rutina de auto-reconciliación en `startup_event` que consulta los contenedores activos en Docker, liberando leases huérfanos en `leases.db` y purgando cadenas `PM_NET_*` residuales de instancias caídas de forma no limpia.
+5. **Persistencia Atómica bajo Concurrencia (FRAG-02):**
+   Toda modificación en `meta.json` y `profile.json` se ejecuta bajo un cerrojo exclusivo `fcntl.flock` con reemplazo atómico de archivo temporal (`os.replace`), garantizando consistencia contra carreras TOCTOU.
