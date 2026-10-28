@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Smartphone,
-  Layers,
   MapPin,
   ShieldCheck,
   Search,
@@ -10,7 +9,6 @@ import {
   Command as CmdIcon,
   PanelLeftClose,
   PanelLeftOpen,
-  Cpu,
   Sun,
   Moon,
   Usb,
@@ -18,24 +16,24 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { api } from './lib/api';
-import type { Instance, TemplateItem, LocationData, UsbNetworkOverview } from './types';
+import type { Instance, LocationData, UsbNetworkOverview } from './types';
 import { CreateDeviceModal } from './components/CreateDeviceModal';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
 import FocusView from './components/focus/FocusView';
 import UsbNetworkCenter from './components/network/UsbNetworkCenter';
+import { CustomLocationsManager } from './components/locations/CustomLocationsManager';
 import { TooltipProvider } from './components/ui/tooltip';
 import { IconBtn } from './components/ui/IconBtn';
 import { Slider } from './components/ui/slider';
 import { cn } from './lib/utils';
 
 type ViewMode = 'grid' | 'focus';
-type NavTab = 'instances' | 'network' | 'templates' | 'locations' | 'proxies';
+type NavTab = 'instances' | 'network' | 'locations' | 'proxies';
 
 const NAV = [
   { id: 'instances' as const, label: 'CloudPhones', icon: Smartphone },
   { id: 'network' as const, label: 'Centro de Red USB', icon: Usb },
-  { id: 'templates' as const, label: 'Catálogo de modelos', icon: Layers },
   { id: 'locations' as const, label: 'Mapa y ubicaciones', icon: MapPin },
 ];
 
@@ -86,8 +84,19 @@ export function App() {
   };
 
   // Datos para otras pestañas
-  const [templatesCatalog, setTemplatesCatalog] = useState<Record<string, TemplateItem[]>>({});
   const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
+
+  // Atajo de teclado universal Ctrl+B / Cmd+B para alternar el menú lateral
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        setSidebarCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Estado del Pool de Red USB y Cola FIFO (NET-USB-001)
   const [usbOverview, setUsbOverview] = useState<UsbNetworkOverview | null>(null);
@@ -135,9 +144,6 @@ export function App() {
   }, [isCreateOpen]);
 
   useEffect(() => {
-    if (activeNav === 'templates' && Object.keys(templatesCatalog).length === 0) {
-      api.getTemplates().then(setTemplatesCatalog).catch(console.error);
-    }
     if (activeNav === 'locations' && Object.keys(locationPresets).length === 0) {
       api.getLocationPresets().then(setLocationPresets).catch(console.error);
     }
@@ -200,40 +206,85 @@ export function App() {
     setViewMode('focus');
   };
 
-  const handleOpenCreateWithModel = (modelId: string) => {
-    setCreatePresetModel(modelId);
-    setIsCreateOpen(true);
-  };
-
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-screen w-full overflow-hidden bg-background">
         <Toaster richColors position="top-right" theme={theme} />
 
-        {/* ── BARRA LATERAL (IDÉNTICA A LOVABLE APPSHELL) ───────────────────── */}
+        {/* ── BARRA LATERAL (APP SHELL MODERNO) ───────────────────── */}
         <aside
           className={cn(
             'flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200',
             sidebarCollapsed ? 'w-14' : 'w-56'
           )}
         >
-          {/* Logo / Cabecera */}
-          <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary font-mono text-xs font-bold text-primary-foreground">
-              PM
+          {/* Cabecera / Toggle superior del Sidebar */}
+          {sidebarCollapsed ? (
+            <div className="flex h-14 items-center justify-center border-b border-sidebar-border px-2">
+              <IconBtn
+                icon={PanelLeftOpen}
+                label="Expandir menú (Ctrl+B)"
+                side="right"
+                className="text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                onClick={() => setSidebarCollapsed(false)}
+              />
             </div>
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <div className="truncate text-sm font-bold tracking-wide">PROTEOMESH</div>
-                <div className="font-mono text-[10px] text-muted-foreground">
-                  {onlineCount}/{instances.length} online
+          ) : (
+            <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">
+                  PM
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold tracking-wide text-sidebar-foreground">PROTEOMESH</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    {onlineCount}/{instances.length} online
+                  </div>
                 </div>
               </div>
+              <IconBtn
+                icon={PanelLeftClose}
+                label="Contraer menú (Ctrl+B)"
+                side="right"
+                className="shrink-0 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                onClick={() => setSidebarCollapsed(true)}
+              />
+            </div>
+          )}
+
+          {/* Acción Principal Superior: Crear CloudPhone */}
+          <div className="p-2 pb-1">
+            {sidebarCollapsed ? (
+              <div className="flex justify-center">
+                <IconBtn
+                  icon={Plus}
+                  label="Crear CloudPhone"
+                  variant="primary"
+                  side="right"
+                  className="h-9 w-9 rounded-lg"
+                  onClick={() => {
+                    setCreatePresetModel(undefined);
+                    setIsCreateOpen(true);
+                  }}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatePresetModel(undefined);
+                  setIsCreateOpen(true);
+                }}
+                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all active:scale-[0.98]"
+              >
+                <Plus className="h-4 w-4 stroke-[2.5]" />
+                <span className="truncate">Crear CloudPhone</span>
+              </button>
             )}
           </div>
 
           {/* Navegación */}
-          <nav className="flex flex-1 flex-col gap-1 p-2">
+          <nav className="flex flex-1 flex-col gap-1 p-2 pt-1">
             {NAV.map((n) => {
               const active = activeNav === n.id;
               return (
@@ -247,7 +298,7 @@ export function App() {
                   className={cn(
                     'flex h-9 items-center gap-3 rounded-md px-2.5 text-sm transition-colors text-left',
                     active
-                      ? 'bg-sidebar-accent text-primary'
+                      ? 'bg-sidebar-accent text-primary font-medium'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                   )}
                 >
@@ -258,42 +309,32 @@ export function App() {
             })}
           </nav>
 
-          {/* Botones inferiores: +, CMD, Tema Claro/Oscuro, Toggle */}
+          {/* Botones inferiores: Comandos y Modo Claro/Oscuro */}
           <div
             className={cn(
               'flex gap-1 border-t border-sidebar-border p-2',
-              sidebarCollapsed ? 'flex-col items-center' : 'items-center'
+              sidebarCollapsed ? 'flex-col items-center' : 'items-center justify-between'
             )}
           >
-            <IconBtn
-              icon={Plus}
-              label="Crear CloudPhone"
-              variant="primary"
-              side="right"
-              onClick={() => {
-                setCreatePresetModel(undefined);
-                setIsCreateOpen(true);
-              }}
-            />
-            <IconBtn
-              icon={CmdIcon}
-              label="Comandos (Ctrl+K)"
-              side="right"
-              onClick={() => toast.info('Consola rápida disponible')}
-            />
-            <IconBtn
-              icon={theme === 'dark' ? Sun : Moon}
-              label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
-              side="right"
-              onClick={toggleTheme}
-            />
-            <IconBtn
-              icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose}
-              label={sidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
-              side="right"
-              className={sidebarCollapsed ? '' : 'ml-auto'}
-              onClick={() => setSidebarCollapsed((v) => !v)}
-            />
+            <div className={cn('flex gap-1', sidebarCollapsed && 'flex-col items-center')}>
+              <IconBtn
+                icon={CmdIcon}
+                label="Comandos (Ctrl+K)"
+                side="right"
+                onClick={() => toast.info('Consola rápida disponible')}
+              />
+              <IconBtn
+                icon={theme === 'dark' ? Sun : Moon}
+                label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+                side="right"
+                onClick={toggleTheme}
+              />
+            </div>
+            {!sidebarCollapsed && (
+              <span className="font-mono text-[10px] text-muted-foreground/60 pr-1 select-none">
+                v2.4
+              </span>
+            )}
           </div>
         </aside>
 
@@ -419,96 +460,18 @@ export function App() {
                 onChanged={fetchInstances}
                 theme={theme}
                 onToggleTheme={toggleTheme}
+                locationPresets={locationPresets}
               />
-            </div>
-          )}
-
-          {/* Pestaña: Catálogo de Modelos */}
-          {activeNav === 'templates' && (
-            <div className="flex-1 overflow-auto p-4 space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">
-                  Catálogo Oficial de 17 Dispositivos Móviles
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Plantillas de hardware certificadas (SoC, GPU, sensores y displays oficiales)
-                </p>
-              </div>
-
-              {Object.entries(templatesCatalog).map(([brand, models]) => (
-                <div key={brand} className="space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
-                    <Smartphone className="h-3.5 w-3.5" />
-                    <span>
-                      {brand} ({models.length} modelos)
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {models.map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-muted-foreground/40"
-                      >
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-card-foreground">{m.name}</span>
-                            <IconBtn
-                              icon={Plus}
-                              label={`Crear CloudPhone ${m.name}`}
-                              size="sm"
-                              variant="primary"
-                              onClick={() => handleOpenCreateWithModel(m.id)}
-                            />
-                          </div>
-                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-                            <Cpu className="h-3 w-3 text-muted-foreground" />
-                            <span>{m.soc_model}</span>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-[10px] text-muted-foreground">
-                          <span>{m.gpu_renderer}</span>
-                          <span className="font-mono">{m.screen}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 
           {/* Pestaña: Mapa y Geolocalización */}
           {activeNav === 'locations' && (
-            <div className="flex-1 overflow-auto p-4 space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Presets de Geolocalización Global</h3>
-                <p className="text-xs text-muted-foreground">
-                  Coordenadas y zonas horarias validadas para simulación física
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                {Object.entries(locationPresets).map(([key, loc]) => (
-                  <div
-                    key={key}
-                    className="space-y-1.5 rounded-xl border border-border bg-card p-3.5 transition-all hover:border-muted-foreground/40"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold capitalize text-card-foreground">
-                        {loc.city}
-                      </span>
-                      <MapPin className="h-3.5 w-3.5 text-primary" />
-                    </div>
-                    <div className="font-mono text-[10px] text-muted-foreground">
-                      {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
-                    </div>
-                    <div className="truncate font-mono text-[10px] text-muted-foreground">
-                      {loc.timezone}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <CustomLocationsManager
+              instances={instances}
+              onRefreshInstances={fetchInstances}
+              locationPresets={locationPresets}
+            />
           )}
 
           {/* Pestaña: Centro de Red USB & Historial de IPs (NET-USB-001) */}

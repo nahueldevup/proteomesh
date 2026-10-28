@@ -34,7 +34,11 @@ class InstanceNameValidationTest(unittest.TestCase):
 
 class ProfileValidationTest(unittest.TestCase):
     def setUp(self):
-        f05_profile = REPO_ROOT / "instances" / "f05-main" / "profile.json"
+        f05_profile = REPO_ROOT / "instances" / "phone-80" / "profile.json"
+        if not f05_profile.exists():
+            f05_profile = REPO_ROOT / "instances" / "f05-main" / "profile.json"
+        if not f05_profile.exists():
+            f05_profile = REPO_ROOT / "tests" / "golden" / "bundles" / "a54x_personal_seed42" / "profile.json"
         self.valid_profile = json.loads(f05_profile.read_text())
 
     def test_accepts_valid_generated_profile(self):
@@ -94,7 +98,11 @@ class ProfileValidationTest(unittest.TestCase):
 class BundleValidationTest(unittest.TestCase):
     def setUp(self):
         self.temp_dir = Path(tempfile.mkdtemp(prefix="proteomesh_bundle_test_"))
-        f05_profile = REPO_ROOT / "instances" / "f05-main" / "profile.json"
+        f05_profile = REPO_ROOT / "instances" / "phone-80" / "profile.json"
+        if not f05_profile.exists():
+            f05_profile = REPO_ROOT / "instances" / "f05-main" / "profile.json"
+        if not f05_profile.exists():
+            f05_profile = REPO_ROOT / "tests" / "golden" / "bundles" / "a54x_personal_seed42" / "profile.json"
         self.valid_profile_data = json.loads(f05_profile.read_text())
 
     def tearDown(self):

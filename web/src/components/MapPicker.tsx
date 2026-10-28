@@ -2,6 +2,25 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import { MapPin, Navigation } from 'lucide-react';
 
+export interface MapPinItem {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  city?: string;
+  isDefault?: boolean;
+  color?: string;
+}
+
+export interface MapPresetItem {
+  label: string;
+  lat: number;
+  lon: number;
+  isDefault?: boolean;
+  color?: string;
+  id?: string;
+}
+
 interface MapPickerProps {
   latitude: number;
   longitude: number;
@@ -10,20 +29,10 @@ interface MapPickerProps {
   className?: string;
   height?: string;
   showPresets?: boolean;
+  presets?: MapPresetItem[];
+  markers?: MapPinItem[];
   showInfoOverlay?: boolean;
 }
-
-// Presets rapidos para saltar a ciudades clave
-const QUICK_PRESETS: { label: string; lat: number; lon: number }[] = [
-  { label: 'Buenos Aires', lat: -34.603722, lon: -58.381592 },
-  { label: 'Cordoba', lat: -31.420083, lon: -64.188776 },
-  { label: 'Miami', lat: 25.761680, lon: -80.191790 },
-  { label: 'New York', lat: 40.712776, lon: -74.005974 },
-  { label: 'Madrid', lat: 40.416775, lon: -3.703790 },
-  { label: 'CDMX', lat: 19.432608, lon: -99.133209 },
-  { label: 'Sao Paulo', lat: -23.550520, lon: -46.633308 },
-  { label: 'London', lat: 51.507351, lon: -0.127758 },
-];
 
 export const MapPicker: React.FC<MapPickerProps> = ({
   latitude,
@@ -33,11 +42,14 @@ export const MapPicker: React.FC<MapPickerProps> = ({
   className,
   height = '320px',
   showPresets = true,
+  presets,
+  markers = [],
   showInfoOverlay = true,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const pinnedMarkersLayerRef = useRef<L.LayerGroup | null>(null);
   const isInitializedRef = useRef(false);
 
   // Callback estable para onChange
@@ -46,10 +58,11 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  const handleMapClick = useCallback((lat: number, lon: number) => {
+  const handleMapClick = useCallback((lat: number, lon: number, cityName?: string) => {
     onChangeRef.current(
       Number(lat.toFixed(6)),
-      Number(lon.toFixed(6))
+      Number(lon.toFixed(6)),
+      cityName
     );
   }, []);
 
@@ -72,8 +85,11 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       iconAnchor: [18, 18],
     });
 
+    const safeLat = typeof latitude === 'number' && !isNaN(latitude) ? latitude : -34.603722;
+    const safeLon = typeof longitude === 'number' && !isNaN(longitude) ? longitude : -58.381592;
+
     const map = L.map(mapContainerRef.current, {
-      center: [latitude, longitude],
+      center: [safeLat, safeLon],
       zoom: 12,
       zoomControl: false,
       attributionControl: false,
@@ -89,10 +105,15 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       maxZoom: 19,
     }).addTo(map);
 
-    // Marcador arrastrable
-    const marker = L.marker([latitude, longitude], {
+    // Capa de pines configurados por el usuario
+    const pinnedLayer = L.layerGroup().addTo(map);
+    pinnedMarkersLayerRef.current = pinnedLayer;
+
+    // Marcador arrastrable (posición activa)
+    const marker = L.marker([safeLat, safeLon], {
       icon: customIcon,
       draggable: true,
+      zIndexOffset: 1000,
     }).addTo(map);
 
     marker.on('dragend', () => {
@@ -109,8 +130,6 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     markerRef.current = marker;
 
     // Forzar invalidateSize despues de que el DOM se estabilice
-    // Esto arregla el bug clasico de Leaflet donde los tiles no cargan
-    // cuando el mapa se inicializa dentro de un modal o contenedor oculto
     requestAnimationFrame(() => {
       map.invalidateSize();
     });
@@ -122,13 +141,50 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
+      pinnedMarkersLayerRef.current = null;
       isInitializedRef.current = false;
     };
   }, []); // Solo se ejecuta al montar
 
+  // Renderizar pines configurados en el mapa
+  useEffect(() => {
+    if (!mapRef.current || !pinnedMarkersLayerRef.current) return;
+    pinnedMarkersLayerRef.current.clearLayers();
+
+    markers.forEach((m) => {
+      if (typeof m.lat !== 'number' || typeof m.lon !== 'number' || isNaN(m.lat) || isNaN(m.lon)) return;
+      const pinIcon = L.divIcon({
+        className: 'proteomesh-pin-marker',
+        html: `
+          <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.6));">
+            <div style="display:flex;align-items:center;gap:3px;background:rgba(15,23,42,0.92);color:#f8fafc;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;border:1px solid ${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};white-space:nowrap;font-weight:600;">
+              <span style="font-size:10px;">${m.isDefault ? '⭐' : '📍'}</span>
+              <span>${m.name}</span>
+            </div>
+            <div style="width:2px;height:6px;background:${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};"></div>
+            <div style="width:6px;height:6px;border-radius:50%;background:${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};box-shadow:0 0 4px ${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};"></div>
+          </div>
+        `,
+        iconSize: [100, 34],
+        iconAnchor: [50, 32],
+      });
+
+      const pinMarker = L.marker([m.lat, m.lon], { icon: pinIcon }).addTo(pinnedMarkersLayerRef.current!);
+      pinMarker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        onChangeRef.current(m.lat, m.lon, m.name);
+        if (markerRef.current && mapRef.current) {
+          markerRef.current.setLatLng([m.lat, m.lon]);
+          mapRef.current.setView([m.lat, m.lon], Math.max(mapRef.current.getZoom(), 12), { animate: true });
+        }
+      });
+    });
+  }, [markers]);
+
   // Sincronizar coordenadas cuando cambian externamente
   useEffect(() => {
     if (!markerRef.current || !mapRef.current) return;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' || isNaN(latitude) || isNaN(longitude)) return;
     const currentPos = markerRef.current.getLatLng();
     if (
       Math.abs(currentPos.lat - latitude) > 0.0001 ||
@@ -150,7 +206,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     return () => clearTimeout(timer);
   });
 
-  const handlePresetClick = (preset: typeof QUICK_PRESETS[0]) => {
+  const handlePresetClick = (preset: MapPresetItem) => {
     onChange(preset.lat, preset.lon, preset.label);
     if (markerRef.current && mapRef.current) {
       markerRef.current.setLatLng([preset.lat, preset.lon]);
@@ -158,23 +214,26 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     }
   };
 
+  const activePresets = presets || [];
+
   return (
     <div className="relative w-full space-y-2">
-      {/* Presets rapidos (opcional) */}
-      {showPresets && (
+      {/* Presets rápidos dinámicos (solo si se pasan explícitamente) */}
+      {showPresets && activePresets.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {QUICK_PRESETS.map((p) => (
+          {activePresets.map((p) => (
             <button
               key={p.label}
               type="button"
               onClick={() => handlePresetClick(p)}
-              className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
+              className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-all flex items-center gap-1 ${
                 Math.abs(latitude - p.lat) < 0.01 && Math.abs(longitude - p.lon) < 0.01
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-medium'
                   : 'bg-surface border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40'
               }`}
             >
-              {p.label}
+              {p.isDefault && <span className="text-[9px] text-amber-500">⭐</span>}
+              <span>{p.label}</span>
             </button>
           ))}
         </div>

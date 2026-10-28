@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -12,10 +12,13 @@ import {
   ArrowLeft,
   Check,
   Usb,
+  Sparkles,
+  Pin,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { MapPicker } from './MapPicker';
-import type { TemplateItem, Carrier } from '../types';
+import { MapPicker, type MapPinItem } from './MapPicker';
+import { getPresetDisplay } from './locations/CustomLocationsManager';
+import type { TemplateItem, Carrier, CustomLocation } from '../types';
 import { cn } from '../lib/utils';
 
 interface CreateDeviceModalProps {
@@ -32,6 +35,14 @@ const STEPS = [
   { id: 'review' as const, label: '3. Recursos & Crear', icon: Zap },
 ];
 type StepId = typeof STEPS[number]['id'];
+
+const COUNTRY_NAMES: Record<string, string> = {
+  ar: 'Argentina',
+  us: 'Estados Unidos',
+  br: 'Brasil',
+  mx: 'México',
+  es: 'España',
+};
 
 const RAM_PRESETS = ['2.0g', '2.5g', '3.0g', '4.0g'];
 const CPU_PRESETS = [
@@ -55,7 +66,15 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [selectedBrand, setSelectedBrand] = useState('samsung');
   const [selectedModel, setSelectedModel] = useState('samsung/a54x');
   const [selectedCarrier, setSelectedCarrier] = useState('ar_personal');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [startImmediately, setStartImmediately] = useState(false);
+
+  // Generador de número de Formosa (3704 / 3705 + 6 dígitos)
+  const generateFormosaNumber = () => {
+    const prefix = Math.random() < 0.5 ? '3704' : '3705';
+    const suffix = Math.floor(100000 + Math.random() * 900000);
+    return `${prefix}${suffix}`;
+  };
 
   // Limits
   const [memoryLimit, setMemoryLimit] = useState('2.5g');
@@ -66,11 +85,16 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [longitude, setLongitude] = useState(-58.381592);
   const [altitude] = useState(25.0);
   const [city, setCity] = useState('Buenos Aires');
-  const [timezone] = useState('America/Argentina/Buenos_Aires');
+  const [timezone, setTimezone] = useState('America/Argentina/Buenos_Aires');
 
   // Catalogs
   const [templates, setTemplates] = useState<Record<string, TemplateItem[]>>({});
   const [carriers, setCarriers] = useState<Carrier[]>([]);
+  const [customLocations, setCustomLocations] = useState<CustomLocation[]>([]);
+  const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
+  const [pinnedPresets, setPinnedPresets] = useState<string[]>([]);
+  const [defaultLocData, setDefaultLocData] = useState<any>(null);
+  const [locationPresets, setLocationPresets] = useState<Record<string, any>>({});
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +108,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       setActiveStep('device');
       setErrorMessage(null);
       setSuccessMessage(null);
+      setSelectedCustomLoc(null);
 
       // Calcular siguiente puerto libre
       let nextPort = 5580;
@@ -92,6 +117,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       }
       setPort(nextPort);
       setName(`phone-${String(nextPort).slice(-2)}`);
+      setPhoneNumber(generateFormosaNumber());
 
       if (presetModel) {
         setSelectedModel(presetModel);
@@ -99,18 +125,51 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         if (b) setSelectedBrand(b);
       }
 
-      // Cargar catálogos solo si no están cargados
+      // Cargar catálogos
+      const handleCatalogData = (locCatalog: any, locPresets: any) => {
+        setCustomLocations(locCatalog.locations || []);
+        setPinnedPresets(locCatalog.pinned_presets || []);
+        setDefaultLocData(locCatalog.default_location || null);
+        setLocationPresets(locPresets || {});
+
+        if (locCatalog.default_location) {
+          setLatitude(locCatalog.default_location.latitude);
+          setLongitude(locCatalog.default_location.longitude);
+          setCity(locCatalog.default_location.city);
+          if (locCatalog.default_location.timezone) {
+            setTimezone(locCatalog.default_location.timezone);
+          }
+          const found = (locCatalog.locations || []).find((l: any) => l.id === locCatalog.default_location?.id);
+          if (found) setSelectedCustomLoc(found);
+        }
+      };
+
       if (Object.keys(templates).length === 0) {
         setLoading(true);
-        Promise.all([api.getTemplates(), api.getCarriers()])
-          .then(([tData, cData]) => {
+        Promise.all([
+          api.getTemplates(),
+          api.getCarriers(),
+          api.getCustomLocations(),
+          api.getLocationPresets().catch(() => ({})),
+        ])
+          .then(([tData, cData, locCatalog, locPresets]) => {
             setTemplates(tData);
             setCarriers(cData);
+            handleCatalogData(locCatalog, locPresets);
           })
           .catch((err: any) => {
             setErrorMessage(err.message || 'Error al cargar catálogos del servidor');
           })
           .finally(() => setLoading(false));
+      } else {
+        Promise.all([
+          api.getCustomLocations(),
+          api.getLocationPresets().catch(() => ({})),
+        ])
+          .then(([locCatalog, locPresets]) => {
+            handleCatalogData(locCatalog, locPresets);
+          })
+          .catch(() => {});
       }
     }
     prevIsOpenRef.current = isOpen;
@@ -127,8 +186,6 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, submitting]);
-
-  if (!isOpen) return null;
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === activeStep);
   const isFirstStep = currentStepIndex === 0;
@@ -162,6 +219,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         name: name.trim().toLowerCase(),
         template: selectedModel,
         carrier: selectedCarrier,
+        phone_number: phoneNumber.trim() || undefined,
         port: Number(port),
         start: startImmediately,
         limits: {
@@ -175,6 +233,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
           altitude,
           accuracy: 4.2,
           timezone,
+          custom_name: selectedCustomLoc ? selectedCustomLoc.name : undefined,
+          custom_location_id: selectedCustomLoc ? selectedCustomLoc.id : undefined,
         },
       };
 
@@ -191,8 +251,106 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     }
   };
 
+  const mapMarkers = useMemo<MapPinItem[]>(() => {
+    return (customLocations || [])
+      .filter((loc) => loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number' && !isNaN(loc.latitude) && !isNaN(loc.longitude))
+      .map((loc) => ({
+        id: loc.id,
+        name: loc.name || 'Ubicación',
+        city: loc.city || '',
+        lat: Number(loc.latitude),
+        lon: Number(loc.longitude),
+        isDefault: defaultLocData?.id === loc.id,
+        color: loc.is_pinned ? '#f59e0b' : '#10b981',
+      }));
+  }, [customLocations, defaultLocData]);
+
+  const pinnedItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      name: string;
+      city: string;
+      lat: number;
+      lon: number;
+      timezone?: string;
+      isDefault?: boolean;
+      isCustom: boolean;
+    }> = [];
+    const seenIds = new Set<string>();
+
+    // 1. Ubicaciones personalizadas fijadas con pin (is_pinned: true)
+    (customLocations || []).filter((l) => l.is_pinned).forEach((loc) => {
+      seenIds.add(loc.id);
+      items.push({
+        id: loc.id,
+        name: loc.name,
+        city: loc.city,
+        lat: Number(loc.latitude),
+        lon: Number(loc.longitude),
+        timezone: loc.timezone,
+        isDefault: defaultLocData?.id === loc.id,
+        isCustom: true,
+      });
+    });
+
+    // 2. Si default_location no está en la lista de pines, incluirla al inicio
+    if (defaultLocData && defaultLocData.id && !seenIds.has(defaultLocData.id)) {
+      seenIds.add(defaultLocData.id);
+      items.unshift({
+        id: defaultLocData.id,
+        name: defaultLocData.name || defaultLocData.city || 'Predeterminada',
+        city: defaultLocData.city || defaultLocData.name || '',
+        lat: Number(defaultLocData.latitude),
+        lon: Number(defaultLocData.longitude),
+        timezone: defaultLocData.timezone,
+        isDefault: true,
+        isCustom: defaultLocData.target_type === 'custom' || String(defaultLocData.id).startsWith('loc_'),
+      });
+    }
+
+    // 3. Presets oficiales fijados por el usuario
+    (pinnedPresets || []).forEach((key) => {
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        const p = getPresetDisplay(key, locationPresets);
+        if (p && typeof p.latitude === 'number' && typeof p.longitude === 'number' && !isNaN(p.latitude) && !isNaN(p.longitude)) {
+          items.push({
+            id: key,
+            name: p.name,
+            city: p.city,
+            lat: p.latitude,
+            lon: p.longitude,
+            timezone: p.timezone,
+            isDefault: defaultLocData?.target_type === 'preset' && defaultLocData?.id === key,
+            isCustom: false,
+          });
+        }
+      }
+    });
+
+    // 4. Si aún no hay pines configurados, mostrar las ubicaciones personalizadas existentes
+    if (items.length === 0 && (customLocations || []).length > 0) {
+      customLocations.forEach((loc) => {
+        items.push({
+          id: loc.id,
+          name: loc.name,
+          city: loc.city,
+          lat: Number(loc.latitude),
+          lon: Number(loc.longitude),
+          timezone: loc.timezone,
+          isDefault: false,
+          isCustom: true,
+        });
+      });
+    }
+
+    return items;
+  }, [customLocations, pinnedPresets, defaultLocData, locationPresets]);
+
   const brands = Object.keys(templates);
   const currentBrandModels = templates[selectedBrand] || [];
+
+  if (!isOpen) return null;
 
   return createPortal(
     <div
@@ -290,8 +448,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
               {/* ── PASO 1: DISPOSITIVO & OPERADORA SIM ──────────────────────────── */}
               {activeStep === 'device' && (
                 <div className="space-y-4">
-                  {/* Fila: Nombre, Puerto ADB y Operadora */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Fila: Nombre, Puerto ADB, Operadora y Línea Móvil */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-foreground mb-1">
                         Nombre de la Instancia
@@ -337,13 +495,41 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                         onChange={(e) => setSelectedCarrier(e.target.value)}
                         className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary capitalize"
                       >
-                        {carriers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.carrier_name} ({c.country_iso.toUpperCase()} · {c.operator_numeric})
-                          </option>
-                        ))}
+                        {carriers.map((c) => {
+                          const country = COUNTRY_NAMES[c.country_iso.toLowerCase()] || c.country_iso.toUpperCase();
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {c.carrier_name} ({country})
+                            </option>
+                          );
+                        })}
                       </select>
-                      <span className="text-[10px] text-muted-foreground mt-1 block">Spoofing MCC/MNC y telemetría</span>
+                      <span className="text-[10px] text-muted-foreground mt-1 block">Red móvil y telemetría oficial</span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-medium text-foreground">
+                          Línea Móvil (SIM)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setPhoneNumber(generateFormosaNumber())}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition-colors"
+                          title="Generar nuevo número con prefijo Formosa (3704 / 3705)"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          <span>Generar</span>
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+]/g, ''))}
+                        className="w-full h-8.5 rounded-md border border-input bg-background px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        placeholder="ej: 3704123456"
+                      />
+                      <span className="text-[10px] text-muted-foreground mt-1 block">Formosa (3704/3705) o manual</span>
                     </div>
                   </div>
 
@@ -418,12 +604,59 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                         <MapPin className="h-3.5 w-3.5 text-primary" />
-                        <span>Geolocalización GPS & Presets de Ciudades</span>
+                        <span>Geolocalización GPS & Pines</span>
                       </label>
                       <span className="text-[11px] font-mono text-muted-foreground">
+                        {selectedCustomLoc ? (
+                          <span className="text-primary font-semibold mr-1">📍 {selectedCustomLoc.name} ·</span>
+                        ) : null}
                         {city} · {latitude.toFixed(4)}, {longitude.toFixed(4)}
                       </span>
                     </div>
+
+                    {/* Barra de Pines Rápidos Configuradas por el Usuario */}
+                    {pinnedItems.length > 0 && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                        <span className="text-[10px] font-mono text-muted-foreground shrink-0 flex items-center gap-1 font-semibold">
+                          <Pin className="h-3 w-3 text-amber-500 fill-amber-500" />
+                          Pines:
+                        </span>
+                        {pinnedItems.map((pin) => {
+                          const isSel =
+                            (selectedCustomLoc?.id && selectedCustomLoc.id === pin.id) ||
+                            (!selectedCustomLoc &&
+                              Math.abs(latitude - pin.lat) < 0.001 &&
+                              Math.abs(longitude - pin.lon) < 0.001);
+                          return (
+                            <button
+                              key={pin.id}
+                              type="button"
+                              onClick={() => {
+                                setLatitude(pin.lat);
+                                setLongitude(pin.lon);
+                                setCity(pin.city);
+                                if (pin.timezone) setTimezone(pin.timezone);
+                                if (pin.isCustom) {
+                                  const found = customLocations.find((l) => l.id === pin.id);
+                                  setSelectedCustomLoc(found || null);
+                                } else {
+                                  setSelectedCustomLoc(null);
+                                }
+                              }}
+                              className={cn(
+                                'rounded px-2 py-0.5 text-[10px] font-mono shrink-0 transition-colors border flex items-center gap-1',
+                                isSel
+                                  ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-600 dark:text-emerald-400 font-semibold shadow-xs'
+                                  : 'bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent'
+                              )}
+                            >
+                              {pin.isDefault && <span className="text-[9px] text-amber-500">⭐</span>}
+                              <span>{pin.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     <MapPicker
                       latitude={latitude}
@@ -432,11 +665,22 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                       onChange={(lat, lon, newCity) => {
                         setLatitude(lat);
                         setLongitude(lon);
-                        if (newCity) setCity(newCity);
-                        else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+                        const matched = customLocations.find(
+                          (l) => Math.abs(l.latitude - lat) < 0.0001 && Math.abs(l.longitude - lon) < 0.0001
+                        );
+                        if (matched) {
+                          setSelectedCustomLoc(matched);
+                          setCity(matched.city);
+                          if (matched.timezone) setTimezone(matched.timezone);
+                        } else {
+                          setSelectedCustomLoc(null);
+                          if (newCity) setCity(newCity);
+                          else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+                        }
                       }}
+                      markers={mapMarkers}
                       height="210px"
-                      showPresets={true}
+                      showPresets={false}
                       showInfoOverlay={false}
                     />
 
@@ -581,7 +825,19 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                       </div>
                       <div className="flex justify-between border-b border-border/30 py-1">
                         <span className="text-muted-foreground">Operadora:</span>
-                        <span className="text-foreground">{selectedCarrier}</span>
+                        <span className="text-foreground">
+                          {carriers.find((c) => c.id === selectedCarrier)?.carrier_name || selectedCarrier}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Línea Telefónica:</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          {phoneNumber ? (phoneNumber.startsWith('+') ? phoneNumber : `+549${phoneNumber}`) : 'Automática (Formosa)'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/30 py-1">
+                        <span className="text-muted-foreground">Recursos:</span>
+                        <span className="text-foreground">{memoryLimit.toUpperCase()} RAM · CPU {cpuLimit}</span>
                       </div>
                       <div className="flex justify-between border-b border-border/30 py-1">
                         <span className="text-muted-foreground">GPS / Ciudad:</span>
