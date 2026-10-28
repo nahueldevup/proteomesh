@@ -5,6 +5,50 @@ export interface LocationData {
   altitude?: number;
   accuracy?: number;
   timezone?: string;
+  custom_name?: string;
+  custom_location_id?: string;
+  group_name?: string;
+}
+
+export interface LocationGroup {
+  id: string;
+  name: string;
+  color?: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface CustomLocation {
+  id: string;
+  name: string;
+  group_id?: string | null;
+  city: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+  timezone?: string;
+  is_pinned?: boolean;
+  created_at?: string;
+}
+
+export interface DefaultLocation {
+  id?: string;
+  name: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+  timezone?: string;
+  target_type?: 'custom' | 'preset';
+}
+
+export interface CustomLocationsCatalog {
+  groups: LocationGroup[];
+  locations: CustomLocation[];
+  pinned_presets?: string[];
+  default_location?: DefaultLocation;
 }
 
 export interface ProxyConfig {
@@ -188,6 +232,13 @@ export interface UsbPhysicalPhone {
   public_ip?: string | null;
 }
 
+export interface PendingOffer {
+  instance: string;
+  expires_in_seconds: number;
+  device_serial?: string;
+  expires_at?: number;
+}
+
 export interface UsbNetworkSummary {
   total_usb: number;
   free_usb: number;
@@ -198,6 +249,7 @@ export interface UsbNetworkSummary {
 
 export interface UsbNetworkOverview {
   summary: UsbNetworkSummary;
+  pending_offer?: PendingOffer | null;
   waiting_queue: string[];
   devices: UsbPhysicalPhone[];
 }
@@ -223,10 +275,12 @@ export interface IpLedgerResponse {
 export interface InstanceUsbNetworkState {
   instance: string;
   running: boolean;
-  state: 'QUARANTINE' | 'WAITING_USB' | 'RELEASING' | 'ROTATING_IP' | 'CONNECTED_USB' | 'OFFLINE' | string;
+  state: 'QUARANTINE' | 'WAITING_USB' | 'OFFERED' | 'RELEASING' | 'ROTATING_IP' | 'CONNECTED_USB' | 'OFFLINE' | string;
+  pending_offer?: PendingOffer | null;
   assigned_usb?: Record<string, unknown> | null;
   public_ip?: string | null;
   queue_position?: number | null;
   message?: string | null;
+  error?: string | null;
   updated_at?: string | null;
 }

@@ -48,6 +48,7 @@ from server.models.schemas import (
     InstanceResponse,
     HealthReport,
 )
+from server.services.custom_location_service import custom_location_service
 
 
 def get_templates_catalog() -> Dict[str, List[TemplateItem]]:
@@ -208,6 +209,8 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
             cmd.extend(["--template", req.template])
         if req.carrier:
             cmd.extend(["--carrier", req.carrier])
+        if req.phone_number:
+            cmd.extend(["--phone", req.phone_number.strip()])
 
     if req.custom_location:
         loc_str = f"{req.custom_location.latitude},{req.custom_location.longitude},{req.custom_location.altitude}"
@@ -241,9 +244,10 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         raise RuntimeError(f"Error al crear instancia: {err_msg}")
 
     # Preservar ciudad y timezone personalizados en meta.json
-    if req.custom_location and (req.custom_location.city or req.custom_location.timezone):
+    if req.custom_location and (req.custom_location.city or req.custom_location.timezone or req.custom_location.custom_name):
         inst_dir = INSTANCES_DIR / req.name
         meta_path = inst_dir / "meta.json"
+        profile_path = inst_dir / "profile.json"
         if meta_path.exists():
             try:
                 with open(meta_path, "r", encoding="utf-8") as f:
@@ -253,8 +257,22 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
                         meta["location"]["city"] = req.custom_location.city
                     if req.custom_location.timezone:
                         meta["location"]["timezone"] = req.custom_location.timezone
+                    if req.custom_location.custom_name:
+                        meta["location"]["custom_name"] = req.custom_location.custom_name
+                    if req.custom_location.custom_location_id:
+                        meta["location"]["custom_location_id"] = req.custom_location.custom_location_id
+                    if req.custom_location.group_name:
+                        meta["location"]["group_name"] = req.custom_location.group_name
                 with open(meta_path, "w", encoding="utf-8") as f:
                     json.dump(meta, f, indent=2)
+
+                if profile_path.exists():
+                    with open(profile_path, "r", encoding="utf-8") as f:
+                        prof = json.load(f)
+                    if "location" in prof and "location" in meta:
+                        prof["location"] = meta["location"]
+                        with open(profile_path, "w", encoding="utf-8") as f:
+                            json.dump(prof, f, indent=2)
             except Exception:
                 pass
 
@@ -432,7 +450,28 @@ def set_instance_location_sync(name: str, update: LocationUpdate) -> LocationRes
                 except Exception:
                     pass
 
-            if update.latitude is not None and update.longitude is not None:
+            # Resolución de ubicación custom o preset o coordenadas
+            loc = None
+            if update.custom_location_id:
+                custom_loc = custom_location_service.get_location(update.custom_location_id)
+                if custom_loc:
+                    loc = {
+                        "city": custom_loc.get("city", "Custom"),
+                        "latitude": float(custom_loc["latitude"]),
+                        "longitude": float(custom_loc["longitude"]),
+                        "altitude": float(custom_loc.get("altitude", 25.0)),
+                        "accuracy": float(custom_loc.get("accuracy", 4.2)),
+                        "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
+                        "custom_name": custom_loc.get("name"),
+                        "custom_location_id": custom_loc.get("id"),
+                    }
+                    if custom_loc.get("group_id"):
+                        for grp in custom_location_service.list_groups():
+                            if grp.get("id") == custom_loc["group_id"]:
+                                loc["group_name"] = grp.get("name")
+                                break
+
+            if loc is None and update.latitude is not None and update.longitude is not None:
                 loc = {
                     "city": update.city or f"Coordenadas ({update.latitude:.4f}, {update.longitude:.4f})",
                     "latitude": float(update.latitude),
@@ -441,16 +480,42 @@ def set_instance_location_sync(name: str, update: LocationUpdate) -> LocationRes
                     "accuracy": 4.2,
                     "timezone": update.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
                 }
-            elif update.location:
-                loc = parse_location(update.location, default_tz=carrier_tz)
-                if update.city:
-                    loc["city"] = update.city
-                if update.timezone:
-                    loc["timezone"] = update.timezone
-                if update.altitude is not None:
-                    loc["altitude"] = float(update.altitude)
-            else:
-                raise ValueError("Debes especificar 'location' (preset o 'lat,lon') o 'latitude' y 'longitude'.")
+                if update.custom_name:
+                    loc["custom_name"] = update.custom_name
+                if update.custom_location_id:
+                    loc["custom_location_id"] = update.custom_location_id
+            elif loc is None and update.location:
+                # Verificar primero si es una ubicación custom por id o nombre
+                custom_loc = custom_location_service.find_location(update.location)
+                if custom_loc:
+                    loc = {
+                        "city": custom_loc.get("city", "Custom"),
+                        "latitude": float(custom_loc["latitude"]),
+                        "longitude": float(custom_loc["longitude"]),
+                        "altitude": float(custom_loc.get("altitude", 25.0)),
+                        "accuracy": float(custom_loc.get("accuracy", 4.2)),
+                        "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
+                        "custom_name": custom_loc.get("name"),
+                        "custom_location_id": custom_loc.get("id"),
+                    }
+                    if custom_loc.get("group_id"):
+                        for grp in custom_location_service.list_groups():
+                            if grp.get("id") == custom_loc["group_id"]:
+                                loc["group_name"] = grp.get("name")
+                                break
+                else:
+                    loc = parse_location(update.location, default_tz=carrier_tz)
+                    if update.city:
+                        loc["city"] = update.city
+                    if update.timezone:
+                        loc["timezone"] = update.timezone
+                    if update.altitude is not None:
+                        loc["altitude"] = float(update.altitude)
+                    if update.custom_name:
+                        loc["custom_name"] = update.custom_name
+
+            if loc is None:
+                raise ValueError("Debes especificar 'location' (preset o 'lat,lon'), 'custom_location_id', o 'latitude' y 'longitude'.")
 
             # Persistir en meta.json y profile.json bajo lock
             meta["location"] = loc

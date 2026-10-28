@@ -20,6 +20,7 @@ build_gapps/
 *.tmp
 *.bak
 *.orig
+*.lock
 __pycache__/
 *.py[cod]
 .cache/

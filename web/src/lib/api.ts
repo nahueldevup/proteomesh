@@ -11,6 +11,9 @@ import type {
   UsbPhysicalPhone,
   InstanceUsbNetworkState,
   IpLedgerResponse,
+  CustomLocation,
+  LocationGroup,
+  CustomLocationsCatalog,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -97,6 +100,103 @@ export const api = {
     return handleResponse<Record<string, LocationData>>(res);
   },
 
+  async getCustomLocations(): Promise<CustomLocationsCatalog> {
+    const res = await fetch(`${API_BASE}/locations/custom`);
+    return handleResponse<CustomLocationsCatalog>(res);
+  },
+
+  async createCustomLocation(payload: Partial<CustomLocation>): Promise<CustomLocation> {
+    const res = await fetch(`${API_BASE}/locations/custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<CustomLocation>(res);
+  },
+
+  async updateCustomLocation(id: string, payload: Partial<CustomLocation>): Promise<CustomLocation> {
+    const res = await fetch(`${API_BASE}/locations/custom/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<CustomLocation>(res);
+  },
+
+  async deleteCustomLocation(id: string): Promise<{ ok: boolean; deleted: string }> {
+    const res = await fetch(`${API_BASE}/locations/custom/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse<{ ok: boolean; deleted: string }>(res);
+  },
+
+  async createLocationGroup(payload: { name: string; color?: string; description?: string }): Promise<LocationGroup> {
+    const res = await fetch(`${API_BASE}/locations/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<LocationGroup>(res);
+  },
+
+  async updateLocationGroup(id: string, payload: Partial<LocationGroup>): Promise<LocationGroup> {
+    const res = await fetch(`${API_BASE}/locations/groups/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<LocationGroup>(res);
+  },
+
+  async deleteLocationGroup(id: string): Promise<{ ok: boolean; deleted: string }> {
+    const res = await fetch(`${API_BASE}/locations/groups/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse<{ ok: boolean; deleted: string }>(res);
+  },
+
+  async togglePin(targetType: 'custom' | 'preset', targetId: string, pinned?: boolean): Promise<any> {
+    const res = await fetch(`${API_BASE}/locations/toggle-pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_type: targetType, target_id: targetId, pinned }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async updatePinnedPresets(pinnedPresets: string[]): Promise<{ ok: boolean; pinned_presets: string[] }> {
+    const res = await fetch(`${API_BASE}/locations/pinned-presets`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned_presets: pinnedPresets }),
+    });
+    return handleResponse<{ ok: boolean; pinned_presets: string[] }>(res);
+  },
+
+  async getDefaultLocation(): Promise<any> {
+    const res = await fetch(`${API_BASE}/locations/default`);
+    return handleResponse<any>(res);
+  },
+
+  async setDefaultLocation(payload: {
+    target_type?: 'custom' | 'preset';
+    target_id?: string;
+    name?: string;
+    city?: string;
+    latitude?: number;
+    longitude?: number;
+    altitude?: number;
+    accuracy?: number;
+    timezone?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/locations/default`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<any>(res);
+  },
+
   async getInstanceLocation(name: string): Promise<any> {
     const res = await fetch(`${API_BASE}/locations/instances/${name}`);
     return handleResponse<any>(res);
@@ -161,6 +261,15 @@ export const api = {
         preferred_serial: preferredSerial || null,
         steal_from: stealFrom || null,
       }),
+    });
+    return handleResponse<any>(res);
+  },
+
+  async declineOffer(name: string, requeue: boolean = true): Promise<any> {
+    const res = await fetch(`${API_BASE}/instances/${name}/network/decline-offer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requeue }),
     });
     return handleResponse<any>(res);
   },

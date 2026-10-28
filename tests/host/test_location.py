@@ -104,5 +104,241 @@ class LocationBundleTest(unittest.TestCase):
         self.assertAlmostEqual(res["profile"]["location"]["altitude"], 5.0)
 
 
+class CustomLocationServiceTest(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="proteomesh_custom_loc_test_"))
+        self.custom_file = self.temp_dir / "custom_locations.json"
+        from server.services.custom_location_service import CustomLocationService
+        self.service = CustomLocationService(self.custom_file)
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_default_initialization(self):
+        cat = self.service.get_catalog()
+        self.assertIn("groups", cat)
+        self.assertIn("locations", cat)
+        self.assertTrue(len(cat["groups"]) >= 1)
+        self.assertTrue(len(cat["locations"]) >= 1)
+
+    def test_crud_groups(self):
+        grp = self.service.create_group({
+            "name": "Sucursales Bancarias",
+            "color": "#3b82f6",
+            "description": "Zonas de testing bancario"
+        })
+        self.assertIn("id", grp)
+        self.assertEqual(grp["name"], "Sucursales Bancarias")
+        self.assertEqual(grp["color"], "#3b82f6")
+
+        # Actualizar grupo
+        upd = self.service.update_group(grp["id"], {"name": "Bancos y Fintech"})
+        self.assertEqual(upd["name"], "Bancos y Fintech")
+
+        # Listar
+        groups = self.service.list_groups()
+        self.assertTrue(any(g["id"] == grp["id"] for g in groups))
+
+        # Eliminar grupo
+        deleted = self.service.delete_group(grp["id"])
+        self.assertTrue(deleted)
+        groups_after = self.service.list_groups()
+        self.assertFalse(any(g["id"] == grp["id"] for g in groups_after))
+
+    def test_crud_custom_locations(self):
+        grp = self.service.create_group({"name": "Oficinas Microcentro", "color": "#10b981"})
+        loc = self.service.create_location({
+            "name": "HQ Corrientes",
+            "group_id": grp["id"],
+            "city": "Microcentro, CABA",
+            "latitude": -34.604,
+            "longitude": -58.378,
+            "altitude": 30.0,
+            "timezone": "America/Argentina/Buenos_Aires"
+        })
+        self.assertIn("id", loc)
+        self.assertEqual(loc["name"], "HQ Corrientes")
+        self.assertEqual(loc["group_id"], grp["id"])
+        self.assertAlmostEqual(loc["latitude"], -34.604)
+
+        # Buscar por id y por nombre
+        found_id = self.service.find_location(loc["id"])
+        self.assertIsNotNone(found_id)
+        self.assertEqual(found_id["name"], "HQ Corrientes")
+
+        found_name = self.service.find_location("hq corrientes")
+        self.assertIsNotNone(found_name)
+        self.assertEqual(found_name["id"], loc["id"])
+
+        # Actualizar ubicación
+        upd = self.service.update_location(loc["id"], {"name": "HQ Corrientes & Florida", "altitude": 35.0})
+        self.assertEqual(upd["name"], "HQ Corrientes & Florida")
+        self.assertEqual(upd["altitude"], 35.0)
+
+        # Si se elimina el grupo, la ubicación no se borra, pasa a group_id = None
+        self.service.delete_group(grp["id"])
+        loc_after_grp_del = self.service.get_location(loc["id"])
+        self.assertIsNotNone(loc_after_grp_del)
+        self.assertIsNone(loc_after_grp_del["group_id"])
+
+        # Pinar y despinar
+        pinned_loc = self.service.toggle_custom_pin(loc["id"], True)
+        self.assertTrue(pinned_loc["is_pinned"])
+        unpinned_loc = self.service.toggle_custom_pin(loc["id"], False)
+        self.assertFalse(unpinned_loc["is_pinned"])
+
+        # Pinar y despinar presets
+        pins = self.service.toggle_preset_pin("ba", False)
+        self.assertNotIn("ba", pins)
+        pins2 = self.service.toggle_preset_pin("ba", True)
+        self.assertIn("ba", pins2)
+
+        # Configurar como ubicación predeterminada del sistema
+        def_loc = self.service.set_default_location({
+            "target_type": "custom",
+            "target_id": loc["id"]
+        })
+        self.assertEqual(def_loc["id"], loc["id"])
+        self.assertEqual(def_loc["target_type"], "custom")
+        self.assertAlmostEqual(def_loc["latitude"], -34.604)
+
+        got_def = self.service.get_default_location()
+        self.assertEqual(got_def["id"], loc["id"])
+
+        # Eliminar ubicación
+        del_loc = self.service.delete_location(loc["id"])
+        self.assertTrue(del_loc)
+        self.assertIsNone(self.service.get_location(loc["id"]))
+
+
+try:
+    from fastapi.testclient import TestClient
+    from server.main import app
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI / TestClient no disponibles")
+class CustomLocationApiTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = TestClient(app)
+
+    def test_custom_locations_api_flow(self):
+        # 1. Obtener catálogo
+        res = self.client.get("/api/v1/locations/custom")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("groups", data)
+        self.assertIn("locations", data)
+
+        grp_id = None
+        loc_id = None
+        prev_def = None
+        try:
+            # 2. Crear un grupo
+            grp_res = self.client.post("/api/v1/locations/groups", json={
+                "name": "Test Group API",
+                "color": "#8b5cf6",
+                "description": "Creado por test"
+            })
+            self.assertEqual(grp_res.status_code, 200)
+            grp_data = grp_res.json()
+            grp_id = grp_data["id"]
+
+            # 3. Crear una custom location en ese grupo
+            loc_res = self.client.post("/api/v1/locations/custom", json={
+                "name": "Sede Test API",
+                "group_id": grp_id,
+                "city": "Nuñez, Buenos Aires",
+                "latitude": -34.545,
+                "longitude": -58.460,
+                "altitude": 18.0
+            })
+            self.assertEqual(loc_res.status_code, 200)
+            loc_data = loc_res.json()
+            loc_id = loc_data["id"]
+            self.assertEqual(loc_data["name"], "Sede Test API")
+            self.assertEqual(loc_data["group_id"], grp_id)
+
+            # 4. Actualizar la custom location y toggle pin
+            upd_res = self.client.put(f"/api/v1/locations/custom/{loc_id}", json={
+                "name": "Sede Test API Modificada"
+            })
+            self.assertEqual(upd_res.status_code, 200)
+            self.assertEqual(upd_res.json()["name"], "Sede Test API Modificada")
+
+            # Probar toggle pin de custom
+            pin_res = self.client.post("/api/v1/locations/toggle-pin", json={
+                "target_type": "custom",
+                "target_id": loc_id,
+                "pinned": True
+            })
+            self.assertEqual(pin_res.status_code, 200)
+            self.assertTrue(pin_res.json()["location"]["is_pinned"])
+
+            # Probar unpin y pin de preset
+            unpin_pre_res = self.client.post("/api/v1/locations/toggle-pin", json={
+                "target_type": "preset",
+                "target_id": "ba",
+                "pinned": False
+            })
+            self.assertEqual(unpin_pre_res.status_code, 200)
+            self.assertNotIn("ba", unpin_pre_res.json()["pinned_presets"])
+
+            # Probar PUT /api/v1/locations/pinned-presets
+            put_presets_res = self.client.put("/api/v1/locations/pinned-presets", json={
+                "pinned_presets": ["cordoba", "tokyo", "madrid"]
+            })
+            self.assertEqual(put_presets_res.status_code, 200)
+            self.assertEqual(put_presets_res.json()["pinned_presets"], ["cordoba", "tokyo", "madrid"])
+
+            # Restaurar pin de presets por defecto
+            self.client.put("/api/v1/locations/pinned-presets", json={
+                "pinned_presets": ["ba", "sao-paulo", "miami", "new-york"]
+            })
+
+            # 5. Asignar la ubicación custom a una instancia
+            instances = self.client.get("/api/v1/instances").json()
+            target_inst = instances[0]["instance_name"] if instances else None
+            if target_inst:
+                inst_res = self.client.post(f"/api/v1/locations/instances/{target_inst}", json={
+                    "custom_location_id": loc_id
+                })
+                self.assertEqual(inst_res.status_code, 200)
+                loc_applied = inst_res.json()["location"]
+                self.assertEqual(loc_applied["custom_name"], "Sede Test API Modificada")
+                self.assertEqual(loc_applied["custom_location_id"], loc_id)
+                self.assertEqual(loc_applied["group_name"], "Test Group API")
+                self.assertAlmostEqual(loc_applied["latitude"], -34.545)
+
+            # 6. Probar endpoints de Default Location
+            prev_def = self.client.get("/api/v1/locations/default").json()
+
+            # Configurar default location usando un preset
+            set_def_res = self.client.put("/api/v1/locations/default", json={
+                "target_type": "preset",
+                "target_id": "cordoba"
+            })
+            self.assertEqual(set_def_res.status_code, 200)
+            new_def = set_def_res.json()
+            self.assertEqual(new_def["id"], "cordoba")
+            self.assertEqual(new_def["target_type"], "preset")
+            self.assertAlmostEqual(new_def["latitude"], -31.420083)
+        finally:
+            # Restaurar default location previa si se cambió
+            if prev_def and prev_def.get("target_type") and prev_def.get("id"):
+                self.client.put("/api/v1/locations/default", json={
+                    "target_type": prev_def["target_type"],
+                    "target_id": prev_def["id"]
+                })
+            # 7. Borrar la custom location y el grupo creados por la prueba
+            if loc_id:
+                self.client.delete(f"/api/v1/locations/custom/{loc_id}")
+            if grp_id:
+                self.client.delete(f"/api/v1/locations/groups/{grp_id}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -13,15 +13,125 @@ class LocationSchema(BaseModel):
     altitude: float = Field(default=25.0, description="Altitud en metros sobre el nivel del mar")
     accuracy: float = Field(default=4.2, description="Radio de precisión GPS simulado en metros")
     timezone: str = Field(default="America/Argentina/Buenos_Aires", description="Huso horario IANA")
+    custom_name: Optional[str] = Field(default=None, description="Nombre personalizado si proviene de ubicación custom")
+    custom_location_id: Optional[str] = Field(default=None, description="ID de la ubicación custom")
+    group_name: Optional[str] = Field(default=None, description="Nombre del grupo si aplica")
 
 
 class LocationUpdate(BaseModel):
-    location: Optional[str] = Field(default=None, description="Preset (ej: miami, cordoba) o coordenadas 'lat,lon'")
+    location: Optional[str] = Field(default=None, description="Preset, ID de ubicación custom, o coordenadas 'lat,lon'")
     latitude: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
     longitude: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
     altitude: Optional[float] = Field(default=None)
     city: Optional[str] = Field(default=None)
     timezone: Optional[str] = Field(default=None)
+    custom_name: Optional[str] = Field(default=None, description="Nombre personalizado asignado")
+    custom_location_id: Optional[str] = Field(default=None, description="ID de ubicación custom")
+
+
+class LocationGroupSchema(BaseModel):
+    id: str = Field(..., description="Identificador único del grupo (ej: grp_oficinas)")
+    name: str = Field(..., min_length=1, max_length=100, description="Nombre descriptivo del grupo")
+    color: Optional[str] = Field(default="#10b981", description="Color distintivo en formato hexadecimal")
+    description: Optional[str] = Field(default="", description="Descripción opcional del grupo")
+    created_at: Optional[str] = None
+
+
+class LocationGroupCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    color: Optional[str] = "#10b981"
+    description: Optional[str] = ""
+
+
+class LocationGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class DefaultLocationSchema(BaseModel):
+    id: Optional[str] = Field(default=None, description="ID de ubicación custom o clave de preset")
+    name: str = Field(..., description="Nombre de la ubicación predeterminada")
+    city: str = Field(..., description="Ciudad descriptiva")
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    altitude: float = Field(default=25.0)
+    accuracy: float = Field(default=4.2)
+    timezone: str = Field(default="America/Argentina/Buenos_Aires")
+    target_type: Optional[str] = Field(default=None, description="'custom' o 'preset'")
+
+
+class DefaultLocationUpdate(BaseModel):
+    target_type: Optional[str] = Field(default=None, description="'custom' o 'preset'")
+    target_id: Optional[str] = Field(default=None, description="ID de custom location o clave de preset (ej: 'ba')")
+    name: Optional[str] = None
+    city: Optional[str] = None
+    latitude: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
+    altitude: Optional[float] = None
+    accuracy: Optional[float] = None
+    timezone: Optional[str] = None
+
+
+class CustomLocationSchema(BaseModel):
+    id: str = Field(..., description="Identificador único de la ubicación custom")
+    name: str = Field(..., min_length=1, max_length=100, description="Nombre personalizado (ej: Oficina Central, Depósito 3)")
+    group_id: Optional[str] = Field(default=None, description="ID del grupo al que pertenece")
+    city: str = Field(..., description="Ciudad o zona descriptiva")
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="Latitud decimal (-90.0 a 90.0)")
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="Longitud decimal (-180.0 a 180.0)")
+    altitude: float = Field(default=25.0, description="Altitud en metros")
+    accuracy: float = Field(default=4.2, description="Precisión GPS simulada en metros")
+    timezone: str = Field(default="America/Argentina/Buenos_Aires", description="Huso horario IANA")
+    is_pinned: bool = Field(default=False, description="Fijado como acceso rápido en barra GPS de instancias")
+    created_at: Optional[str] = None
+
+
+class CustomLocationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    group_id: Optional[str] = None
+    city: Optional[str] = None
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    altitude: Optional[float] = 25.0
+    accuracy: Optional[float] = 4.2
+    timezone: Optional[str] = "America/Argentina/Buenos_Aires"
+    is_pinned: Optional[bool] = False
+
+
+class CustomLocationUpdate(BaseModel):
+    name: Optional[str] = None
+    group_id: Optional[str] = None
+    city: Optional[str] = None
+    latitude: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
+    altitude: Optional[float] = None
+    accuracy: Optional[float] = None
+    timezone: Optional[str] = None
+    is_pinned: Optional[bool] = None
+
+
+class PinToggleRequest(BaseModel):
+    target_type: str = Field(..., pattern="^(custom|preset)$", description="'custom' o 'preset'")
+    target_id: str = Field(..., description="ID de ubicación custom o clave de preset (ej: 'ba')")
+    pinned: Optional[bool] = Field(default=None, description="Estado fijado explícito o toggle si es None")
+
+
+class PinnedPresetsUpdate(BaseModel):
+    pinned_presets: List[str] = Field(..., description="Lista de claves de presets fijados")
+
+
+class CustomLocationsCatalog(BaseModel):
+    groups: List[LocationGroupSchema] = []
+    locations: List[CustomLocationSchema] = []
+    pinned_presets: List[str] = Field(
+        default=["ba", "sao-paulo", "miami", "new-york"],
+        description="Lista de presets globales fijados en la barra rápida"
+    )
+    default_location: Optional[DefaultLocationSchema] = Field(
+        default=None,
+        description="Ubicación predeterminada general configurada en el sistema"
+    )
 
 
 class LocationResponse(BaseModel):
@@ -153,6 +263,7 @@ class InstanceCreateRequest(BaseModel):
     template: Optional[str] = Field(default="samsung/a54x", description="Plantilla de hardware")
     from_bundle: Optional[str] = Field(default=None, description="Ruta a bundle pre-renderizado existente")
     carrier: Optional[str] = Field(default="ar_personal", description="ID de operadora registrada")
+    phone_number: Optional[str] = Field(default=None, description="Número de teléfono móvil asignado (ej: 3704123456 o +5493704123456)")
     custom_carrier: Optional[CarrierSchema] = Field(default=None, description="Operadora personalizada inline")
     location: Optional[str] = Field(default=None, description="Preset geográfico o 'lat,lon'")
     custom_location: Optional[LocationSchema] = Field(default=None, description="Ubicación geográfica explícita")

@@ -11,6 +11,7 @@ CARRIERS_DIR = REPO_ROOT / "carriers"
 INSTANCES_DIR = REPO_ROOT / "instances"
 BUNDLES_DIR = REPO_ROOT / "bundles"
 DATA_CLEAN_DIR = REPO_ROOT / "data-clean"
+CUSTOM_LOCATIONS_FILE = REPO_ROOT / "custom_locations.json"
 
 API_PREFIX = "/api/v1"
 API_TITLE = "ProteoMesh CloudPhone API"

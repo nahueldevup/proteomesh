@@ -320,11 +320,73 @@ LOCATION_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
+def get_custom_locations_file() -> Path:
+    return BASE_DIR / "custom_locations.json"
+
+
+def get_system_default_location() -> Dict[str, Any]:
+    """Lee la ubicación predeterminada general configurada en custom_locations.json, con fallback a 'ba'."""
+    custom_file = get_custom_locations_file()
+    if custom_file.exists():
+        try:
+            with open(custom_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                def_loc = data.get("default_location")
+                if isinstance(def_loc, dict) and "latitude" in def_loc and "longitude" in def_loc:
+                    if def_loc.get("target_type") == "custom" or str(def_loc.get("id", "")).startswith("loc_"):
+                        for loc in data.get("locations", []):
+                            if loc.get("id") == def_loc.get("id"):
+                                return {
+                                    "city": loc.get("city", loc.get("name", "Ubicación Default")),
+                                    "latitude": float(loc["latitude"]),
+                                    "longitude": float(loc["longitude"]),
+                                    "altitude": float(loc.get("altitude", 25.0)),
+                                    "accuracy": float(loc.get("accuracy", 4.2)),
+                                    "timezone": loc.get("timezone", "America/Argentina/Buenos_Aires"),
+                                    "custom_name": loc.get("name"),
+                                    "custom_location_id": loc.get("id")
+                                }
+                    return {
+                        "city": def_loc.get("city", def_loc.get("name", "Buenos Aires")),
+                        "latitude": float(def_loc["latitude"]),
+                        "longitude": float(def_loc["longitude"]),
+                        "altitude": float(def_loc.get("altitude", 25.0)),
+                        "accuracy": float(def_loc.get("accuracy", 4.2)),
+                        "timezone": def_loc.get("timezone", "America/Argentina/Buenos_Aires"),
+                        "custom_name": def_loc.get("name") if def_loc.get("target_type") == "custom" else None,
+                        "custom_location_id": def_loc.get("id") if def_loc.get("target_type") == "custom" else None
+                    }
+        except Exception:
+            pass
+    return dict(LOCATION_PRESETS["ba"])
+
+
 def parse_location(val: str, default_tz: Optional[str] = None) -> Dict[str, Any]:
-    """Parsea una ciudad/preset o coordenadas 'lat,lon[,alt]' retornando un dict de ubicación normalizado."""
+    """Parsea una ciudad/preset, ID o nombre de ubicación custom, o coordenadas 'lat,lon[,alt]'."""
     s = val.strip().lower()
     if s in LOCATION_PRESETS:
         return dict(LOCATION_PRESETS[s])
+
+    # Buscar en custom_locations.json por ID o por nombre
+    custom_file = get_custom_locations_file()
+    if custom_file.exists():
+        try:
+            with open(custom_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for loc in data.get("locations", []):
+                    if loc.get("id") == val or loc.get("id", "").lower() == s or loc.get("name", "").strip().lower() == s:
+                        return {
+                            "city": loc.get("city", loc.get("name")),
+                            "latitude": float(loc["latitude"]),
+                            "longitude": float(loc["longitude"]),
+                            "altitude": float(loc.get("altitude", 25.0)),
+                            "accuracy": float(loc.get("accuracy", 4.2)),
+                            "timezone": loc.get("timezone", default_tz or "America/Argentina/Buenos_Aires"),
+                            "custom_name": loc.get("name"),
+                            "custom_location_id": loc.get("id")
+                        }
+        except Exception:
+            pass
 
     if "," in val:
         parts = val.split(",")
@@ -350,7 +412,7 @@ def parse_location(val: str, default_tz: Optional[str] = None) -> Dict[str, Any]
         }
 
     raise SystemExit(
-        f"[!] Error: Preset de ubicación desconocido: '{val}'. "
+        f"[!] Error: Preset o ubicación custom desconocida: '{val}'. "
         f"Usa 'list-locations' para ver presets disponibles o pasa 'lat,lon' (ej: -31.42,-64.18)."
     )
 
@@ -413,7 +475,7 @@ def rand_digits(length: int, rng: Optional[random.Random] = None) -> str:
     return "".join(chooser(string.digits) for _ in range(length))
 
 
-def generate_identity(template_data: dict, carrier_data: Optional[dict] = None, rng: Optional[random.Random] = None) -> dict:
+def generate_identity(template_data: dict, carrier_data: Optional[dict] = None, rng: Optional[random.Random] = None, phone_override: Optional[str] = None) -> dict:
     """
     Genera identificadores únicos pero consistentes con la marca y modelo:
     - IMEI: TAC oficial (8 dígitos) + 6 dígitos aleatorios + dígito de control Luhn.
@@ -421,7 +483,7 @@ def generate_identity(template_data: dict, carrier_data: Optional[dict] = None, 
     - Bluetooth MAC: OUI oficial del fabricante (3 octetos) + 3 octetos aleatorios.
     - Serial: Prefijo de modelo del fabricante + sufijo hexadecimal aleatorio.
     - Android ID: 16 caracteres hexadecimales aleatorios en minúscula.
-    - Telefonía (IMSI, ICCID, Teléfono): Prefijo de la operadora seleccionada + dígitos aleatorios.
+    - Telefonía (IMSI, ICCID, Teléfono): Prefijo de la operadora seleccionada + dígitos aleatorios o número asignado.
     """
     tmpl_id = template_data.get("identity_template", {})
 
@@ -456,7 +518,25 @@ def generate_identity(template_data: dict, carrier_data: Optional[dict] = None, 
 
     imsi = f"{imsi_pfx}{rand_digits(15 - len(imsi_pfx), rng=rng)}"
     iccid = f"{iccid_pfx}{rand_digits(19 - len(iccid_pfx), rng=rng)}"
-    phone = f"{phone_pfx}{rand_digits(8, rng=rng)}"
+
+    # Asignación / Generación de número de teléfono móvil
+    if phone_override and str(phone_override).strip():
+        raw_phone = str(phone_override).strip().replace(" ", "").replace("-", "")
+        if not raw_phone.startswith("+"):
+            if raw_phone.startswith("3704") or raw_phone.startswith("3705"):
+                phone = f"+549{raw_phone}"
+            elif raw_phone.startswith("549"):
+                phone = f"+{raw_phone}"
+            else:
+                phone = f"+549{raw_phone}"
+        else:
+            phone = raw_phone
+    elif rng is None and ((c_data.get("country_iso") == "ar") or str(c_data.get("id", "")).startswith("ar_") or phone_pfx.startswith("+54")):
+        # Prefijo móvil de Formosa (3704 o 3705) + 6 dígitos
+        area_code = random.choice(["3704", "3705"])
+        phone = f"+549{area_code}{rand_digits(6, rng=rng)}"
+    else:
+        phone = f"{phone_pfx}{rand_digits(8, rng=rng)}"
 
     # 7. Wi-Fi SSID / BSSID (estables por instancia; profile-loader los respeta)
     net = template_data.get("network", {})
@@ -769,6 +849,21 @@ def cmd_create_instance(args):
                 pass
 
         identity = profile.get("generated_identity") or profile.get("identity")
+        phone_arg = getattr(args, "phone", None) or getattr(args, "phone_number", None)
+        if phone_arg and "generated_identity" in profile:
+            raw_phone = str(phone_arg).strip().replace(" ", "").replace("-", "")
+            if not raw_phone.startswith("+"):
+                if raw_phone.startswith("3704") or raw_phone.startswith("3705"):
+                    p_num = f"+549{raw_phone}"
+                elif raw_phone.startswith("549"):
+                    p_num = f"+{raw_phone}"
+                else:
+                    p_num = f"+549{raw_phone}"
+            else:
+                p_num = raw_phone
+            profile["generated_identity"]["phone_number"] = p_num
+            if isinstance(identity, dict):
+                identity["phone_number"] = p_num
         t_src = profile.get("instance", {}).get("template_source") or manifest_data.get("template", "bundle")
         carrier_id = manifest_data.get("carrier") or meta_data.get("carrier", "default")
         seed = manifest_data.get("seed", getattr(args, "seed", None))
@@ -791,7 +886,8 @@ def cmd_create_instance(args):
 
         seed = getattr(args, "seed", None)
         rng = random.Random(seed) if seed is not None else None
-        identity = generate_identity(t_data, c_data, rng=rng)
+        phone_arg = getattr(args, "phone", None) or getattr(args, "phone_number", None)
+        identity = generate_identity(t_data, c_data, rng=rng, phone_override=phone_arg)
         t_src = str(t_path.relative_to(BASE_DIR))
         carrier_id = (c_data or {}).get("id", "default")
 
@@ -886,8 +982,9 @@ def cmd_create_instance(args):
     if loc_arg:
         location = parse_location(loc_arg, default_tz=carrier_tz)
     else:
-        location = dict(LOCATION_PRESETS["ba"])
-        location["timezone"] = carrier_tz
+        location = get_system_default_location()
+        if carrier_tz and not location.get("timezone"):
+            location["timezone"] = carrier_tz
     profile["location"] = location
 
     # Guardar en instances/<name>/profile.json
@@ -1781,7 +1878,7 @@ def cmd_get_location(args):
             }
 
     if not loc:
-        loc = dict(LOCATION_PRESETS["ba"])
+        loc = get_system_default_location()
 
     if getattr(args, "json", False):
         print(json.dumps({
@@ -1978,6 +2075,7 @@ def main():
     sub.add_argument("--template", "-t", required=False, help="Nombre o ruta de la plantilla (ej: a54x o samsung/a54x)")
     sub.add_argument("--from-bundle", "-b", required=False, help="Ruta al bundle pre-renderizado (ADR-001 Fase 3)")
     sub.add_argument("--carrier", "-c", required=False, default="ar_personal", help="Operadora (default: ar_personal)")
+    sub.add_argument("--phone", "--phone-number", required=False, help="Número de teléfono móvil asignado (ej: 3704123456 o +5493704123456)")
     sub.add_argument("--location", "-l", required=False, help="Ubicación GPS: preset (ej: cordoba, miami) o 'lat,lon[,alt]'")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
