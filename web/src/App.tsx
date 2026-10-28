@@ -342,9 +342,19 @@ export function App() {
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Cabecera / Toolbar (Exacta de Lovable) */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 bg-background">
+            <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background px-4 py-2">
+              <div className="mr-1 hidden min-w-0 shrink-0 items-center gap-3 xl:flex">
+                <div className="grid size-8 place-items-center rounded-md bg-primary/12 text-primary">
+                  <Smartphone className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-sm font-semibold tracking-tight text-foreground">CloudPhones</h1>
+                  <p className="font-mono text-[10px] text-muted-foreground">{onlineCount} activos de {instances.length}</p>
+                </div>
+              </div>
+
               {/* Buscador */}
-              <div className="relative w-64 min-w-0">
+              <div className="relative min-w-[180px] flex-1 xl:max-w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <input
                   value={searchQuery}
@@ -355,7 +365,7 @@ export function App() {
               </div>
 
               {/* Filtro segmentado: Todos / Online / Offline */}
-              <div className="flex rounded-full border border-border p-0.5 text-xs bg-background">
+              <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
                 {(['all', 'online', 'offline'] as const).map((f) => (
                   <button
                     key={f}

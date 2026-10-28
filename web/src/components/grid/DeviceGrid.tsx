@@ -79,7 +79,7 @@ export default function DeviceGrid({
 
   return (
     <div
-      className="grid gap-3 transition-all duration-200"
+      className="device-grid grid gap-3 transition-all duration-200"
       style={{
         gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
       }}
