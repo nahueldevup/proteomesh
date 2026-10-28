@@ -49,14 +49,14 @@
 .dark,
 [data-theme="dark"] {
   --radius: 0.65rem;
-  --background: oklch(0.145 0.008 250);
+  --background: oklch(0.13 0.018 245);
   --foreground: oklch(0.94 0.005 250);
-  --surface: oklch(0.19 0.009 250);
+  --surface: oklch(0.18 0.022 245);
   --card: oklch(0.2 0.01 250);
   --card-foreground: oklch(0.94 0.005 250);
   --popover: oklch(0.21 0.01 250);
   --popover-foreground: oklch(0.94 0.005 250);
-  --primary: oklch(0.74 0.12 150);
+  --primary: oklch(0.76 0.14 48);
   --primary-foreground: oklch(0.15 0.02 150);
   --secondary: oklch(0.25 0.01 250);
   --secondary-foreground: oklch(0.94 0.005 250);
@@ -71,7 +71,7 @@
   --info: oklch(0.72 0.10 235);
   --bezel: oklch(0.1 0.005 250);
   --screen-off: oklch(0.12 0.005 250);
-  --border: oklch(0.28 0.01 250);
+  --border: oklch(0.28 0.025 245);
   --input: oklch(0.3 0.01 250);
   --ring: oklch(0.74 0.12 150);
   --sidebar: oklch(0.13 0.007 250);

@@ -222,7 +222,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
   const summary = data?.summary || { total_usb: 0, free_usb: 0, assigned_usb: 0, waiting_count: 0, ttl: '7d' };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6"> <div className="mx-auto flex max-w-[1500px] flex-col gap-5">
       {/* Cabecera y Resumen Métrico */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -651,7 +651,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
         </div>
 
         {/* Tabla del Libro Mayor */}
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="max-h-[38vh] overflow-auto rounded-lg border border-border">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-border bg-surface-muted/50 text-[11px] font-semibold text-muted-foreground">
               <tr>
@@ -711,6 +711,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
           </table>
         </div>
       </section>
+      </div>
     </div>
   );
 }

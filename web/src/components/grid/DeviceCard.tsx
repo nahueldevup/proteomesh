@@ -165,8 +165,10 @@ export default function DeviceCard({
     e.preventDefault();
     e.stopPropagation();
     if (!instance.running) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMenuPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setMenuPos({
+      x: Math.min(e.clientX, window.innerWidth - 176),
+      y: Math.min(e.clientY, window.innerHeight - 220),
+    });
     setShowContextMenu(true);
   };
 
@@ -311,9 +313,9 @@ export default function DeviceCard({
         {/* Menú Contextual (Clic Secundario) */}
         {showContextMenu && instance.running && (
           <div
-            style={{ top: Math.min(menuPos.y, 160), left: Math.min(menuPos.x, 80) }}
+            style={{ top: menuPos.y, left: menuPos.x }}
             onClick={(e) => e.stopPropagation()}
-            className="absolute z-50 w-40 rounded-lg border border-border bg-popover p-1 shadow-xl animate-in fade-in zoom-in-95 duration-100 text-xs font-sans text-popover-foreground"
+            className="fixed z-[100] w-44 rounded-lg border border-border bg-popover p-1.5 shadow-2xl shadow-black/30 animate-in fade-in zoom-in-95 duration-100 text-xs font-sans text-popover-foreground"
           >
             <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground border-b border-border/50 uppercase tracking-wider">
               Red USB Módem
