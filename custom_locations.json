@@ -21,6 +21,19 @@
       "timezone": "America/Argentina/Buenos_Aires",
       "is_pinned": true,
       "created_at": "2026-10-28T01:42:01.317915+00:00"
+    },
+    {
+      "id": "loc_circuito_cfed23",
+      "name": "circuito",
+      "group_id": "grp_general",
+      "city": "Formosa",
+      "latitude": -26.141791,
+      "longitude": -58.150707,
+      "altitude": 25.0,
+      "accuracy": 4.2,
+      "timezone": "America/Argentina/Buenos_Aires",
+      "is_pinned": true,
+      "created_at": "2026-10-28T12:59:06.903166+00:00"
     }
   ],
   "pinned_presets": [],
