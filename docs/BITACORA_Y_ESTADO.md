@@ -1241,6 +1241,89 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 77. FEAT(GEO-002) — Gestor de Ubicaciones Personalizadas, Grupos y Pines GPS (2026-10-28)
+
+* **Motivación y contexto:**
+  - Las instancias solo contaban con presets estáticos de ciudades globales (`LOCATION_PRESETS`). Al operar granjas comerciales de CloudPhones para automatización o telemetría localizada, es esencial definir puntos geográficos exactos (oficinas, sucursales, depósitos, puntos estratégicos), agruparlos por categorías coloreadas, fijar accesos rápidos con pines y establecer una ubicación predeterminada general para todo el sistema (ej. Formosa-Capital).
+* **Componentes implementados:**
+  1. **Almacenamiento persistente (`custom_locations.json`):**
+     - Estructura JSON con cerrojo `fcntl.flock` atómico en `server/services/custom_location_service.py`.
+     - Esquemas Pydantic V2 en `server/models/schemas.py`:
+       - `LocationGroup`: `id`, `name`, `color` (hex), `description`, `created_at`.
+       - `CustomLocation`: `id` (`loc_*`), `name`, `group_id`, `city`, `latitude`, `longitude`, `altitude`, `accuracy`, `timezone`, `is_pinned`, `created_at`.
+       - `DefaultLocation`: ubicación activa del sistema (`target_type: 'custom' | 'preset'`).
+       - `pinned_presets`: lista de claves de presets globales fijados (`['ba', 'sao-paulo', ...]`).
+  2. **Endpoints REST modulares (`server/routes/locations.py`):**
+     - `GET /api/v1/locations/custom`: Catálogo integral con grupos, ubicaciones, default y presets fijados.
+     - `POST /api/v1/locations/custom`: Alta de ubicación personalizada con autogeneración de ID y validación geográfica.
+     - `PUT/DELETE /api/v1/locations/custom/{id}`: Edición y remoción segura.
+     - `POST /api/v1/locations/groups` & `PUT/DELETE /api/v1/locations/groups/{id}`: Gestión CRUD de grupos.
+     - `POST /api/v1/locations/toggle-pin`: Conmutación rápida de pin para custom o preset oficial.
+     - `PUT /api/v1/locations/pinned-presets`: Actualización de presets globales fijados.
+     - `GET/PUT /api/v1/locations/default`: Consulta y designación de la ubicación por defecto del sistema.
+  3. **Integración profunda con el motor host (`tools/instance_manager.py`):**
+     - Sincronización de `custom_name` y `custom_location_id` en `profile.json` y `meta.json`.
+     - Preservación del nombre custom en la inyección en caliente (`set-location` y `persist.sys.location.*`).
+  4. **Panel Web de Gestión (`CustomLocationsManager.tsx`):**
+     - Vista completa dedicada accesible desde el menú lateral (`MapPin`).
+     - Creación visual con mapa interactivo Leaflet, selector de grupos con pastillas de color, buscador predictivo, conmutadores de pin y botón de designación "Establecer como Predeterminada" (⭐).
+* **Verificación:**
+  - Nueva suite de tests `tests/host/test_location.py` ampliada con 9 tests exhaustivos de validación de catálogo, CRUD, locking concurrente y toggle de pines.
+  - Tests host pasando: **109 / 109 OK**.
+* **Estado:** GEO-002 **completado y validado el 2026-10-28**.
+
+---
+
+### 78. FEAT(USB-002) — Sistema de Turno con Ventana de Gracia (5s) en Cola de Módems USB (2026-10-28)
+
+* **Motivación y contexto:**
+  - En escenarios de granja móvil donde la cantidad de CloudPhones en ejecución supera a los módems 4G/LTE físicos conectados por USB, las instancias no asignadas debían aguardar en una cola de espera (`waiting_queue`) en cuarentena segura.
+  - Al liberarse un módem, conectarlo de forma abrupta e inmediata al primer dispositivo podía interrumpir flujos de trabajo o impedir que el operador reasignara la prioridad. Se requería una ventana de gracia interactiva con cuenta regresiva en vivo que permita al operador o a la instancia aceptar la conexión inmediata o ceder el turno al siguiente en la lista.
+* **Solución implementada:**
+  1. **Ventana de gracia de 5 segundos (`PendingOffer` en `usb_network_service.py`):**
+     - Al quedar libre un módem, se crea una oferta pendiente con `expires_in_seconds: 5` y `expires_at: timestamp`.
+     - Si la ventana de 5s expira sin interacción, el bucle de sincronización conecta automáticamente el módem a la instancia.
+  2. **Acción de Declinación / Cesión de Turno (`decline_offer`):**
+     - Endpoint `POST /api/v1/instances/{name}/network/decline-offer` con parámetro opcional `requeue=True`.
+     - Si el operador decide ceder el turno, la instancia se mueve al final de la cola de espera (`requeue`) y el módem se ofrece de inmediato a la siguiente instancia de la lista sin pérdida de tiempo.
+  3. **Interfaz visual reactiva en tiempo real:**
+     - `DeviceCard.tsx`: Badge `OFERTA (5s)` con cuenta regresiva en vivo en segundos, y barra de acción permanente con botones `Conectar (5s)` y `Ceder`. Menú contextual con accesos directos.
+     - `UsbNetworkCenter.tsx`: Banner destacado en tonos índigo/púrpura mostrando la instancia ofertada, módem asociado, contador animado y botones de acción rápida.
+     - `BulkBar.tsx`: Asignación en lote de ubicaciones personalizadas y presets oficiales sobre selecciones múltiples de instancias.
+* **Verificación:**
+  - Tests unitarios nuevos en `tests/host/test_usb_network.py` y `test_api_server.py`.
+  - Suite de tests host ampliada a **115 / 115 pasando**.
+* **Estado:** USB-002 **completado y validado el 2026-10-28**.
+
+---
+
+### 79. FIX(WEB-014) — Corrección de Crash en Creación, Operadoras Limpias y Pines Dinámicos en Mapa (2026-10-28)
+
+* **Motivación y diagnóstico del fallo:**
+  - **Pantalla en negro al presionar `+` (Crear CloudPhone):** Al hacer clic en el botón de creación, la aplicación web crasheaba por completo.
+  - **Causa raíz:** En `CreateDeviceModal.tsx`, se habían agregado hooks `useMemo` (`mapMarkers` y `pinnedItems`) después del retorno condicional `if (!isOpen) return null;`. En React, esto constituye una violación crítica de las Reglas de Hooks: cuando el modal estaba cerrado se ejecutaban N hooks, y al abrirse se ejecutaban N+2 hooks. React detectaba la discrepancia y desmontaba todo el árbol DOM con el error `Rendered more hooks than during the previous render`.
+  - **Códigos numéricos en operadoras:** En el selector de SIM aparecía el código técnico `operator_numeric` (ej. `72234`, `72207`, `722310`) al lado de opciones como Personal o Claro, resultando confuso y visualmente tosco.
+  - **Pines y presets desalineados en GPS:** El componente `MapPicker.tsx` renderizaba una lista fija hardcodeada de 8 ciudades extranjeras (`Buenos Aires, Cordoba, Miami, New York, Madrid, CDMX...`) en lugar de reflejar los pines reales y ubicaciones personalizadas configuradas en el sistema.
+* **Soluciones implementadas:**
+  1. **Reordenamiento estricto de Hooks (`CreateDeviceModal.tsx`):**
+     - Se trasladaron todos los hooks (`mapMarkers`, `pinnedItems`, etc.) al nivel superior del componente antes de cualquier condición de salida. El `if (!isOpen) return null;` se ubicó al final inmediatamente antes del `createPortal`.
+     - Se blindó la capa de Leaflet en `MapPicker.tsx` para validar que todas las coordenadas sean números finitos válidos (`!isNaN`), previniendo excepciones en tiempo de render.
+  2. **Limpieza y humanización de operadoras móviles:**
+     - Se eliminó `operator_numeric` del dropdown, traduciendo los códigos ISO a nombres de países en español: `Personal (Argentina)`, `Movistar (Argentina)`, `Claro (Argentina)`, `T-Mobile (Estados Unidos)`, `Verizon (Estados Unidos)`, `Vivo (Brasil)`, etc.
+     - La descripción se actualizó a `Red móvil y telemetría oficial`.
+  3. **Pines y marcadores interactivos en Leaflet:**
+     - Se eliminó la lista fija hardcodeada de `QUICK_PRESETS` en `MapPicker.tsx`.
+     - Ahora la barra de accesos rápidos del modal carga dinámicamente los pines configurados por el usuario (`custom_locations.json`), destacando la ubicación predeterminada (⭐ `Formosa-Capital`) y los pines activos (📍).
+     - En el mapa de Leaflet, cada pin configurado se dibuja como un marcador interactivo con etiqueta legible; al hacer clic sobre cualquier pin en el mapa o en la barra, se seleccionan sus coordenadas instantáneamente.
+  4. **Líneas telefónicas de Formosa:**
+     - Generador automático de numeración móvil de Formosa con prefijos locales `3704` y `3705` + 6 dígitos aleatorios, editable manualmente e independiente de la operadora seleccionada.
+* **Verificación:**
+  - Compilación de producción limpia: `npm --prefix web run build` en 379ms sin advertencias de tipos ni errores de bundling.
+  - Suite de tests host completa: **115 / 115 pasando** (`.venv/bin/pytest tests/host/`).
+* **Estado:** WEB-014 **completado y validado el 2026-10-28**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

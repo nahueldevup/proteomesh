@@ -35,9 +35,11 @@ Cada plantilla (`templates/<marca>/<modelo>.json`) declara:
 * **Identidad de Rango:** TAC oficial de 8 dígitos GSMA y prefijos OUI IEEE de direcciones MAC del fabricante.
 
 ### 2. Capa de Telefonía, Operadoras y Geolocalización
-* **Operadoras Móviles:** Perfiles desacoplados (`carriers/ar_claro.json`, `ar_personal.json`, `ar_movistar.json`) con MCC/MNC oficiales, prefijos IMSI, ICCID y formatos de numeración.
+* **Operadoras Móviles:** Perfiles desacoplados (`carriers/ar_claro.json`, `ar_personal.json`, `ar_movistar.json`) con MCC/MNC oficiales, prefijos IMSI, ICCID y formatos de numeración legibles por país sin sufijos numéricos confusos.
 * **Sincronización de Zona Horaria:** Alineación automática del reloj del sistema con la región de la operadora (`America/Argentina/Buenos_Aires`), eliminando discrepancias de geolocalización IP en auditorías (`geo_mismatch_timezone`).
 * **Módem y Banda Base:** Cadenas de firmware de módem reales por plataforma (eliminando por completo valores `unknown`).
+* **Gestor de Ubicaciones Personalizadas y Pines GPS:** Catálogo persistente (`custom_locations.json`) con soporte de grupos con etiquetas de color, pines interactivos en mapa Leaflet (`is_pinned`), marcadores clickeables en el mapa y designación de ubicación predeterminada general (⭐).
+* **Enrutamiento USB-Mobile y Cola de Módems con Ventana de Gracia (5s):** Salida a Internet física mediante teléfonos reales por tethering USB sin interfaces VPN (`tun0`). Cola de espera ordenada cuando la demanda supera los módems disponibles, con ventana de gracia interactiva de 5 segundos (`pending_offer`) para conectar de inmediato o ceder el turno al siguiente.
 
 ### 3. Blindaje Anti-Root y Evasión de Detección Multi-Capa
 El sistema evade exhaustivamente la detección de root y manipulación en aplicaciones x86_64 nativas y ARM64 traducidas:

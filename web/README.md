@@ -104,6 +104,33 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
   - Botón de alternancia con iconos dinámicos `Sun` y `Moon` disponible en el header superior, barra lateral y cabecera de vista enfocada.
   - Persistencia automática de la preferencia en `localStorage('pm-theme')`.
 
+### 10. Gestor de Ubicaciones Personalizadas, Grupos y Pines GPS
+* **Gestor Visual Dedicado (`CustomLocationsManager.tsx`):**
+  - Módulo accesible desde la barra lateral (`MapPin`) para administrar ubicaciones geográficas personalizadas.
+  - Agrupación por etiquetas de colores (`LocationGroup`) y fijación de accesos rápidos con chincheta (`is_pinned`).
+  - Asignación de ubicación predeterminada del sistema (⭐ `default_location`, ej. Formosa-Capital) que se hereda en instancias nuevas y en los mapas.
+  - Presets oficiales fijados y sincronizados dinámicamente con la barra de accesos rápidos de `FocusView` y `BulkBar`.
+* **Mapa Leaflet con Pines Interactivos (`MapPicker.tsx`):**
+  - Renderizado dinámico de marcadores interactivos con etiquetas flotantes para cada ubicación fijada.
+  - Selección de coordenadas y ciudad con clic directo sobre cualquier pin del mapa o botón de la barra rápida.
+
+### 11. Red Móvil USB: Cola de Espera y Ventana de Gracia (5s)
+* **Gestión de Demanda Excedente de Módems:**
+  - Cuando los CloudPhones superan a los módems 4G/LTE conectados por USB, las instancias entran en cola de espera (`waiting_queue`) en cuarentena segura.
+  - Al liberarse un módem, se activa una ventana de gracia de 5 segundos (`pending_offer`).
+* **Widgets Reactivos y Acciones en Tiempo Real:**
+  - `DeviceCard.tsx`: Badge `OFERTA (5s)` con cuenta regresiva en vivo, más botones instantáneos `Conectar ya` y `Ceder turno` en el overlay y menú contextual.
+  - `UsbNetworkCenter.tsx`: Banner interactivo con cuenta regresiva en vivo, datos del módem y botones de acción.
+  - `declineOffer(name, requeue=true)`: Permite ceder el turno al siguiente dispositivo de la lista y pasar al final de la cola sin interrupciones.
+
+### 12. Estabilidad de Creación y Humanización de Operadoras
+* **Inmunidad a Errores de Hooks en `CreateDeviceModal.tsx`:**
+  - Reubicación de todos los hooks de React (`useMemo`, `useEffect`) en el nivel superior antes de cualquier salida condicional (`isOpen`), erradicando la pantalla negra al hacer clic en `+`.
+* **Operadoras Móviles Legibles:**
+  - Remoción de códigos numéricos confusos (`operator_numeric`, ej. `72234`), visualizando nombres comerciales con país en español (`Personal (Argentina)`, `Movistar (Argentina)`, etc.).
+* **Líneas Telefónicas de Formosa:**
+  - Generador automático de líneas telefónicas con prefijos locales de Formosa (`3704` / `3705`) + 6 dígitos aleatorios, editables manualmente y desacopladas de la operadora móvil.
+
 ---
 
 ## 🛠️ Pila Tecnológica

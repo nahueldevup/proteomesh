@@ -23,12 +23,7 @@
       "created_at": "2026-10-28T01:42:01.317915+00:00"
     }
   ],
-  "pinned_presets": [
-    "ba",
-    "sao-paulo",
-    "miami",
-    "new-york"
-  ],
+  "pinned_presets": [],
   "default_location": {
     "id": "loc_formosa_capital_bb9c29",
     "target_type": "custom",
