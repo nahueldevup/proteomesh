@@ -110,15 +110,133 @@ def test_usb_network_service_fifo_queue():
             assert res2["queue_position"] == 2
             assert svc.waiting_queue == ["phone-1", "phone-2"]
 
-            # Liberar saca al primero de la cola
-            with patch.object(svc, "claim_usb", new_callable=AsyncMock) as mock_claim:
-                mock_claim.return_value = {"status": "ok"}
-                rel_res = await svc.release_network("phone-0")
-                assert rel_res["status"] == "ok"
-                assert rel_res["popped_next"] == "phone-1"
-                assert svc.waiting_queue == ["phone-2"]
+            # Liberar NO hace pop ciego: inicia oferta temporal de 5s para el primero (phone-1)
+            rel_res = await svc.release_network("phone-0")
+            assert rel_res["status"] == "ok"
+            assert rel_res["offered_next"] == "phone-1"
+            assert rel_res["pending_offer"] is not None
+            assert rel_res["pending_offer"]["instance"] == "phone-1"
+            assert rel_res["pending_offer"]["expires_in_seconds"] == 5
+            # Sigue en la cola mientras transcurren los 5s
+            assert svc.waiting_queue == ["phone-1", "phone-2"]
+
+            # Estado de instancia refleja OFFERED
+            st1 = await svc.get_instance_network_state("phone-1")
+            assert st1["state"] == "OFFERED"
+            assert st1["pending_offer"]["instance"] == "phone-1"
+
+            # Limpiar timers pendientes para cerrar la prueba limpia
+            svc._cancel_offer_unlocked()
 
     asyncio.run(_run_test())
+
+
+def test_grace_period_auto_claim_success():
+    import asyncio
+
+    async def _test():
+        svc = UsbNetworkService()
+        svc.waiting_queue = ["phone-1", "phone-2"]
+
+        # Mockear claim_usb para simular auto-asignación exitosa tras expiración
+        with patch.object(svc, "_claim_usb_unlocked", new_callable=AsyncMock) as mock_claim:
+            async def _fake_claim(name, preferred_serial=None, steal_from=None):
+                if name in svc.waiting_queue:
+                    svc.waiting_queue.remove(name)
+                return {"status": "ok", "state": "CONNECTED_USB"}
+            mock_claim.side_effect = _fake_claim
+
+            # Iniciar oferta con sleep mockeado de 0 segundos
+            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                mock_sleep.return_value = None
+                svc._start_offer_unlocked("phone-1", "SER123")
+                # Esperar a que la tarea del timer se complete
+                await svc._offer_task
+
+            # Al finalizar con éxito, phone-1 fue retirado definitivamente de waiting_queue
+            assert svc.waiting_queue == ["phone-2"]
+            assert svc._pending_offer is None
+            mock_claim.assert_called_once_with("phone-1", preferred_serial="SER123")
+
+    asyncio.run(_test())
+
+
+def test_grace_period_claim_failure_retains_instance_in_queue():
+    import asyncio
+
+    async def _test():
+        svc = UsbNetworkService()
+        svc.waiting_queue = ["phone-1", "phone-2"]
+
+        # Si _claim_usb_unlocked falla, NO se expulsa de la cola y se registra el error
+        with patch.object(svc, "_claim_usb_unlocked", new_callable=AsyncMock) as mock_claim:
+            mock_claim.side_effect = RuntimeError("Módem ocupado o error DHCP")
+
+            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                mock_sleep.return_value = None
+                svc._start_offer_unlocked("phone-1", "SER123")
+                await svc._offer_task
+
+            # phone-1 sigue en la cola
+            assert svc.waiting_queue == ["phone-1", "phone-2"]
+            assert svc._pending_offer is None
+            assert svc._instance_states["phone-1"]["state"] == "WAITING_USB"
+            assert "error" in svc._instance_states["phone-1"]
+
+    asyncio.run(_test())
+
+
+def test_decline_offer_requeue_and_promote_next():
+    import asyncio
+
+    async def _test():
+        svc = UsbNetworkService()
+        svc.waiting_queue = ["phone-1", "phone-2", "phone-3"]
+        svc._start_offer_unlocked("phone-1", "SER123")
+
+        # phone-1 cede turno (requeue=True)
+        res = await svc.decline_offer("phone-1", requeue=True)
+        assert res["status"] == "ok"
+        assert res["requeued"] is True
+        # phone-1 pasa al final de la cola
+        assert svc.waiting_queue == ["phone-2", "phone-3", "phone-1"]
+        # phone-2 es promovido inmediatamente con oferta de 5s
+        assert res["next_offered"] == "phone-2"
+        assert svc._pending_offer is not None
+        assert svc._pending_offer["instance"] == "phone-2"
+
+        # phone-2 declina definitivamente (requeue=False)
+        res2 = await svc.decline_offer("phone-2", requeue=False)
+        assert res2["status"] == "ok"
+        assert res2["requeued"] is False
+        assert svc.waiting_queue == ["phone-3", "phone-1"]
+        assert res2["next_offered"] == "phone-3"
+        assert svc._pending_offer["instance"] == "phone-3"
+
+        svc._cancel_offer_unlocked()
+
+    asyncio.run(_test())
+
+
+def test_immediate_claim_cancels_offer_timer():
+    import asyncio
+
+    async def _test():
+        svc = UsbNetworkService()
+        svc.waiting_queue = ["phone-1", "phone-2"]
+        svc._start_offer_unlocked("phone-1", "SER123")
+        assert svc._pending_offer["instance"] == "phone-1"
+
+        with patch.object(svc, "_claim_usb_unlocked", new_callable=AsyncMock) as mock_claim:
+            mock_claim.return_value = {"status": "ok", "state": "CONNECTED_USB"}
+            # phone-1 pulsa "Conectar ya"
+            claim_res = await svc.claim_usb("phone-1")
+            assert claim_res["status"] == "ok"
+            # La oferta se canceló inmediatamente
+            assert svc._pending_offer is None
+            mock_claim.assert_called_once_with(instance_name="phone-1", preferred_serial=None, steal_from=None)
+
+    asyncio.run(_test())
 
 
 def test_network_api_endpoints():
@@ -131,6 +249,13 @@ def test_network_api_endpoints():
     assert "summary" in data
     assert "devices" in data
     assert "waiting_queue" in data
+    assert "pending_offer" in data
+
+    # 1b. Declinación de oferta
+    r_dec = client.post("/api/v1/instances/phone-1/network/decline-offer", json={"requeue": True})
+    assert r_dec.status_code == 200
+    assert r_dec.json()["status"] == "ok"
+    assert r_dec.json()["requeued"] is True
 
     # 2. Lista de dispositivos USB
     r = client.get("/api/v1/network/usb")

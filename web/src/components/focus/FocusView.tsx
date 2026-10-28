@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -27,14 +27,30 @@ import {
   Usb,
   ShieldAlert,
   RotateCw,
+  BookmarkPlus,
+  Plus,
+  Check,
+  ChevronDown,
+  Pin,
+  Search,
+  X,
 } from 'lucide-react';
-import type { Instance, ScrcpyStreamInfo, InstanceUsbNetworkState } from '../../types';
+import type {
+  Instance,
+  ScrcpyStreamInfo,
+  InstanceUsbNetworkState,
+  CustomLocation,
+  LocationGroup,
+  CustomLocationsCatalog,
+  LocationData,
+} from '../../types';
 import { api } from '../../lib/api';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { InteractiveScreen } from './InteractiveScreen';
 import { MapPicker } from '../MapPicker';
+import { getPresetDisplay } from '../locations/CustomLocationsManager';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 
@@ -48,18 +64,10 @@ interface FocusViewProps {
   onChanged: () => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  locationPresets?: Record<string, LocationData>;
 }
 
 type SubTab = 'gps' | 'network' | 'health';
-
-const QUICK_CITIES = [
-  { name: 'Buenos Aires', lat: -34.603722, lon: -58.381592, tz: 'America/Argentina/Buenos_Aires' },
-  { name: 'São Paulo', lat: -23.55052, lon: -46.633308, tz: 'America/Sao_Paulo' },
-  { name: 'Miami', lat: 25.76168, lon: -80.19179, tz: 'America/New_York' },
-  { name: 'New York', lat: 40.712776, lon: -74.005974, tz: 'America/New_York' },
-  { name: 'Madrid', lat: 40.416775, lon: -3.70379, tz: 'Europe/Madrid' },
-  { name: 'CDMX', lat: 19.432608, lon: -99.133209, tz: 'America/Mexico_City' },
-];
 
 export default function FocusView({
   instance,
@@ -71,6 +79,7 @@ export default function FocusView({
   onChanged,
   theme,
   onToggleTheme,
+  locationPresets,
 }: FocusViewProps) {
   const [streamInfo, setStreamInfo] = useState<ScrcpyStreamInfo | null>(null);
   const [activeTab, setActiveTab] = useState<SubTab>('gps');
@@ -81,11 +90,66 @@ export default function FocusView({
   const [urlOpen, setUrlOpen] = useState(false);
   const [urlValue, setUrlValue] = useState('');
 
-  // Map state
+  // Map & Custom Location state
   const [mapLat, setMapLat] = useState(-34.603722);
   const [mapLon, setMapLon] = useState(-58.381592);
   const [mapCity, setMapCity] = useState('Buenos Aires');
   const [mapBusy, setMapBusy] = useState(false);
+
+  // Catálogo de Ubicaciones Custom & Pins
+  const [customCatalog, setCustomCatalog] = useState<CustomLocationsCatalog>({
+    groups: [],
+    locations: [],
+    pinned_presets: ['ba', 'sao-paulo', 'miami', 'new-york'],
+  });
+  const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
+  const [customSelectorOpen, setCustomSelectorOpen] = useState(false);
+  const [customSearchQuery, setCustomSearchQuery] = useState('');
+  const [saveCustomPopoverOpen, setSaveCustomPopoverOpen] = useState(false);
+  const [customNameInput, setCustomNameInput] = useState('');
+  const [customGroupInput, setCustomGroupInput] = useState('');
+  const [saveCustomIsPinned, setSaveCustomIsPinned] = useState(true);
+  const [savingCustom, setSavingCustom] = useState(false);
+  const lastLoadedInstanceNameRef = useRef<string | null>(null);
+
+  const fetchCustomCatalog = useCallback(async () => {
+    try {
+      const cat = await api.getCustomLocations();
+      setCustomCatalog(cat);
+      if (cat.groups.length > 0 && !customGroupInput) {
+        setCustomGroupInput(cat.groups[0].id);
+      }
+    } catch {
+      // Ignorar si falla la carga silenciosa
+    }
+  }, [customGroupInput]);
+
+  useEffect(() => {
+    fetchCustomCatalog();
+  }, [fetchCustomCatalog]);
+
+  // Búsqueda y filtrado de ubicaciones custom en selector
+  const filteredCustomLocations = useMemo<CustomLocation[]>(() => {
+    const q = customSearchQuery.trim().toLowerCase();
+    if (!q) return customCatalog.locations;
+    return customCatalog.locations.filter((loc: CustomLocation) => {
+      const matchName = loc.name.toLowerCase().includes(q);
+      const matchCity = loc.city.toLowerCase().includes(q);
+      const grp = loc.group_id ? customCatalog.groups.find((g: LocationGroup) => g.id === loc.group_id) : null;
+      const matchGroup = grp ? grp.name.toLowerCase().includes(q) : false;
+      return matchName || matchCity || matchGroup;
+    });
+  }, [customCatalog.locations, customCatalog.groups, customSearchQuery]);
+
+  // Lista de accesos rápidos fijados para FocusView
+  const pinnedCustomLocations = useMemo<CustomLocation[]>(() => {
+    return customCatalog.locations.filter((loc: CustomLocation) => loc.is_pinned);
+  }, [customCatalog.locations]);
+
+  const pinnedPresetsList = useMemo(() => {
+    const list = customCatalog.pinned_presets || ['ba', 'sao-paulo', 'miami', 'new-york'];
+    return list.map((key) => getPresetDisplay(key, locationPresets));
+  }, [customCatalog.pinned_presets, locationPresets]);
 
   // Network / USB state (NET-USB-001)
   const [networkState, setNetworkState] = useState<InstanceUsbNetworkState | null>(null);
@@ -134,12 +198,34 @@ export default function FocusView({
 
   useEffect(() => {
     if (!instance) return;
-    if (instance.location) {
-      setMapLat(instance.location.latitude);
-      setMapLon(instance.location.longitude);
-      setMapCity(instance.location.city || 'Buenos Aires');
+    // Solo sincronizar automáticamente cuando cambia de contenedor seleccionado (evita que el polling de 5s resetee la selección del usuario)
+    if (lastLoadedInstanceNameRef.current !== instance.instance_name) {
+      lastLoadedInstanceNameRef.current = instance.instance_name;
+
+      if (instance.location) {
+        setMapLat(instance.location.latitude);
+        setMapLon(instance.location.longitude);
+        setMapCity(instance.location.city || customCatalog.default_location?.city || 'Buenos Aires');
+
+        if (instance.location.custom_location_id) {
+          const found = customCatalog.locations.find((l) => l.id === instance.location?.custom_location_id);
+          if (found) setSelectedCustomLoc(found);
+          else setSelectedCustomLoc(null);
+        } else if (instance.location.custom_name) {
+          const found = customCatalog.locations.find((l) => l.name === instance.location?.custom_name);
+          if (found) setSelectedCustomLoc(found);
+          else setSelectedCustomLoc(null);
+        } else {
+          setSelectedCustomLoc(null);
+        }
+      } else if (customCatalog.default_location) {
+        setMapLat(customCatalog.default_location.latitude);
+        setMapLon(customCatalog.default_location.longitude);
+        setMapCity(customCatalog.default_location.city);
+        setSelectedCustomLoc(null);
+      }
     }
-  }, [instance?.instance_name]);
+  }, [instance?.instance_name, instance?.location, customCatalog.locations, customCatalog.default_location]);
 
   // Consulta periódica del streaming de alta fidelidad (ws-scrcpy)
   useEffect(() => {
@@ -285,21 +371,58 @@ export default function FocusView({
   };
 
   const handleSaveGps = async () => {
+    if (!instance) return;
     setMapBusy(true);
-    const toastId = toast.loading(`Actualizando GPS a ${mapCity}...`);
+    const displayName = selectedCustomLoc ? selectedCustomLoc.name : mapCity;
+    const toastId = toast.loading(`Actualizando GPS a ${displayName}...`);
     try {
       await api.setInstanceLocation(instance.instance_name, {
         latitude: mapLat,
         longitude: mapLon,
         city: mapCity,
-        altitude: 25.0,
+        altitude: selectedCustomLoc?.altitude ?? 25.0,
+        custom_name: selectedCustomLoc ? selectedCustomLoc.name : undefined,
+        custom_location_id: selectedCustomLoc ? selectedCustomLoc.id : undefined,
       });
-      toast.success(`GPS actualizado: ${mapCity}`, { id: toastId });
+      toast.success(`GPS actualizado: ${displayName}`, { id: toastId });
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al guardar ubicación', { id: toastId });
     } finally {
       setMapBusy(false);
+    }
+  };
+
+  const handleCreateCustomLocationHere = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customNameInput.trim()) {
+      toast.error('Ingresa un nombre para la ubicación');
+      return;
+    }
+    setSavingCustom(true);
+    try {
+      const created = await api.createCustomLocation({
+        name: customNameInput.trim(),
+        group_id: customGroupInput || undefined,
+        city: mapCity,
+        latitude: mapLat,
+        longitude: mapLon,
+        altitude: 25.0,
+        is_pinned: saveCustomIsPinned,
+      });
+      toast.success(
+        saveCustomIsPinned
+          ? `Ubicación "${created.name}" guardada y fijada en barra rápida`
+          : `Ubicación "${created.name}" guardada en Custom`
+      );
+      setCustomNameInput('');
+      setSaveCustomPopoverOpen(false);
+      await fetchCustomCatalog();
+      setSelectedCustomLoc(created);
+    } catch (err: any) {
+      toast.error(`Error al guardar: ${err.message}`);
+    } finally {
+      setSavingCustom(false);
     }
   };
 
@@ -400,7 +523,16 @@ export default function FocusView({
         <IconBtn icon={ChevronLeft} label="Anterior" onClick={() => handleNavigate(-1)} />
         <IconBtn icon={ChevronRight} label="Siguiente" onClick={() => handleNavigate(1)} />
         <span className="font-mono font-bold text-foreground text-sm">{instance.instance_name}</span>
-        <span className="text-sm text-muted-foreground">{instance.location?.city ?? 'Sin GPS'}</span>
+        <span className="text-xs md:text-sm text-muted-foreground flex items-center gap-1">
+          {instance.location?.custom_name ? (
+            <>
+              <span className="font-semibold text-primary">{instance.location.custom_name}</span>
+              <span className="text-[11px] text-muted-foreground">({instance.location.city})</span>
+            </>
+          ) : (
+            instance.location?.city ?? 'Sin GPS'
+          )}
+        </span>
 
         {/* Selector de Modo de Streaming (30 FPS Ultra-Baja Latencia vs Fallback HD) */}
         <div className="ml-auto flex items-center gap-2">
@@ -646,6 +778,7 @@ export default function FocusView({
                 ['Proxy', instance.proxy?.exit_ip ? `${instance.proxy.exit_ip} (${instance.proxy.type.toUpperCase()})` : (instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—')],
                 ['Red USB', networkState?.public_ip ? `${networkState.public_ip} (Módem USB)` : (networkState?.state === 'QUARANTINE' ? 'Cuarentena (Aislado)' : (networkState?.state === 'WAITING_USB' ? `En Cola (#${networkState.queue_position})` : 'Cuarentena T=0'))],
                 ['Teléfono', identity.phone_number ?? '+549****3997'],
+                ['Ubicación GPS', instance.location?.custom_name ? `${instance.location.custom_name} (${instance.location.city})` : (instance.location?.city ?? 'Buenos Aires, Argentina (Obelisco)')],
                 ['Zona horaria', instance.location?.timezone ?? 'America/Argentina/Buenos_Aires'],
               ].map(([k, v]) => (
                 <div
@@ -705,42 +838,325 @@ export default function FocusView({
 
             {/* Contenido: Tab GPS */}
             {activeTab === 'gps' && (
-              <div className="flex flex-col gap-2.5 pt-2.5 flex-1">
-                {/* Cabecera de acción con presets y botón prominente Actualizar GPS */}
+              <div className="flex flex-col gap-2.5 pt-2.5 flex-1 min-h-0">
+                {/* Cabecera de acción con Selector Custom, Guardar Custom, Presets y Actualizar */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground font-mono mr-0.5">Presets:</span>
-                    {QUICK_CITIES.map((c) => (
-                      <button
-                        key={c.name}
-                        onClick={() => {
-                          setMapLat(c.lat);
-                          setMapLon(c.lon);
-                          setMapCity(c.name);
-                        }}
-                        className={cn(
-                          'rounded px-2 py-0.5 text-[10px] font-mono transition-colors border',
-                          mapCity === c.name
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-semibold'
-                            : 'border-border bg-background text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Popover: Selector de Ubicación Custom */}
+                    <Popover open={customSelectorOpen} onOpenChange={setCustomSelectorOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors shadow-xs',
+                            selectedCustomLoc
+                              ? 'bg-primary/10 border-primary/40 text-primary font-semibold'
+                              : 'bg-background border-border text-foreground hover:bg-accent'
+                          )}
+                          title="Seleccionar entre tus ubicaciones personalizadas guardadas"
+                        >
+                          <BookmarkPlus className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span className="truncate max-w-[130px]">
+                            {selectedCustomLoc ? selectedCustomLoc.name : 'Ubicación Custom'}
+                          </span>
+                          <ChevronDown className="h-3 w-3 opacity-60 shrink-0" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between border-b border-border/50 pb-1.5 px-0.5">
+                          <span className="text-[11px] font-bold text-foreground">Ubicaciones Personalizadas</span>
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            {filteredCustomLocations.length} de {customCatalog.locations.length}
+                          </span>
+                        </div>
+
+                        {/* Buscador de Ubicaciones Custom */}
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                          <input
+                            type="text"
+                            placeholder="Buscar por nombre, ciudad o grupo..."
+                            value={customSearchQuery}
+                            onChange={(e) => setCustomSearchQuery(e.target.value)}
+                            className="w-full h-8 rounded-md border border-border bg-background pl-8 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+                          />
+                          {customSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomSearchQuery('')}
+                              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground p-0.5"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Lista de Ubicaciones */}
+                        <div className="max-h-60 overflow-y-auto space-y-1">
+                          {customCatalog.locations.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-muted-foreground">
+                              No tienes ubicaciones personalizadas aún. Guarda la actual con "+ Guardar Custom".
+                            </div>
+                          ) : filteredCustomLocations.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-muted-foreground">
+                              No se encontraron ubicaciones para "{customSearchQuery}".
+                            </div>
+                          ) : (
+                            filteredCustomLocations.map((loc: CustomLocation) => {
+                              const isSelected = selectedCustomLoc?.id === loc.id;
+                              const grp = loc.group_id
+                                ? customCatalog.groups.find((g: LocationGroup) => g.id === loc.group_id)
+                                : null;
+                              return (
+                                <div
+                                  key={loc.id}
+                                  className={cn(
+                                    'group flex items-center justify-between rounded-md p-1.5 text-xs transition-colors',
+                                    isSelected
+                                      ? 'bg-primary/15 text-primary font-semibold'
+                                      : 'hover:bg-accent text-foreground'
+                                  )}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCustomLoc(loc);
+                                      setMapLat(loc.latitude);
+                                      setMapLon(loc.longitude);
+                                      setMapCity(loc.city);
+                                      setCustomSelectorOpen(false);
+                                      toast.info(`Seleccionada: ${loc.name}`);
+                                    }}
+                                    className="flex items-start gap-2 min-w-0 flex-1 text-left"
+                                  >
+                                    <span
+                                      className="mt-1 h-2 w-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: grp?.color || '#10b981' }}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="truncate font-medium">{loc.name}</span>
+                                        {grp && (
+                                          <span className="text-[9px] text-muted-foreground truncate opacity-75">
+                                            ({grp.name})
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-muted-foreground truncate">{loc.city}</div>
+                                    </div>
+                                  </button>
+
+                                  <div className="flex items-center gap-1 shrink-0 ml-1">
+                                    <button
+                                      type="button"
+                                      title={loc.is_pinned ? 'Desfijar de accesos rápidos' : 'Fijar en accesos rápidos'}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        try {
+                                          await api.togglePin('custom', loc.id, !loc.is_pinned);
+                                          setCustomCatalog((prev) => ({
+                                            ...prev,
+                                            locations: prev.locations.map((l) =>
+                                              l.id === loc.id ? { ...l, is_pinned: !loc.is_pinned } : l
+                                            ),
+                                          }));
+                                          toast.success(
+                                            !loc.is_pinned
+                                              ? `"${loc.name}" fijada en accesos rápidos`
+                                              : `"${loc.name}" desfijada de accesos rápidos`
+                                          );
+                                        } catch (err: any) {
+                                          toast.error(`Error: ${err.message}`);
+                                        }
+                                      }}
+                                      className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
+                                    >
+                                      <Pin
+                                        className={cn(
+                                          'h-3 w-3',
+                                          loc.is_pinned ? 'text-amber-500 fill-amber-500' : 'opacity-40 group-hover:opacity-80'
+                                        )}
+                                      />
+                                    </button>
+                                    {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Popover: Guardar coordenadas actuales como Custom */}
+                    <Popover open={saveCustomPopoverOpen} onOpenChange={setSaveCustomPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors shadow-xs"
+                          title="Guardar coordenadas actuales del mapa como nueva ubicación custom"
+                        >
+                          <Plus className="h-3.5 w-3.5 text-primary" />
+                          <span>Guardar Custom</span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-72 p-3 space-y-3">
+                        <div className="border-b border-border/50 pb-1.5">
+                          <span className="text-xs font-bold text-foreground">Guardar Ubicación Custom</span>
+                          <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                            Coordenadas: {mapLat.toFixed(4)}, {mapLon.toFixed(4)}
+                          </div>
+                        </div>
+
+                        <form onSubmit={handleCreateCustomLocationHere} className="space-y-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-foreground mb-1">
+                              Nombre Personalizado *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej: Oficina Central, Depósito 2..."
+                              value={customNameInput}
+                              onChange={(e) => setCustomNameInput(e.target.value)}
+                              className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-foreground mb-1">
+                              Grupo
+                            </label>
+                            <select
+                              value={customGroupInput}
+                              onChange={(e) => setCustomGroupInput(e.target.value)}
+                              className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            >
+                              <option value="">(Sin Grupo)</option>
+                              {customCatalog.groups.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {g.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Opción para fijar en accesos rápidos */}
+                          <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                            <input
+                              type="checkbox"
+                              checked={saveCustomIsPinned}
+                              onChange={(e) => setSaveCustomIsPinned(e.target.checked)}
+                              className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                            />
+                            <span className="text-[11px] text-foreground font-medium flex items-center gap-1 select-none">
+                              <Pin className="h-3 w-3 text-amber-500 fill-amber-500" />
+                              <span>Fijar en accesos rápidos</span>
+                            </span>
+                          </label>
+
+                          <div className="flex items-center justify-end gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setSaveCustomPopoverOpen(false)}
+                              className="rounded px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={savingCustom || !customNameInput.trim()}
+                              className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                            >
+                              {savingCustom && <Loader2 className="h-3 w-3 animate-spin" />}
+                              <span>Guardar</span>
+                            </button>
+                          </div>
+                        </form>
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Presets Rápidos y Ubicaciones Custom Fijadas */}
+                    <div className="hidden md:flex items-center gap-1 pl-1 border-l border-border/60 overflow-x-auto scrollbar-none max-w-[500px]">
+                      {/* Presets Globales Fijados */}
+                      {pinnedPresetsList.map((c: any) => {
+                        const isSelected = !selectedCustomLoc && (mapCity === c.name || mapCity === c.city);
+                        const isDefaultPreset = customCatalog.default_location?.target_type === 'preset' && customCatalog.default_location?.id === c.key;
+                        return (
+                          <button
+                            key={`pre-${c.key}`}
+                            type="button"
+                            title={isDefaultPreset ? `Preset predeterminado general: ${c.city}` : `Preset oficial: ${c.city}`}
+                            onClick={() => {
+                              setSelectedCustomLoc(null);
+                              setMapLat(c.latitude);
+                              setMapLon(c.longitude);
+                              setMapCity(c.name);
+                            }}
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors border shrink-0',
+                              isSelected
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-semibold'
+                                : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
+                            )}
+                          >
+                            {isDefaultPreset && <span className="text-[9px] text-amber-500">⭐</span>}
+                            <span>{c.name}</span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Ubicaciones Personalizadas Fijadas */}
+                      {pinnedCustomLocations.map((loc: CustomLocation) => {
+                        const isSelected = selectedCustomLoc?.id === loc.id;
+                        const isDefaultLoc = customCatalog.default_location?.id === loc.id;
+                        const grp = loc.group_id
+                          ? customCatalog.groups.find((g: LocationGroup) => g.id === loc.group_id)
+                          : null;
+                        return (
+                          <button
+                            key={`cust-${loc.id}`}
+                            type="button"
+                            title={isDefaultLoc ? `Predeterminada del sistema: ${loc.name} (${loc.city})` : `Ubicación personalizada: ${loc.name} (${loc.city})`}
+                            onClick={() => {
+                              setSelectedCustomLoc(loc);
+                              setMapLat(loc.latitude);
+                              setMapLon(loc.longitude);
+                              setMapCity(loc.city);
+                            }}
+                            className={cn(
+                              'flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans transition-colors border max-w-[140px] truncate shrink-0',
+                              isSelected
+                                ? 'bg-primary/15 text-primary border-primary/50 font-semibold shadow-xs'
+                                : 'border-border bg-background text-foreground/80 hover:text-foreground hover:bg-accent'
+                            )}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: grp?.color || '#10b981' }}
+                            />
+                            {isDefaultLoc && <span className="text-[9px] text-amber-500 shrink-0">⭐</span>}
+                            <span className="truncate">{loc.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
+                  {/* Botón Prominente: Actualizar GPS */}
                   <button
                     disabled={mapBusy}
                     onClick={handleSaveGps}
                     className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 shadow-sm shrink-0"
                   >
                     {mapBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Navigation className="h-3.5 w-3.5" />}
-                    <span>Actualizar GPS</span>
+                    <span>
+                      {selectedCustomLoc ? `Asignar: ${selectedCustomLoc.name}` : 'Actualizar GPS'}
+                    </span>
                   </button>
                 </div>
 
-                {/* Mapa Interactivo Leaflet (sin overlays redundantes ni marcas de agua) */}
+                {/* Mapa Interactivo Leaflet */}
                 <div className="rounded-lg border border-border overflow-hidden h-[190px] relative">
                   <MapPicker
                     latitude={mapLat}
@@ -757,12 +1173,33 @@ export default function FocusView({
                   />
                 </div>
 
-                {/* Coordenadas seleccionadas */}
+                {/* Coordenadas seleccionadas y Nombre Custom Activo */}
                 <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-                  <div>
-                    <span className="font-semibold text-foreground">{mapCity}:</span> {mapLat.toFixed(4)}, {mapLon.toFixed(4)}
+                  <div className="flex items-center gap-1.5 truncate">
+                    {selectedCustomLoc ? (
+                      <>
+                        <span className="font-bold text-primary truncate">
+                          📍 {selectedCustomLoc.name}
+                        </span>
+                        <span className="text-[10px] opacity-75 truncate">
+                          ({mapCity}: {mapLat.toFixed(4)}, {mapLon.toFixed(4)})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomLoc(null)}
+                          className="text-[9px] text-muted-foreground hover:text-foreground underline ml-1"
+                        >
+                          Limpiar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-foreground">{mapCity}:</span>{' '}
+                        <span>{mapLat.toFixed(4)}, {mapLon.toFixed(4)}</span>
+                      </>
+                    )}
                   </div>
-                  <span className="text-[10px]">Arrastra el marcador o haz clic en el mapa</span>
+                  <span className="text-[10px] shrink-0">Arrastra el marcador o haz clic en el mapa</span>
                 </div>
               </div>
             )}

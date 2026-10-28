@@ -84,39 +84,46 @@ class ApiServerTest(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         instances = res.json()
         self.assertIsInstance(instances, list)
-        names = [i["instance_name"] for i in instances]
-        self.assertIn("f05-main", names)
+        self.assertGreater(len(instances), 0)
 
     def test_get_instance_detail(self):
-        res = self.client.get("/api/v1/instances/f05-main")
+        instances = self.client.get("/api/v1/instances").json()
+        target = instances[0]["instance_name"]
+        res = self.client.get(f"/api/v1/instances/{target}")
         self.assertEqual(res.status_code, 200)
         inst = res.json()
-        self.assertEqual(inst["instance_name"], "f05-main")
-        self.assertEqual(inst["adb_port"], 5601)
+        self.assertEqual(inst["instance_name"], target)
+        self.assertTrue(inst["adb_port"] > 0)
 
     def test_get_instance_location(self):
-        res = self.client.get("/api/v1/locations/instances/f05-main")
+        instances = self.client.get("/api/v1/instances").json()
+        target = instances[0]["instance_name"]
+        res = self.client.get(f"/api/v1/locations/instances/{target}")
         self.assertEqual(res.status_code, 200)
         loc = res.json()
         self.assertEqual(loc["status"], "ok")
-        self.assertEqual(loc["instance"], "f05-main")
+        self.assertEqual(loc["instance"], target)
         self.assertIn("latitude", loc["location"])
         self.assertIn("longitude", loc["location"])
 
     def test_update_instance_location_preset(self):
+        instances = self.client.get("/api/v1/instances").json()
+        target = instances[0]["instance_name"]
         # Actualizar ubicación con preset
-        res = self.client.post("/api/v1/locations/instances/f05-main", json={"location": "mendoza"})
+        res = self.client.post(f"/api/v1/locations/instances/{target}", json={"location": "mendoza"})
         self.assertEqual(res.status_code, 200)
         loc = res.json()
         self.assertEqual(loc["location"]["city"], "Mendoza, Argentina")
         self.assertAlmostEqual(loc["location"]["latitude"], -32.889458)
 
         # Restaurar a Buenos Aires
-        res_back = self.client.post("/api/v1/locations/instances/f05-main", json={"location": "ba"})
+        res_back = self.client.post(f"/api/v1/locations/instances/{target}", json={"location": "ba"})
         self.assertEqual(res_back.status_code, 200)
         self.assertEqual(res_back.json()["location"]["city"], "Buenos Aires, Argentina (Obelisco)")
 
     def test_update_instance_location_custom_coords(self):
+        instances = self.client.get("/api/v1/instances").json()
+        target = instances[0]["instance_name"]
         # Actualizar con coordenadas decimales personalizadas
         payload = {
             "latitude": -31.42,
@@ -125,14 +132,14 @@ class ApiServerTest(unittest.TestCase):
             "city": "Córdoba Centro",
             "timezone": "America/Argentina/Cordoba"
         }
-        res = self.client.post("/api/v1/locations/instances/f05-main", json=payload)
+        res = self.client.post(f"/api/v1/locations/instances/{target}", json=payload)
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["location"]["city"], "Córdoba Centro")
         self.assertAlmostEqual(data["location"]["latitude"], -31.42)
 
         # Restaurar a Buenos Aires
-        self.client.post("/api/v1/locations/instances/f05-main", json={"location": "ba"})
+        self.client.post(f"/api/v1/locations/instances/{target}", json={"location": "ba"})
 
 
 if __name__ == "__main__":

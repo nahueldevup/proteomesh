@@ -30,6 +30,10 @@ class SetTtlRequest(BaseModel):
     ttl: str = Field(..., description="Configuración TTL: 24h, 7d, 30d, permanent")
 
 
+class DeclineOfferRequest(BaseModel):
+    requeue: bool = Field(default=True, description="Si es True, cede el turno y va al final de la cola; si es False, cancela y sale")
+
+
 @router.get("/network/status", summary="Resumen global de red USB, cola FIFO y dispositivos")
 async def get_network_overview():
     devices = await usb_network_service.discover_usb_devices()
@@ -47,7 +51,8 @@ async def get_network_overview():
             "waiting_count": waiting,
             "ttl": ttl,
         },
-        "waiting_queue": usb_network_service.waiting_queue,
+        "pending_offer": usb_network_service.get_pending_offer(),
+        "waiting_queue": list(usb_network_service.waiting_queue),
         "devices": [
             {
                 "serial": d.serial,
@@ -119,6 +124,15 @@ async def claim_usb(name: str, req: Optional[ClaimUsbRequest] = None):
         return res
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/instances/{name}/network/decline-offer", summary="Declinar oferta de módem USB o ceder turno")
+async def decline_offer(name: str, req: Optional[DeclineOfferRequest] = None):
+    requeue = req.requeue if req is not None else True
+    try:
+        return await usb_network_service.decline_offer(name, requeue=requeue)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

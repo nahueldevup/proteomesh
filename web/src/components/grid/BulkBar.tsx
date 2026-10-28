@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Power,
   RotateCw,
@@ -16,12 +16,13 @@ import {
   Trash2,
   ShieldAlert,
   Usb,
+  BookmarkPlus,
 } from 'lucide-react';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
-import type { LocationData } from '../../types';
+import type { LocationData, CustomLocation } from '../../types';
 import { toast } from 'sonner';
 
 interface BulkBarProps {
@@ -54,6 +55,15 @@ export default function BulkBar({
   const [apkValue, setApkValue] = useState('');
 
   const [gpsOpen, setGpsOpen] = useState(false);
+  const [customLocations, setCustomLocations] = useState<CustomLocation[]>([]);
+
+  useEffect(() => {
+    if (gpsOpen) {
+      api.getCustomLocations()
+        .then((res) => setCustomLocations(res.locations || []))
+        .catch(() => {});
+    }
+  }, [gpsOpen]);
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -155,7 +165,8 @@ export default function BulkBar({
 
   const handleSetGps = async (loc: LocationData) => {
     setGpsOpen(false);
-    const toastId = toast.loading(`Asignando GPS ${loc.city} a ${count} dispositivos...`);
+    const displayName = loc.custom_name || loc.city;
+    const toastId = toast.loading(`Asignando GPS "${displayName}" a ${count} dispositivos...`);
     try {
       await api.groupSetLocation(selectedNames, {
         latitude: loc.latitude,
@@ -163,8 +174,10 @@ export default function BulkBar({
         altitude: loc.altitude || 20.0,
         city: loc.city,
         timezone: loc.timezone,
+        custom_name: loc.custom_name,
+        custom_location_id: loc.custom_location_id,
       });
-      toast.success(`GPS actualizado a ${loc.city}`, { id: toastId });
+      toast.success(`GPS actualizado a "${displayName}"`, { id: toastId });
       onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al cambiar GPS en lote', { id: toastId });
@@ -366,18 +379,53 @@ export default function BulkBar({
               />
             </div>
           </PopoverTrigger>
-          <PopoverContent side="top" className="w-56 max-h-64 overflow-y-auto p-1">
-            <div className="px-2 py-1 text-xs text-muted-foreground">Presets GPS</div>
-            <div className="flex flex-col gap-0.5">
-              {Object.entries(locationPresets).map(([key, loc]) => (
-                <button
-                  key={key}
-                  onClick={() => handleSetGps(loc)}
-                  className="flex items-center justify-between rounded px-2 py-1.5 text-xs text-foreground/80 hover:bg-accent hover:text-foreground text-left"
-                >
-                  <span className="truncate">{loc.city}</span>
-                </button>
-              ))}
+          <PopoverContent side="top" className="w-64 max-h-72 overflow-y-auto p-1.5 space-y-2">
+            {customLocations.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wider">
+                  <BookmarkPlus className="h-3 w-3" />
+                  <span>Ubicaciones Custom</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {customLocations.map((loc) => (
+                    <button
+                      key={loc.id}
+                      onClick={() =>
+                        handleSetGps({
+                          city: loc.city,
+                          latitude: loc.latitude,
+                          longitude: loc.longitude,
+                          altitude: loc.altitude,
+                          timezone: loc.timezone,
+                          custom_name: loc.name,
+                          custom_location_id: loc.id,
+                        })
+                      }
+                      className="flex flex-col rounded px-2 py-1 text-left text-xs hover:bg-accent hover:text-foreground transition-colors"
+                    >
+                      <span className="font-semibold text-foreground truncate">{loc.name}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">{loc.city}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                Presets Oficiales
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {Object.entries(locationPresets).map(([key, loc]) => (
+                  <button
+                    key={key}
+                    onClick={() => handleSetGps(loc)}
+                    className="flex items-center justify-between rounded px-2 py-1 text-xs text-foreground/80 hover:bg-accent hover:text-foreground text-left"
+                  >
+                    <span className="truncate">{loc.city}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </PopoverContent>
         </Popover>

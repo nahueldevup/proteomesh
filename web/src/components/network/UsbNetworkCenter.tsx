@@ -42,6 +42,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -61,6 +62,29 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       if (!silent) setLoading(false);
     }
   }, []);
+
+  // Contador regresivo en vivo para la ventana de gracia de 5s (Turno pendiente)
+  useEffect(() => {
+    const offer = data?.pending_offer;
+    if (!offer) {
+      setCountdown(null);
+      return;
+    }
+
+    const expiresAt = offer.expires_at ? offer.expires_at * 1000 : (Date.now() + (offer.expires_in_seconds || 5) * 1000);
+
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setCountdown(remaining);
+      if (remaining <= 0) {
+        window.setTimeout(() => loadData(true), 800);
+      }
+    };
+
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [data?.pending_offer, loadData]);
 
   useEffect(() => {
     loadData();
@@ -132,6 +156,24 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       await loadData(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Fallo al reclamar USB', { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleDeclineOffer = async (instanceName: string) => {
+    setBusyAction(`decline-${instanceName}`);
+    const toastId = toast.loading(`Cediento turno para ${instanceName}...`);
+    try {
+      const res = await api.declineOffer(instanceName, true);
+      if (res.next_offered) {
+        toast.info(`Turno cedido. Módem ofrecido a '${res.next_offered}'`, { id: toastId });
+      } else {
+        toast.success(`Turno cedido para ${instanceName}`, { id: toastId });
+      }
+      await loadData(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al declinar turno', { id: toastId });
     } finally {
       setBusyAction(null);
     }
@@ -254,6 +296,56 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
         </div>
       </div>
 
+      {/* Banner de Oferta Temporal con Ventana de Gracia (5s) */}
+      {data?.pending_offer && (
+        <div className="relative overflow-hidden rounded-xl border border-indigo-500/40 bg-gradient-to-r from-indigo-500/15 via-purple-500/10 to-indigo-500/5 p-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-500 border border-indigo-500/30">
+                <Clock className="h-5 w-5 animate-pulse text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 uppercase tracking-wide">
+                    Turno Disponible
+                  </span>
+                  {data.pending_offer.device_serial && (
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      Módem: {data.pending_offer.device_serial}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-sm font-bold text-foreground mt-0.5">
+                  Módem disponible para <span className="text-primary font-mono">{data.pending_offer.instance}</span>. Conectando en{' '}
+                  <span className="inline-flex items-center justify-center min-w-[24px] rounded bg-indigo-600 text-white px-1.5 py-0.2 text-xs font-mono font-bold animate-pulse">
+                    {countdown !== null ? countdown : data.pending_offer.expires_in_seconds}s
+                  </span>...
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                onClick={() => handleDeclineOffer(data.pending_offer!.instance)}
+                disabled={busyAction === `decline-${data.pending_offer.instance}`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground hover:bg-surface-hover transition-colors disabled:opacity-50"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                Ceder turno / Declinar
+              </button>
+              <button
+                onClick={() => handleClaimUsb(data.pending_offer!.instance)}
+                disabled={busyAction === `claim-${data.pending_offer.instance}`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 text-xs font-bold text-white hover:bg-indigo-500 shadow-sm transition-all disabled:opacity-50"
+              >
+                <Usb className="h-3.5 w-3.5" />
+                Conectar ya
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Banner de Cola de Espera (si hay instancias esperando) */}
       {waitingQueue.length > 0 && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 p-4">
@@ -267,24 +359,61 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
                 Permanecen aislados en cuarentena segura en el host (con ADB y streaming táctil activos). Para darles Internet podés conectar otro celular por cable USB o soltar la red de uno ocupado.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {waitingQueue.map((inst, idx) => (
-                  <div
-                    key={inst}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground"
-                  >
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                      #{idx + 1}
-                    </span>
-                    <span>{inst}</span>
-                    <button
-                      onClick={() => handleClaimUsb(inst)}
-                      disabled={busyAction === `claim-${inst}`}
-                      className="ml-1 rounded border border-border bg-secondary hover:bg-accent px-1.5 py-0.5 text-[10px] font-medium text-foreground disabled:opacity-50"
+                {waitingQueue.map((inst, idx) => {
+                  const hasOffer = data?.pending_offer?.instance === inst;
+                  return (
+                    <div
+                      key={inst}
+                      className={cn(
+                        'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium',
+                        hasOffer
+                          ? 'border-indigo-500/40 bg-indigo-500/10 text-foreground ring-1 ring-indigo-500/30'
+                          : 'border-border bg-surface text-foreground'
+                      )}
                     >
-                      {busyAction === `claim-${inst}` ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reintentar'}
-                    </button>
-                  </div>
-                ))}
+                      <span
+                        className={cn(
+                          'flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold',
+                          hasOffer
+                            ? 'bg-indigo-500 text-white animate-pulse'
+                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                        )}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <span className="font-mono">{inst}</span>
+                      {hasOffer ? (
+                        <div className="ml-1 flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            {countdown !== null ? `${countdown}s` : '5s'}
+                          </span>
+                          <button
+                            onClick={() => handleClaimUsb(inst)}
+                            disabled={busyAction === `claim-${inst}`}
+                            className="rounded bg-indigo-600 hover:bg-indigo-500 text-white px-1.5 py-0.5 text-[10px] font-bold"
+                          >
+                            Conectar
+                          </button>
+                          <button
+                            onClick={() => handleDeclineOffer(inst)}
+                            disabled={busyAction === `decline-${inst}`}
+                            className="rounded border border-border bg-surface hover:bg-surface-hover text-foreground px-1 py-0.5 text-[10px]"
+                          >
+                            Ceder
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleClaimUsb(inst)}
+                          disabled={busyAction === `claim-${inst}`}
+                          className="ml-1 rounded border border-border bg-secondary hover:bg-accent px-1.5 py-0.5 text-[10px] font-medium text-foreground disabled:opacity-50"
+                        >
+                          {busyAction === `claim-${inst}` ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reintentar'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

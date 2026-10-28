@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Usb, ShieldAlert, RotateCw, Loader2 } from 'lucide-react';
+import { Usb, ShieldAlert, RotateCw, Loader2, Clock, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Instance, UsbNetworkOverview } from '../../types';
 import { api } from '../../lib/api';
@@ -28,9 +28,10 @@ export default function DeviceCard({
   onNetworkChange,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
-  const [actionStatus, setActionStatus] = useState<'idle' | 'rotating' | 'claiming' | 'quarantining'>('idle');
+  const [actionStatus, setActionStatus] = useState<'idle' | 'rotating' | 'claiming' | 'quarantining' | 'declining'>('idle');
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [offerCountdown, setOfferCountdown] = useState<number | null>(null);
 
   // Intervalo de recarga de snapshot para dispositivos encendidos
   useEffect(() => {
@@ -48,9 +49,30 @@ export default function DeviceCard({
   }, [showContextMenu]);
 
   // Derivar estado de red desde el overview global
+  const isOffered = Boolean(usbOverview?.pending_offer && usbOverview.pending_offer.instance === instance.instance_name);
+  const pendingOffer = isOffered ? usbOverview!.pending_offer : null;
   const isWaiting = Boolean(usbOverview?.waiting_queue?.includes(instance.instance_name));
   const waitingPos = isWaiting ? (usbOverview!.waiting_queue.indexOf(instance.instance_name) + 1) : null;
   const assignedDev = usbOverview?.devices?.find((d) => d.assigned_instance === instance.instance_name);
+
+  // Cuenta regresiva viva de oferta temporal (5s)
+  useEffect(() => {
+    if (!pendingOffer) {
+      setOfferCountdown(null);
+      return;
+    }
+    const expiresAt = pendingOffer.expires_at ? pendingOffer.expires_at * 1000 : (Date.now() + (pendingOffer.expires_in_seconds || 5) * 1000);
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setOfferCountdown(remaining);
+      if (remaining <= 0) {
+        onNetworkChange?.();
+      }
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [pendingOffer, onNetworkChange]);
 
   const handleScreenTap = async (relX: number, relY: number) => {
     if (!syncMode || !instance.running) return;
@@ -119,6 +141,26 @@ export default function DeviceCard({
     }
   };
 
+  const handleDeclineOffer = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowContextMenu(false);
+    setActionStatus('declining');
+    const toastId = toast.loading(`Cediento turno para ${instance.instance_name}...`);
+    try {
+      const res = await api.declineOffer(instance.instance_name, true);
+      if (res.next_offered) {
+        toast.info(`Turno cedido. Próximo: '${res.next_offered}'`, { id: toastId });
+      } else {
+        toast.success(`Turno cedido`, { id: toastId });
+      }
+      onNetworkChange?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al declinar turno', { id: toastId });
+    } finally {
+      setActionStatus('idle');
+    }
+  };
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -169,6 +211,16 @@ export default function DeviceCard({
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               AISLANDO...
             </span>
+          ) : actionStatus === 'declining' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-indigo-600 dark:bg-indigo-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md animate-pulse">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              CEDIENDO...
+            </span>
+          ) : isOffered ? (
+            <span className="inline-flex items-center gap-1 rounded bg-indigo-600 dark:bg-indigo-700 text-white px-1.5 py-0.5 text-[8px] font-bold shadow-md animate-pulse">
+              <Clock className="h-2.5 w-2.5" />
+              OFERTA ({offerCountdown !== null ? `${offerCountdown}s` : `${pendingOffer?.expires_in_seconds || 5}s`})
+            </span>
           ) : assignedDev ? (
             <span
               className="inline-flex items-center gap-1 rounded bg-emerald-600 dark:bg-emerald-700 text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-md backdrop-blur-xs"
@@ -189,13 +241,39 @@ export default function DeviceCard({
           ) : null}
         </div>
 
-        {/* Acciones Rápidas en Hover al fondo de la pantalla */}
+        {/* Acciones Rápidas al fondo de la pantalla (Permanente si hay oferta, o en hover si no) */}
         {instance.running && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-1.5 inset-x-1.5 z-30 hidden group-hover:flex items-center justify-center gap-1 rounded-md bg-background/90 p-1 backdrop-blur-xs border border-border/80 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+            className={cn(
+              "absolute bottom-1.5 inset-x-1.5 z-30 flex items-center justify-center gap-1 rounded-md p-1 backdrop-blur-xs border shadow-lg transition-all duration-150",
+              isOffered
+                ? "border-indigo-500/50 bg-background/95 ring-1 ring-indigo-500/30"
+                : "hidden group-hover:flex bg-background/90 border-border/80"
+            )}
           >
-            {assignedDev ? (
+            {isOffered ? (
+              <>
+                <button
+                  onClick={handleClaimUsb}
+                  disabled={actionStatus !== 'idle'}
+                  title="Conectar inmediatamente sin esperar los 5s"
+                  className="flex-1 flex items-center justify-center gap-1 rounded bg-indigo-600 hover:bg-indigo-500 px-1 py-1 text-[9px] font-bold text-white transition-colors disabled:opacity-50"
+                >
+                  <Usb className="h-2.5 w-2.5" />
+                  <span>Conectar ({offerCountdown !== null ? `${offerCountdown}s` : '5s'})</span>
+                </button>
+                <button
+                  onClick={handleDeclineOffer}
+                  disabled={actionStatus !== 'idle'}
+                  title="Ceder turno y pasar al final de la cola"
+                  className="flex-1 flex items-center justify-center gap-1 rounded border border-border bg-surface hover:bg-surface-hover px-1 py-1 text-[9px] font-medium text-foreground transition-colors disabled:opacity-50"
+                >
+                  <ArrowRightLeft className="h-2.5 w-2.5 text-muted-foreground" />
+                  <span>Ceder</span>
+                </button>
+              </>
+            ) : assignedDev ? (
               <>
                 <button
                   onClick={handleRotateIp}
@@ -235,12 +313,31 @@ export default function DeviceCard({
           <div
             style={{ top: Math.min(menuPos.y, 160), left: Math.min(menuPos.x, 80) }}
             onClick={(e) => e.stopPropagation()}
-            className="absolute z-50 w-36 rounded-lg border border-border bg-popover p-1 shadow-xl animate-in fade-in zoom-in-95 duration-100 text-xs font-sans text-popover-foreground"
+            className="absolute z-50 w-40 rounded-lg border border-border bg-popover p-1 shadow-xl animate-in fade-in zoom-in-95 duration-100 text-xs font-sans text-popover-foreground"
           >
             <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground border-b border-border/50 uppercase tracking-wider">
               Red USB Módem
             </div>
-            {assignedDev ? (
+            {isOffered ? (
+              <>
+                <button
+                  onClick={handleClaimUsb}
+                  disabled={actionStatus !== 'idle'}
+                  className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+                >
+                  <Usb className="h-3 w-3" />
+                  <span>Conectar ya</span>
+                </button>
+                <button
+                  onClick={handleDeclineOffer}
+                  disabled={actionStatus !== 'idle'}
+                  className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  <ArrowRightLeft className="h-3 w-3 text-muted-foreground" />
+                  <span>Ceder turno / Declinar</span>
+                </button>
+              </>
+            ) : assignedDev ? (
               <>
                 <button
                   onClick={handleRotateIp}
@@ -285,6 +382,14 @@ export default function DeviceCard({
         <span className="truncate flex-1 text-foreground/90 font-medium" title={instance.instance_name}>
           {instance.instance_name}
         </span>
+        {instance.location?.custom_name && (
+          <span
+            className="truncate text-[8.5px] text-primary font-sans font-semibold max-w-[80px]"
+            title={`Ubicación Custom: ${instance.location.custom_name}`}
+          >
+            📍{instance.location.custom_name}
+          </span>
+        )}
         <span className="ml-auto shrink-0 text-muted-foreground text-[8.5px]">
           :{instance.adb_port}
         </span>
