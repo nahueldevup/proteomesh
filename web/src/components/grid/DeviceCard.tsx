@@ -239,8 +239,8 @@ function DeviceCard({
       onDoubleClick={() => onOpen(instance.instance_name)}
       onContextMenu={handleContextMenu}
       className={cn(
-        'group relative cursor-pointer select-none rounded-sm bg-bezel p-1 transition-all',
-        selected ? 'ring-1 ring-primary glow-selected' : 'ring-1 ring-border hover:ring-foreground/40'
+        'group relative cursor-pointer select-none rounded-sm border border-device-card-border bg-device-card p-1 text-device-card-foreground shadow-xs transition-all dark:border-t-white/15 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4)]',
+        selected ? 'border-primary ring-1 ring-primary glow-selected' : 'hover:border-foreground/40'
       )}
     >
       <div className="relative aspect-[9/19.5] overflow-hidden rounded-xs bg-black [container-type:inline-size]">
@@ -253,7 +253,7 @@ function DeviceCard({
         />
 
         {/* Slot index tag */}
-        <span className="absolute left-1 top-1 rounded-xs bg-background/90 border border-border/80 px-1 font-mono text-[9px] text-foreground/90 z-20">
+        <span className="absolute left-1 top-1 rounded-xs bg-black/90 border border-white/20 px-1.5 py-px font-mono text-[9px] font-bold text-white shadow-xs z-20 select-none">
           {index + 1}
         </span>
 
@@ -493,11 +493,11 @@ function DeviceCard({
               instance.running ? 'bg-success' : 'bg-muted-foreground/30'
             )}
           />
-          <span className="truncate flex-1 text-foreground font-semibold" title={instance.instance_name}>
+          <span className="truncate flex-1 text-device-card-foreground font-semibold" title={instance.instance_name}>
             {instance.instance_name}
           </span>
 
-          <span className="shrink-0 text-muted-foreground text-[9px]">
+          <span className="shrink-0 text-device-card-muted text-[9px]">
             :{instance.adb_port}
           </span>
 
@@ -557,10 +557,10 @@ function DeviceCard({
 
         {/* Renglón 2: Ubicación completa sin truncarse */}
         {(instance.location?.custom_name || instance.location?.city) && (
-          <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-sans truncate">
+          <div className="flex items-center gap-1 text-[9px] text-device-card-muted font-sans truncate">
             <MapPin className="h-2.5 w-2.5 text-primary shrink-0" />
             <span
-              className="truncate text-foreground/80 font-medium"
+              className="truncate text-device-card-foreground/85 font-medium"
               title={instance.location.custom_name || instance.location.city}
             >
               {instance.location.custom_name || instance.location.city}

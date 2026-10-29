@@ -262,7 +262,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       )}
 
       {/* Hint */}
-      <div className="flex items-center gap-1 text-[10px] text-zinc-600">
+      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
         <Navigation className="w-2.5 h-2.5" />
         <span>Haz clic en el mapa o arrastra el marcador para fijar coordenadas GPS</span>
       </div>

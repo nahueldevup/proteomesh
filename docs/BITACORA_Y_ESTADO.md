@@ -1358,6 +1358,34 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 81. FEAT(WEB-016) — Rediseño de Tema Slate/Cyan, Sidebar Estilo shadcn y Optimización Visual de Tarjetas (2026-10-29)
+
+* **Objetivo:** Modernizar la interfaz web (ProteoMesh Web) con una estética limpia, técnica y de alto descanso visual, eliminando el aspecto genérico de prototipos, optimizando el layout de navegación y ajustando el mosaico por defecto.
+* **Cambios principales:**
+  - **Sistema de Temas Semántico (`index.css`):**
+    - Reemplazo de colores apagados por una escala pizarra neutra (`oklch hue 255`) y acentos Azul Eléctrico / Cyan técnico (`oklch hue 235`) para botones, badges, sliders y estados activos.
+    - Modo Claro optimizado: fondo mate slate (`oklch(0.935 0.008 255)`) sin blancos cegadores; tarjetas blancas delimitadas con bordes pizarra nítidos y sombra sutil de elevación (`shadow-xs`).
+    - Modo Oscuro: grafito técnico con micro-resalte superior (`dark:border-t-white/15`) y elevación suave de chasis en los dispositivos.
+    - Cuadrícula técnica de puntos (`--grid-dot`) desacoplada y visible en ambos temas.
+  - **Nuevo Componente Sidebar (`web/src/components/ui/sidebar.tsx`):**
+    - Componente local inspirado en shadcn con soporte `collapsible="icon"`, ancho expandido `w-60` y riel colapsado `w-13`.
+    - Trigger de colapso integrado dentro de la cabecera del propio sidebar (eliminado el trigger huérfano de la barra de herramientas principal).
+    - Atajo global `Ctrl+B` / `Cmd+B` consolidado en `SidebarProvider`.
+    - Pie del sidebar minimalista: únicamente toggle de tema y atajo, sin islas de widgets parpadeantes ni métricas redundantes.
+  - **Layout de Páginas (`App.tsx`):**
+    - Header de la grilla estrictamente condicionado a `activeNav === 'instances' && viewMode === 'grid'`, eliminando la barra fantasma vacía de 48px en FocusView, Centro de Red USB y Mapa.
+    - Grilla de dispositivos con **5 columnas por defecto** (anteriormente 8) para una visualización más amplia y cómoda.
+    - Contador del slider de columnas con `whitespace-nowrap` y ancho fijo `w-36` para evitar saltos de línea.
+  - **Pulido de Tarjetas (`DeviceCard.tsx` / `DeviceGrid.tsx`):**
+    - Badge de slot numérico con contraste alto (`bg-black/90 border-white/20 text-white font-bold`) para no solaparse visualmente con el reloj de la barra de estado de Android.
+    - Tarjeta `+ NUEVO` alineada a la altura total de los teléfonos con `h-full` y mismo radio `rounded-sm`, manteniendo base horizontal perfecta.
+* **Verificación:**
+  - Lint (`npm run lint`) y Build (`npm run build`) pasando sin errores en ~350ms.
+  - Validación visual en navegador real para modo claro y oscuro, en estado colapsado y expandido del menú.
+* **Estado:** WEB-016 **completado y validado el 2026-10-29**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

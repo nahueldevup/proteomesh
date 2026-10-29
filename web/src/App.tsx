@@ -5,7 +5,6 @@ import {
   Search,
   CheckSquare,
   Plus,
-  PanelLeftClose,
   Sun,
   Moon,
   Usb,
@@ -21,6 +20,21 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { IconBtn } from './components/ui/IconBtn';
 import { Slider } from './components/ui/slider';
 import { cn } from './lib/utils';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from './components/ui/sidebar';
 
 const CreateDeviceModal = lazy(() =>
   import('./components/CreateDeviceModal').then((m) => ({ default: m.CreateDeviceModal }))
@@ -34,13 +48,26 @@ const CustomLocationsManager = lazy(() =>
 type ViewMode = 'grid' | 'focus';
 type NavTab = 'instances' | 'network' | 'locations';
 
-const NAV = [
-  { id: 'instances' as const, label: 'CloudPhones', icon: Smartphone },
-  { id: 'network' as const, label: 'Centro de Red USB', icon: Usb },
-  { id: 'locations' as const, label: 'Mapa y ubicaciones', icon: MapPin },
-];
-
 const NO_INSTANCES: Instance[] = [];
+
+function SidebarBrand() {
+  return (
+    <>
+      <div className="hidden group-data-[state=expanded]/sidebar:flex items-center gap-2 px-1 min-w-0">
+        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-primary/40 bg-primary/15 font-mono text-[11px] font-black text-sidebar-foreground">
+          PM
+        </div>
+        <div className="min-w-0">
+          <div className="truncate font-mono text-xs font-bold tracking-wider text-sidebar-foreground">PROTEOMESH</div>
+          <div className="font-mono text-[9px] text-muted-foreground">DEVICE FLEET</div>
+        </div>
+      </div>
+      <div className="flex w-full justify-center group-data-[state=expanded]/sidebar:hidden">
+        <SidebarTrigger className="h-8 w-8 rounded-sm hover:bg-sidebar-accent" />
+      </div>
+    </>
+  );
+}
 
 export function App() {
   const [activeNav, setActiveNav] = useState<NavTab>('instances');
@@ -51,15 +78,12 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [focusedName, setFocusedName] = useState<string | null>(null);
 
-  // Columnas dinámicas del mosaico (8 por defecto)
-  const [cols, setCols] = useState(8);
+  // Columnas dinámicas del mosaico (5 por defecto)
+  const [cols, setCols] = useState(5);
 
   // Selección múltiple y control de grupo
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState(false);
-
-  // Barra lateral colapsable
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createPresetModel, setCreatePresetModel] = useState<string | undefined>(undefined);
@@ -89,18 +113,6 @@ export function App() {
 
   // Datos de presets de ubicación globales
   const { data: locationPresets = EMPTY_PRESETS } = useLocationPresets();
-
-  // Atajo de teclado universal Ctrl+B / Cmd+B para alternar el menú lateral
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
-        e.preventDefault();
-        setSidebarCollapsed((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   // Estado del Pool de Red USB y Cola FIFO (NET-USB-001)
   const queryClient = useQueryClient();
@@ -140,7 +152,6 @@ export function App() {
     return matchesSearch;
   }), [instances, searchQuery, statusFilter]);
 
-  const onlineCount = instances.filter((i) => i.running).length;
   const existingPorts = useMemo(() => instances.map((i) => i.adb_port), [instances]);
   const focusedInstance = instances.find((i) => i.instance_name === focusedName) ?? null;
   const selectedList = [...selectedNames];
@@ -186,153 +197,121 @@ export function App() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
-        <Toaster richColors position="top-right" theme={theme} />
+      <SidebarProvider defaultOpen={false}>
+        <div className="flex h-screen w-full overflow-hidden bg-background">
+          <Toaster richColors position="top-right" theme={theme} />
 
-        {/* ── BARRA LATERAL (INSPIRADA EN LINEAR / SUPABASE) ───────────────────── */}
-        <aside
-          className={cn(
-            'flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 select-none',
-            sidebarCollapsed ? 'w-13' : 'w-52'
-          )}
-        >
-          {/* Cabecera / Toggle superior del Sidebar */}
-          {sidebarCollapsed ? (
-            <div className="flex h-12 items-center justify-center border-b border-sidebar-border px-1">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(false)}
-                title="Expandir menú (Ctrl+B)"
-                className="grid h-7 w-7 place-items-center rounded-sm border border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground font-mono text-xs font-bold hover:border-primary/50 transition-colors"
-              >
-                PM
-              </button>
-            </div>
-          ) : (
-            <div className="flex h-12 items-center justify-between border-b border-sidebar-border px-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-primary/40 bg-primary/20 text-foreground font-mono text-[11px] font-black">
-                  PM
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate font-mono text-xs font-bold tracking-wider text-sidebar-foreground">PROTEOMESH</div>
-                  <div className="flex items-center gap-1 font-mono text-[10px] text-sidebar-foreground/60">
-                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', onlineCount > 0 ? 'bg-success' : 'bg-muted-foreground/40')} />
-                    <span>{onlineCount}/{instances.length} online</span>
-                  </div>
+          <Sidebar collapsible="icon">
+            <SidebarHeader>
+              <div className="flex h-8 items-center justify-between">
+                <SidebarBrand />
+                <div className="hidden group-data-[state=expanded]/sidebar:block">
+                  <SidebarTrigger className="h-7 w-7 rounded-sm hover:bg-sidebar-accent" />
                 </div>
               </div>
-              <IconBtn
-                icon={PanelLeftClose}
-                label="Contraer menú (Ctrl+B)"
-                side="right"
-                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={() => setSidebarCollapsed(true)}
-              />
-            </div>
-          )}
-
-          {/* Acción Principal Superior: Crear CloudPhone */}
-          <div className="p-2 pb-1">
-            {sidebarCollapsed ? (
-              <div className="flex justify-center">
-                <IconBtn
+              <div className="mt-2">
+                <SidebarMenuButton
                   icon={Plus}
                   label="Crear CloudPhone"
-                  side="right"
-                  className="h-7 w-7 rounded-sm border border-primary/40 bg-primary/20 text-foreground hover:bg-primary/30"
+                  variant="primary"
                   onClick={() => {
                     setCreatePresetModel(undefined);
                     setIsCreateOpen(true);
                   }}
                 />
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setCreatePresetModel(undefined);
-                  setIsCreateOpen(true);
-                }}
-                className="flex h-7.5 w-full items-center justify-center gap-1.5 rounded-sm border border-primary/40 bg-primary/20 text-foreground font-mono text-xs font-bold hover:bg-primary/30 transition-colors active:scale-[0.99]"
-              >
-                <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
-                <span className="truncate">Crear CloudPhone</span>
-              </button>
-            )}
-          </div>
+            </SidebarHeader>
 
-          {/* Navegación */}
-          <nav className="flex flex-1 flex-col gap-0.5 p-2 pt-1">
-            {!sidebarCollapsed && (
-              <div className="px-2 pt-1 pb-1 font-mono text-[9px] font-bold text-sidebar-foreground/40 uppercase tracking-widest">
-                Vistas
-              </div>
-            )}
-            {NAV.map((n) => {
-              const active = activeNav === n.id;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => {
-                    setActiveNav(n.id);
-                    if (n.id === 'instances') setViewMode('grid');
-                  }}
-                  title={sidebarCollapsed ? n.label : undefined}
-                  className={cn(
-                    'flex h-7.5 items-center rounded-sm text-xs transition-colors text-left font-sans',
-                    sidebarCollapsed ? 'justify-center w-full px-0' : 'gap-2 px-2',
-                    active
-                      ? 'bg-sidebar-accent text-sidebar-foreground font-semibold border-l-2 border-primary'
-                      : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
-                  )}
-                >
-                  <n.icon className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-primary' : 'text-sidebar-foreground/70')} />
-                  {!sidebarCollapsed && (
-                    <>
-                      <span className="truncate flex-1">{n.label}</span>
-                      {n.id === 'instances' && (
-                        <span className="font-mono text-[10px] text-sidebar-foreground/50 bg-sidebar-accent/60 px-1 py-px rounded-xs">
+            <SidebarContent>
+              <SidebarGroup>
+                <SidebarGroupLabel>Flota</SidebarGroupLabel>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      icon={Smartphone}
+                      label="CloudPhones"
+                      active={activeNav === 'instances'}
+                      badge={
+                        <span className="rounded-full bg-sidebar-accent/80 border border-sidebar-border/70 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-muted-foreground">
                           {instances.length}
                         </span>
-                      )}
-                      {n.id === 'network' && usbOverview && (
-                        <span className={cn('font-mono text-[10px] px-1 py-px rounded-xs', usbOverview.summary.waiting_count > 0 ? 'bg-primary/20 text-foreground font-bold' : 'text-sidebar-foreground/50 bg-sidebar-accent/60')}>
-                          {usbOverview.summary.free_usb}/{usbOverview.summary.total_usb}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+                      }
+                      tooltip={`CloudPhones · ${instances.length}`}
+                      onClick={() => {
+                        setActiveNav('instances');
+                        setViewMode('grid');
+                      }}
+                    />
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroup>
 
-          {/* Botón inferior: Modo Claro/Oscuro */}
-          <div
-            className={cn(
-              'flex border-t border-sidebar-border p-2',
-              sidebarCollapsed ? 'flex-col items-center gap-1' : 'items-center justify-between'
-            )}
-          >
-            <div className={cn('flex gap-1', sidebarCollapsed && 'flex-col items-center')}>
-              <IconBtn
-                icon={theme === 'dark' ? Sun : Moon}
-                label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
-                side="right"
-                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={toggleTheme}
-              />
-            </div>
-          </div>
-        </aside>
+              <SidebarGroup>
+                <SidebarGroupLabel>Conectividad</SidebarGroupLabel>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      icon={Usb}
+                      label="Centro de Red"
+                      active={activeNav === 'network'}
+                      badge={
+                        usbOverview ? (
+                          <span
+                            className={cn(
+                              'rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold border',
+                              usbOverview.summary.waiting_count > 0
+                                ? 'border-warning/40 bg-warning/15 text-warning font-bold'
+                                : 'border-sidebar-border/70 bg-sidebar-accent/80 text-muted-foreground'
+                            )}
+                          >
+                            {usbOverview.summary.free_usb}/{usbOverview.summary.total_usb}
+                          </span>
+                        ) : undefined
+                      }
+                      tooltip={`Centro de Red USB${usbOverview ? ` · ${usbOverview.summary.free_usb}/${usbOverview.summary.total_usb} libres` : ''}${(usbOverview?.summary.waiting_count ?? 0) > 0 ? ` · ${usbOverview?.summary.waiting_count} en espera` : ''}`}
+                      onClick={() => setActiveNav('network')}
+                    />
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      icon={MapPin}
+                      label="Mapa y ubicaciones"
+                      active={activeNav === 'locations'}
+                      onClick={() => setActiveNav('locations')}
+                    />
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroup>
+            </SidebarContent>
+
+            <SidebarFooter>
+              <div className="flex items-center justify-between px-1 group-data-[state=collapsed]/sidebar:justify-center">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+                  className="flex items-center gap-2 rounded-sm p-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors group-data-[state=collapsed]/sidebar:justify-center"
+                >
+                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  <span className="group-data-[state=collapsed]/sidebar:hidden">
+                    {theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+                  </span>
+                </button>
+                <kbd className="font-mono text-[9px] text-muted-foreground/70 bg-sidebar-accent border border-sidebar-border/70 rounded px-1 py-0.5 group-data-[state=collapsed]/sidebar:hidden">
+                  Ctrl+B
+                </kbd>
+              </div>
+            </SidebarFooter>
+            <SidebarRail />
+          </Sidebar>
 
         {/* ── ÁREA PRINCIPAL ───────────────────────────────────────────────── */}
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <SidebarInset>
           <Suspense fallback={null}>
-          {/* Cabecera / Toolbar */}
+          {/* Cabecera / Toolbar (solo en la grilla de CloudPhones) */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 bg-card/40">
+            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card/40 px-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
               {/* Buscador */}
               <div className="relative w-60 min-w-0">
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
@@ -397,25 +376,19 @@ export function App() {
                 className="h-8 w-8 rounded-sm"
               />
 
-              {/* Slider de Columnas (min 4, max 12) + Selector de Tema */}
+              {/* Slider de Columnas (min 4, max 12) */}
               <div className="ml-auto flex items-center gap-3">
-                <div className="flex w-32 items-center gap-2 font-mono text-xs text-muted-foreground">
+                <div className="flex w-36 shrink-0 items-center gap-2 font-mono text-xs text-muted-foreground">
                   <Slider
                     min={4}
                     max={12}
                     step={1}
                     value={[cols]}
-                    onValueChange={(v) => setCols(v[0] ?? 8)}
+                    onValueChange={(v) => setCols(v[0] ?? 5)}
                   />
-                  <span>{cols} cols</span>
+                  <span className="shrink-0 whitespace-nowrap">{cols} cols</span>
                 </div>
-                <div className="h-4 w-px bg-border" />
-                <IconBtn
-                  icon={theme === 'dark' ? Sun : Moon}
-                  label={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-                  onClick={toggleTheme}
-                  className="h-8 w-8 rounded-sm"
-                />
+              </div>
               </div>
             </header>
           )}
@@ -479,7 +452,7 @@ export function App() {
           )}
 
           </Suspense>
-        </main>
+        </SidebarInset>
 
         {/* Modal de Creación */}
         {isCreateOpen && (
@@ -505,7 +478,8 @@ export function App() {
             locationPresets={locationPresets}
           />
         )}
-      </div>
+        </div>
+      </SidebarProvider>
     </TooltipProvider>
   );
 }

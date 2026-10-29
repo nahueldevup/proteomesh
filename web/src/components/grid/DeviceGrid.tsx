@@ -113,13 +113,13 @@ export default function DeviceGrid({
         <button
           type="button"
           onClick={onOpenCreate}
-          className="group flex flex-col items-center justify-center aspect-[9/19.5] rounded-xl border border-dashed border-border/70 hover:border-primary/60 bg-bezel/40 hover:bg-bezel/80 cursor-pointer transition-all select-none text-muted-foreground hover:text-primary p-2"
+          className="group flex h-full min-h-[220px] w-full flex-col items-center justify-center rounded-sm border border-dashed border-device-card-border bg-new-card p-2 text-muted-foreground shadow-xs transition-all hover:border-primary/60 hover:bg-accent/70 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           title="Crear nuevo CloudPhone"
         >
-          <div className="grid h-8 w-8 place-items-center rounded-md border border-border group-hover:border-emerald-500/50 group-hover:bg-emerald-500/10 transition-colors">
+          <div className="grid h-8 w-8 place-items-center rounded-md border border-device-card-border transition-colors group-hover:border-primary/50 group-hover:bg-primary/10">
             <Plus className="h-4 w-4" />
           </div>
-          <span className="mt-2 font-mono text-[9px] font-semibold tracking-wider opacity-70 group-hover:opacity-100 uppercase">
+          <span className="mt-2 font-mono text-[9px] font-semibold tracking-wider uppercase opacity-70 group-hover:opacity-100">
             + Nuevo
           </span>
         </button>
