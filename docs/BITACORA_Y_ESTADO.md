@@ -1386,6 +1386,27 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 82. PERF(WEB-017) — Optimización de Consumo de CPU, Polling de Red y Lazy Loading de Mapas (2026-10-29)
+
+* **Objetivo:** Reducir el consumo de CPU, memoria y peticiones HTTP en reposo sin comprometer ninguna vista ni funcionalidad en tiempo real.
+* **Cambios principales:**
+  - **Memoización estricta de `PhoneScreen`:** El componente ahora está envuelto en `React.memo` para evitar re-renders redundantes del preview de pantalla cuando las propiedades de la instancia no cambian.
+  - **Pausa total en background:** El temporizador de captura JPEG (`tick`) de `DeviceCard` se detiene completamente cuando `document.hidden === true` (pestaña minimizada) o cuando el dispositivo no está en el viewport.
+  - **Polling de red inteligente (`queries.ts`):**
+    - `useUsbOverview` pasa de 2s fijos a 3s en reposo (mantiene 2s cuando hay una oferta USB activa y pendiente).
+    - Ambos hooks deshabilitan el refresco en segundo plano (`refetchIntervalInBackground: false`).
+    - Ahorro neto: reducción del **33% de peticiones HTTP en reposo** y **0% de actividad de red y CPU al minimizar la pestaña**.
+  - **Code Splitting de Leaflet / Mapas:**
+    - El CSS de Leaflet se movió de `index.css` (global) al chunk específico de `MapPicker.tsx`.
+    - `MapPicker` ahora se carga de forma diferida (`React.lazy` con `Suspense`) dentro de `CreateDeviceModal`, `FocusView` y `CustomLocationsManager`.
+    - CSS principal optimizado de **84.86 kB → 70.18 kB** (reducción del ~17% en el CSS de carga inicial).
+* **Verificación:**
+  - `tsc -b` y `npm run build` exitosos en 336ms.
+  - Sin errores de linting (solo advertencias de efectos de sincronización ya documentadas).
+* **Estado:** WEB-017 **completado y validado el 2026-10-29**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

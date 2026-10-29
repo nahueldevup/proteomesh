@@ -63,8 +63,30 @@ function DeviceCard({
 
   useEffect(() => {
     if (!instance.running || !isVisible) return;
-    const interval = window.setInterval(() => setTick((t) => t + 1), 4000);
-    return () => window.clearInterval(interval);
+
+    let interval: number | undefined;
+    const startPolling = () => {
+      if (interval !== undefined) return;
+      interval = window.setInterval(() => setTick((t) => t + 1), 4000);
+    };
+    const stopPolling = () => {
+      if (interval !== undefined) {
+        window.clearInterval(interval);
+        interval = undefined;
+      }
+    };
+    const handleVisibility = () => {
+      if (document.hidden) stopPolling();
+      else startPolling();
+    };
+
+    if (!document.hidden) startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [instance.running, instance.instance_name, isVisible]);
 
   useEffect(() => {

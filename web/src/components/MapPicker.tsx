@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation } from 'lucide-react';
 
 const escapeHtml = (text: string) =>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   X,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useLocationsCatalog, useLocationPresets, EMPTY_PRESETS } from '../lib/queries';
-import { MapPicker, type MapPinItem } from './MapPicker';
+import type { MapPinItem } from './MapPicker';
 import { getPresetDisplay } from '../lib/locations';
 import type {
   TemplateItem,
@@ -26,6 +26,8 @@ import type {
   CreateInstancePayload,
 } from '../types';
 import { cn, getErrorMessage } from '../lib/utils';
+
+const MapPicker = lazy(() => import('./MapPicker').then((m) => ({ default: m.MapPicker })));
 
 interface CreateDeviceModalProps {
   isOpen: boolean;
@@ -645,31 +647,39 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                       </div>
                     )}
 
-                    <MapPicker
-                      latitude={latitude}
-                      longitude={longitude}
-                      city={city}
-                      onChange={(lat, lon, newCity) => {
-                        setLatitude(lat);
-                        setLongitude(lon);
-                        const matched = customLocations.find(
-                          (l) => Math.abs(l.latitude - lat) < 0.0001 && Math.abs(l.longitude - lon) < 0.0001
-                        );
-                        if (matched) {
-                          setSelectedCustomLoc(matched);
-                          setCity(matched.city);
-                          if (matched.timezone) setTimezone(matched.timezone);
-                        } else {
-                          setSelectedCustomLoc(null);
-                          if (newCity) setCity(newCity);
-                          else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
-                        }
-                      }}
-                      markers={mapMarkers}
-                      height="210px"
-                      showPresets={false}
-                      showInfoOverlay={false}
-                    />
+                    <Suspense
+                      fallback={
+                        <div className="flex h-[210px] items-center justify-center rounded-md border border-border bg-muted/20">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      }
+                    >
+                      <MapPicker
+                        latitude={latitude}
+                        longitude={longitude}
+                        city={city}
+                        onChange={(lat, lon, newCity) => {
+                          setLatitude(lat);
+                          setLongitude(lon);
+                          const matched = customLocations.find(
+                            (l) => Math.abs(l.latitude - lat) < 0.0001 && Math.abs(l.longitude - lon) < 0.0001
+                          );
+                          if (matched) {
+                            setSelectedCustomLoc(matched);
+                            setCity(matched.city);
+                            if (matched.timezone) setTimezone(matched.timezone);
+                          } else {
+                            setSelectedCustomLoc(null);
+                            if (newCity) setCity(newCity);
+                            else setCity(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+                          }
+                        }}
+                        markers={mapMarkers}
+                        height="210px"
+                        showPresets={false}
+                        showInfoOverlay={false}
+                      />
+                    </Suspense>
 
                     <div className="grid grid-cols-3 gap-2.5 pt-1">
                       <div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
 import {
@@ -49,10 +49,11 @@ import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { InteractiveScreen } from './InteractiveScreen';
-import { MapPicker } from '../MapPicker';
 import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
+
+const MapPicker = lazy(() => import('../MapPicker').then((m) => ({ default: m.MapPicker })));
 
 interface FocusViewProps {
   instance: Instance | null;
@@ -1130,19 +1131,27 @@ export default function FocusView({
 
                 {/* Mapa Interactivo Leaflet */}
                 <div className="rounded-lg border border-border overflow-hidden h-[190px] relative">
-                  <MapPicker
-                    latitude={mapLat}
-                    longitude={mapLon}
-                    city={mapCity}
-                    height="190px"
-                    showPresets={false}
-                    showInfoOverlay={false}
-                    onChange={(lat, lon, cityName) => {
-                      setMapLat(lat);
-                      setMapLon(lon);
-                      if (cityName) setMapCity(cityName);
-                    }}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center bg-muted/20">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    }
+                  >
+                    <MapPicker
+                      latitude={mapLat}
+                      longitude={mapLon}
+                      city={mapCity}
+                      height="190px"
+                      showPresets={false}
+                      showInfoOverlay={false}
+                      onChange={(lat, lon, cityName) => {
+                        setMapLat(lat);
+                        setMapLon(lon);
+                        if (cityName) setMapCity(cityName);
+                      }}
+                    />
+                  </Suspense>
                 </div>
 
                 {/* Coordenadas seleccionadas y Nombre Custom Activo */}

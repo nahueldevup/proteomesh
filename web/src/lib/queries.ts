@@ -31,7 +31,9 @@ export function useUsbOverview() {
   return useQuery<UsbNetworkOverview>({
     queryKey: queryKeys.usb,
     queryFn: () => api.getUsbNetworkStatus(),
-    refetchInterval: 2000,
+    refetchInterval: (query) =>
+      query.state.data?.pending_offer ? 2000 : 3000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -40,6 +42,7 @@ export function useInstances(paused: boolean) {
     queryKey: queryKeys.instances,
     queryFn: () => api.getInstances(),
     refetchInterval: paused ? false : 5000,
+    refetchIntervalInBackground: false,
   });
 }
 
