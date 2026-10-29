@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Smartphone,
   MapPin,
@@ -12,18 +12,25 @@ import {
   Clock,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys, useInstances, useUsbOverview } from './lib/queries';
 import { api } from './lib/api';
-import type { Instance, LocationData, UsbNetworkOverview } from './types';
-import { CreateDeviceModal } from './components/CreateDeviceModal';
+import type { Instance, LocationData } from './types';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
-import FocusView from './components/focus/FocusView';
-import UsbNetworkCenter from './components/network/UsbNetworkCenter';
-import { CustomLocationsManager } from './components/locations/CustomLocationsManager';
 import { TooltipProvider } from './components/ui/tooltip';
 import { IconBtn } from './components/ui/IconBtn';
 import { Slider } from './components/ui/slider';
 import { cn } from './lib/utils';
+
+const CreateDeviceModal = lazy(() =>
+  import('./components/CreateDeviceModal').then((m) => ({ default: m.CreateDeviceModal }))
+);
+const FocusView = lazy(() => import('./components/focus/FocusView'));
+const UsbNetworkCenter = lazy(() => import('./components/network/UsbNetworkCenter'));
+const CustomLocationsManager = lazy(() =>
+  import('./components/locations/CustomLocationsManager').then((m) => ({ default: m.CustomLocationsManager }))
+);
 
 type ViewMode = 'grid' | 'focus';
 type NavTab = 'instances' | 'network' | 'locations';
@@ -34,9 +41,10 @@ const NAV = [
   { id: 'locations' as const, label: 'Mapa y ubicaciones', icon: MapPin },
 ];
 
+const NO_INSTANCES: Instance[] = [];
+
 export function App() {
   const [activeNav, setActiveNav] = useState<NavTab>('instances');
-  const [instances, setInstances] = useState<Instance[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
 
@@ -96,56 +104,37 @@ export function App() {
   }, []);
 
   // Estado del Pool de Red USB y Cola FIFO (NET-USB-001)
-  const [usbOverview, setUsbOverview] = useState<UsbNetworkOverview | null>(null);
+  const queryClient = useQueryClient();
+  const { data: usbOverview } = useUsbOverview();
+  const { data: instancesData } = useInstances(isCreateOpen);
+  const instances = instancesData ?? NO_INSTANCES;
 
-  const fetchUsbOverview = useCallback(async () => {
-    try {
-      const data = await api.getUsbNetworkStatus();
-      setUsbOverview(data);
-    } catch {
-      // Silenciar si la API aún no está disponible
-    }
-  }, []);
+  const fetchUsbOverview = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.usb }),
+    [queryClient]
+  );
 
-  useEffect(() => {
-    fetchUsbOverview();
-    const interval = setInterval(() => {
-      fetchUsbOverview();
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [fetchUsbOverview]);
-
-  const fetchInstances = async () => {
-    try {
-      const data = await api.getInstances();
-      setInstances(data);
-      const names = new Set(data.map((i) => i.instance_name));
-      setSelectedNames((prev) => {
-        const next = new Set([...prev].filter((n) => names.has(n)));
-        return next.size === prev.size ? prev : next;
-      });
-    } catch (err) {
-      console.error('Error fetching instances:', err);
-    }
-  };
+  const fetchInstances = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.instances }),
+    [queryClient]
+  );
 
   useEffect(() => {
-    fetchInstances();
-    const interval = setInterval(() => {
-      if (!isCreateOpen) {
-        fetchInstances();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isCreateOpen]);
+    if (!instancesData) return;
+    const names = new Set(instancesData.map((i) => i.instance_name));
+    setSelectedNames((prev) => {
+      const next = new Set([...prev].filter((n) => names.has(n)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [instancesData]);
 
   useEffect(() => {
     if (activeNav === 'locations' && Object.keys(locationPresets).length === 0) {
       api.getLocationPresets().then(setLocationPresets).catch(console.error);
     }
-  }, [activeNav]);
+  }, [activeNav, locationPresets]);
 
-  const filteredInstances = instances.filter((inst) => {
+  const filteredInstances = useMemo(() => instances.filter((inst) => {
     const q = searchQuery.toLowerCase();
     const matchesSearch =
       inst.instance_name.toLowerCase().includes(q) ||
@@ -156,7 +145,7 @@ export function App() {
     if (statusFilter === 'online') return matchesSearch && inst.running;
     if (statusFilter === 'offline') return matchesSearch && !inst.running;
     return matchesSearch;
-  });
+  }), [instances, searchQuery, statusFilter]);
 
   const onlineCount = instances.filter((i) => i.running).length;
   const existingPorts = useMemo(() => instances.map((i) => i.adb_port), [instances]);
@@ -166,16 +155,16 @@ export function App() {
     filteredInstances.length > 0 &&
     filteredInstances.every((i) => selectedNames.has(i.instance_name));
 
-  const toggleSelect = (name: string) => {
+  const toggleSelect = useCallback((name: string) => {
     setSelectedNames((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
       return next;
     });
-  };
+  }, []);
 
-  const toggleSelectAll = () => {
+  const toggleSelectAll = useCallback(() => {
     const visible = filteredInstances.map((i) => i.instance_name);
     if (allFilteredSelected) {
       setSelectedNames((prev) => {
@@ -190,17 +179,17 @@ export function App() {
         return next;
       });
     }
-  };
+  }, [filteredInstances, allFilteredSelected]);
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedNames(new Set());
     setGroupMode(false);
-  };
+  }, []);
 
-  const openFocus = (name: string) => {
+  const openFocus = useCallback((name: string) => {
     setFocusedName(name);
     setViewMode('focus');
-  };
+  }, []);
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -352,6 +341,7 @@ export function App() {
 
         {/* ── ÁREA PRINCIPAL ───────────────────────────────────────────────── */}
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Suspense fallback={null}>
           {/* Cabecera / Toolbar */}
           {activeNav === 'instances' && viewMode === 'grid' && (
             <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 bg-card/40">
@@ -491,6 +481,8 @@ export function App() {
           {/* Pestaña: Centro de Red USB & Historial de IPs (NET-USB-001) */}
           {activeNav === 'network' && (
             <UsbNetworkCenter
+                overview={usbOverview}
+                onRefresh={fetchUsbOverview}
               instances={instances}
               onSelectInstance={(name) => {
                 openFocus(name);
@@ -498,16 +490,21 @@ export function App() {
             />
           )}
 
+          </Suspense>
         </main>
 
         {/* Modal de Creación */}
-        <CreateDeviceModal
-          isOpen={isCreateOpen}
-          onClose={() => setIsCreateOpen(false)}
-          onSuccess={fetchInstances}
-          existingPorts={existingPorts}
-          presetModel={createPresetModel}
-        />
+        {isCreateOpen && (
+          <Suspense fallback={null}>
+            <CreateDeviceModal
+              isOpen={isCreateOpen}
+              onClose={() => setIsCreateOpen(false)}
+              onSuccess={fetchInstances}
+              existingPorts={existingPorts}
+              presetModel={createPresetModel}
+            />
+          </Suspense>
+        )}
 
         {/* Barra Flotante de Acciones en Lote */}
         {activeNav === 'instances' && viewMode === 'grid' && selectedNames.size > 0 && (

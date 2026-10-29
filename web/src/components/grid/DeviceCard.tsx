@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Router, ShieldAlert, RotateCw, Loader2, ArrowRightLeft, Bell, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Instance, UsbNetworkOverview } from '../../types';
+import type { Instance, PendingOffer, UsbPhysicalPhone } from '../../types';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { PhoneScreen } from '../farm/PhoneScreen';
+
+export interface UsbSlice {
+  isOffered: boolean;
+  pendingOffer: PendingOffer | null;
+  isWaiting: boolean;
+  waitingPos: number | null;
+  assignedDev: UsbPhysicalPhone | null;
+}
 
 interface DeviceCardProps {
   instance: Instance;
@@ -13,18 +21,18 @@ interface DeviceCardProps {
   onToggleSelect: (name: string, shiftKey?: boolean) => void;
   onOpen: (name: string) => void;
   syncMode?: boolean;
-  usbOverview?: UsbNetworkOverview | null;
+  usb: UsbSlice;
   onNetworkChange?: () => void;
 }
 
-export default function DeviceCard({
+function DeviceCard({
   instance,
   index,
   selected,
   onToggleSelect,
   onOpen,
   syncMode = false,
-  usbOverview,
+  usb,
   onNetworkChange,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
@@ -50,11 +58,9 @@ export default function DeviceCard({
     return () => window.removeEventListener('click', handleClose);
   }, [showRouterPopover, showBellPopover]);
 
-  const isOffered = Boolean(usbOverview?.pending_offer && usbOverview.pending_offer.instance === instance.instance_name);
-  const pendingOffer = isOffered ? usbOverview!.pending_offer : null;
-  const isWaiting = Boolean(usbOverview?.waiting_queue?.includes(instance.instance_name));
-  const waitingPos = isWaiting ? (usbOverview!.waiting_queue.indexOf(instance.instance_name) + 1) : null;
-  const assignedDev = usbOverview?.devices?.find((d) => d.assigned_instance === instance.instance_name);
+  const { isOffered, pendingOffer, isWaiting, waitingPos, assignedDev } = usb;
+  const offerExpiresAt = pendingOffer?.expires_at ?? null;
+  const offerSeconds = pendingOffer?.expires_in_seconds ?? null;
 
   useEffect(() => {
     if (!isOffered) {
@@ -63,11 +69,11 @@ export default function DeviceCard({
   }, [isOffered]);
 
   useEffect(() => {
-    if (!pendingOffer || offerDismissed) {
+    if (!isOffered || offerDismissed) {
       setOfferCountdown(null);
       return;
     }
-    const expiresAt = pendingOffer.expires_at ? pendingOffer.expires_at * 1000 : (Date.now() + (pendingOffer.expires_in_seconds || 5) * 1000);
+    const expiresAt = offerExpiresAt ? offerExpiresAt * 1000 : (Date.now() + (offerSeconds || 5) * 1000);
     const updateCountdown = () => {
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setOfferCountdown(remaining);
@@ -78,7 +84,7 @@ export default function DeviceCard({
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [pendingOffer, offerDismissed, onNetworkChange]);
+  }, [isOffered, offerExpiresAt, offerSeconds, offerDismissed, onNetworkChange]);
 
   const handleScreenTap = async (relX: number, relY: number) => {
     if (!syncMode || !instance.running) return;
@@ -545,3 +551,16 @@ export default function DeviceCard({
     </div>
   );
 }
+
+export default memo(
+  DeviceCard,
+  (prev, next) =>
+    prev.index === next.index &&
+    prev.selected === next.selected &&
+    prev.syncMode === next.syncMode &&
+    prev.onToggleSelect === next.onToggleSelect &&
+    prev.onOpen === next.onOpen &&
+    prev.onNetworkChange === next.onNetworkChange &&
+    JSON.stringify(prev.instance) === JSON.stringify(next.instance) &&
+    JSON.stringify(prev.usb) === JSON.stringify(next.usb)
+);

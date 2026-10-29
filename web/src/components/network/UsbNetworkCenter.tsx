@@ -17,6 +17,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys, useIpLedger } from '../../lib/queries';
 import { api } from '../../lib/api';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import type {
@@ -28,8 +30,12 @@ import { cn } from '../../lib/utils';
 
 interface UsbNetworkCenterProps {
   instances: Instance[];
+  overview?: UsbNetworkOverview;
+  onRefresh: () => unknown;
   onSelectInstance?: (name: string) => void;
 }
+
+const NO_ENTRIES: IpLedgerEntry[] = [];
 
 const TTL_OPTIONS = [
   { value: '24h', label: '24 Horas' },
@@ -38,11 +44,9 @@ const TTL_OPTIONS = [
   { value: 'permanent', label: 'Permanente' },
 ];
 
-export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNetworkCenterProps) {
-  const [data, setData] = useState<UsbNetworkOverview | null>(null);
-  const [ledgerEntries, setLedgerEntries] = useState<IpLedgerEntry[]>([]);
-  const [currentTtl, setCurrentTtl] = useState('7d');
-  const [loading, setLoading] = useState(true);
+export default function UsbNetworkCenter({ instances, overview, onRefresh, onSelectInstance }: UsbNetworkCenterProps) {
+  const queryClient = useQueryClient();
+  const { data: ledger, isFetching: loading } = useIpLedger();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -50,24 +54,14 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
   const [page, setPage] = useState<number>(1);
   const [pageSizeOpen, setPageSizeOpen] = useState(false);
 
-  const loadData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const [overview, ledger] = await Promise.all([
-        api.getUsbNetworkStatus(),
-        api.getIpLedger(150, false),
-      ]);
-      setData(overview);
-      setLedgerEntries(ledger.entries);
-      setCurrentTtl(ledger.ttl || '7d');
-    } catch {
-      if (!silent) {
-        toast.error('Error al cargar estado de red USB');
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+  const ledgerEntries = ledger?.entries ?? NO_ENTRIES;
+  const currentTtl = ledger?.ttl ?? '7d';
+  const data = overview ?? null;
+
+  const refresh = useCallback(() => {
+    onRefresh();
+    return queryClient.invalidateQueries({ queryKey: queryKeys.ipLedger });
+  }, [onRefresh, queryClient]);
 
   // Contador regresivo en vivo para la ventana de gracia de 5s (Turno pendiente)
   useEffect(() => {
@@ -84,7 +78,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setCountdown(remaining);
       if (remaining <= 0 && refreshTimer === undefined) {
-        refreshTimer = window.setTimeout(() => loadData(true), 800);
+        refreshTimer = window.setTimeout(() => refresh(), 800);
       }
     };
 
@@ -94,17 +88,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       window.clearInterval(timer);
       window.clearTimeout(refreshTimer);
     };
-  }, [data?.pending_offer, loadData]);
-
-  useEffect(() => {
-    loadData();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadData(true);
-      }
-    }, 6000);
-    return () => window.clearInterval(interval);
-  }, [loadData]);
+  }, [data?.pending_offer, refresh]);
 
   const handleTestRotation = async (serial: string) => {
     setBusyAction(`test-${serial}`);
@@ -112,7 +96,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
     try {
       const res = await api.testUsbRotation(serial);
       toast.success(`Modo Avión OK en ${res.elapsed_seconds}s (radio reiniciada)`, { id: toastId });
-      await loadData(true);
+      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Fallo en test de rotación', { id: toastId });
     } finally {
@@ -126,7 +110,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
     try {
       const res = await api.rotateInstanceIp(instanceName);
       toast.success(`Nueva IP obtenida: ${res.new_ip}`, { id: toastId });
-      await loadData(true);
+      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al rotar IP', { id: toastId });
     } finally {
@@ -144,7 +128,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       } else {
         toast.success(`Instancia ${instanceName} en cuarentena segura`, { id: toastId });
       }
-      await loadData(true);
+      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al aislar instancia', { id: toastId });
     } finally {
@@ -162,7 +146,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       } else {
         toast.success(`Conexión USB activa para ${instanceName} (${res.public_ip})`, { id: toastId });
       }
-      await loadData(true);
+      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Fallo al reclamar USB', { id: toastId });
     } finally {
@@ -180,7 +164,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
       } else {
         toast.success(`Turno cedido para ${instanceName}`, { id: toastId });
       }
-      await loadData(true);
+      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al declinar turno', { id: toastId });
     } finally {
@@ -192,9 +176,8 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
     setBusyAction('set-ttl');
     try {
       await api.setIpLedgerTtl(ttl);
-      setCurrentTtl(ttl);
       toast.success(`Retención TTL actualizada a ${ttl}`);
-      await loadData(true);
+      await refresh();
     } catch {
       toast.error('Error al actualizar TTL');
     } finally {
@@ -207,7 +190,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
     try {
       const res = await api.purgeIpLedger();
       toast.success(`Se purgaron ${res.purged} registros de IP expirados`);
-      await loadData(true);
+      await refresh();
     } catch {
       toast.error('Error al purgar historial');
     } finally {
@@ -254,7 +237,7 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
 
           <button
             type="button"
-            onClick={() => loadData()}
+            onClick={() => refresh()}
             disabled={loading}
             className="inline-flex h-7.5 items-center gap-1.5 self-start sm:self-auto rounded-sm border border-border bg-card px-2.5 text-xs font-mono font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors shadow-xs"
           >
@@ -656,7 +639,10 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
                 type="text"
                 placeholder="Buscar por IP, instancia..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full bg-transparent outline-none placeholder:text-muted-foreground text-foreground text-[10px] font-mono"
               />
             </div>

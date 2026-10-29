@@ -27,13 +27,19 @@ export function InteractiveScreen({
   const nativeHeight = Number(instance.display?.height) || 2340;
 
   // Carga continua de fotogramas sin parpadeos (Double Buffering)
+  const frameInFlightRef = useRef(false);
   const loadFrame = useCallback(() => {
-    if (!instance.running) return;
+    if (!instance.running || frameInFlightRef.current) return;
+    frameInFlightRef.current = true;
     const url = api.getScreenUrl(instance.instance_name, Date.now());
     const img = new Image();
     img.onload = () => {
+      frameInFlightRef.current = false;
       setCurrentFrame(url);
       setIsLoadingFirst(false);
+    };
+    img.onerror = () => {
+      frameInFlightRef.current = false;
     };
     img.src = url;
   }, [instance.instance_name, instance.running]);

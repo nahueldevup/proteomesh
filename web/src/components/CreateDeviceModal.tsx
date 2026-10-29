@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import * as Dialog from '@radix-ui/react-dialog';
 import {
   X,
   Smartphone,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { MapPicker, type MapPinItem } from './MapPicker';
-import { getPresetDisplay } from './locations/CustomLocationsManager';
+import { getPresetDisplay } from '../lib/locations';
 import type {
   TemplateItem,
   Carrier,
@@ -181,19 +181,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       }
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen]);
-
-  // Manejo de teclado (Escape para cerrar)
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, submitting]);
+  }, [isOpen, existingPorts, presetModel, templates]);
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === activeStep);
   const isFirstStep = currentStepIndex === 0;
@@ -358,21 +346,19 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const brands = Object.keys(templates);
   const currentBrandModels = templates[selectedBrand] || [];
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in-0 duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
+  return (
+    <Dialog.Root
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && !submitting) onClose();
       }}
     >
-      <div
-        className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-sm border border-border bg-card shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[99999] bg-black/75 backdrop-blur-sm animate-in fade-in-0 duration-150" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed left-1/2 top-1/2 z-[99999] w-[calc(100%-2rem)] max-w-4xl max-h-[92vh] -translate-x-1/2 -translate-y-1/2 flex flex-col rounded-sm border border-border bg-card shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 focus:outline-none"
+        >
         {/* Cabecera Técnica */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -380,7 +366,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
               <Smartphone className="h-3.5 w-3.5" />
             </div>
             <div>
-              <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">Crear Nuevo CloudPhone</h2>
+              <Dialog.Title asChild>
+                <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">Crear Nuevo CloudPhone</h2>
+              </Dialog.Title>
               <p className="font-mono text-[11px] text-muted-foreground">
                 Configura hardware, operadora SIM, geolocalización y límites
               </p>
@@ -915,8 +903,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 };

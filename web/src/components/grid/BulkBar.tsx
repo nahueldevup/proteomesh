@@ -278,14 +278,12 @@ export default function BulkBar({
         {/* Escribir texto */}
         <Popover open={textOpen} onOpenChange={setTextOpen}>
           <PopoverTrigger asChild>
-            <div>
-              <IconBtn
+            <IconBtn
                 icon={Type}
                 label="Escribir texto en todos"
                 side="top"
                 variant={textOpen ? 'active' : 'ghost'}
               />
-            </div>
           </PopoverTrigger>
           <PopoverContent side="top" className="w-72 p-2">
             <div className="mb-2 text-xs text-muted-foreground">Escribir texto en todos</div>
@@ -307,14 +305,12 @@ export default function BulkBar({
         {/* Abrir URL */}
         <Popover open={urlOpen} onOpenChange={setUrlOpen}>
           <PopoverTrigger asChild>
-            <div>
-              <IconBtn
+            <IconBtn
                 icon={Link2}
                 label="Abrir URL"
                 side="top"
                 variant={urlOpen ? 'active' : 'ghost'}
               />
-            </div>
           </PopoverTrigger>
           <PopoverContent side="top" className="w-72 p-2">
             <div className="mb-2 text-xs text-muted-foreground">Abrir URL</div>
@@ -336,14 +332,12 @@ export default function BulkBar({
         {/* Instalar app */}
         <Popover open={apkOpen} onOpenChange={setApkOpen}>
           <PopoverTrigger asChild>
-            <div>
-              <IconBtn
+            <IconBtn
                 icon={PackagePlus}
                 label="Instalar app"
                 side="top"
                 variant={apkOpen ? 'active' : 'ghost'}
               />
-            </div>
           </PopoverTrigger>
           <PopoverContent side="top" className="w-72 p-2">
             <div className="mb-2 text-xs text-muted-foreground">Instalar app</div>
@@ -367,14 +361,12 @@ export default function BulkBar({
         {/* Cambiar GPS */}
         <Popover open={gpsOpen} onOpenChange={setGpsOpen}>
           <PopoverTrigger asChild>
-            <div>
-              <IconBtn
+            <IconBtn
                 icon={MapPin}
                 label="Cambiar GPS"
                 side="top"
                 variant={gpsOpen ? 'active' : 'ghost'}
               />
-            </div>
           </PopoverTrigger>
           <PopoverContent side="top" className="w-64 max-h-72 overflow-y-auto p-1.5 space-y-2">
             {customLocations.length > 0 && (

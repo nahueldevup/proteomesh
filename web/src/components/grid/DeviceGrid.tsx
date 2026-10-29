@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Smartphone, Plus } from 'lucide-react';
 import type { Instance, UsbNetworkOverview } from '../../types';
-import DeviceCard from './DeviceCard';
+import DeviceCard, { type UsbSlice } from './DeviceCard';
 
 interface DeviceGridProps {
   instances: Instance[];
@@ -40,15 +40,27 @@ export default function DeviceGrid({
         e.preventDefault();
         onSelectAll();
       }
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"][data-state="open"]')) {
         onClearSelection();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [onSelectAll, onClearSelection]);
 
-  const handleSelectWithShift = (name: string, shiftKey?: boolean) => {
+  const usbFor = (name: string): UsbSlice => {
+    const offer = usbOverview?.pending_offer?.instance === name ? usbOverview.pending_offer : null;
+    const queueIndex = usbOverview?.waiting_queue?.indexOf(name) ?? -1;
+    return {
+      isOffered: offer !== null,
+      pendingOffer: offer,
+      isWaiting: queueIndex >= 0,
+      waitingPos: queueIndex >= 0 ? queueIndex + 1 : null,
+      assignedDev: usbOverview?.devices?.find((d) => d.assigned_instance === name) ?? null,
+    };
+  };
+
+  const handleSelectWithShift = useCallback((name: string, shiftKey?: boolean) => {
     if (shiftKey && lastSelectedRef.current) {
       const idx1 = instances.findIndex((i) => i.instance_name === lastSelectedRef.current);
       const idx2 = instances.findIndex((i) => i.instance_name === name);
@@ -63,7 +75,7 @@ export default function DeviceGrid({
     }
     lastSelectedRef.current = name;
     onToggleSelect(name, false);
-  };
+  }, [instances, onToggleSelect]);
 
   if (instances.length === 0) {
     return (
@@ -93,7 +105,7 @@ export default function DeviceGrid({
           syncMode={syncMode}
           onToggleSelect={handleSelectWithShift}
           onOpen={onOpen}
-          usbOverview={usbOverview}
+          usb={usbFor(instance.instance_name)}
           onNetworkChange={onNetworkChange}
         />
       ))}

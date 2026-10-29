@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queries';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -37,8 +39,6 @@ import {
 } from 'lucide-react';
 import type {
   Instance,
-  ScrcpyStreamInfo,
-  InstanceUsbNetworkState,
   CustomLocation,
   LocationGroup,
   CustomLocationsCatalog,
@@ -50,7 +50,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { InteractiveScreen } from './InteractiveScreen';
 import { MapPicker } from '../MapPicker';
-import { getPresetDisplay } from '../locations/CustomLocationsManager';
+import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
 
@@ -81,7 +81,6 @@ export default function FocusView({
   onToggleTheme,
   locationPresets,
 }: FocusViewProps) {
-  const [streamInfo, setStreamInfo] = useState<ScrcpyStreamInfo | null>(null);
   const [activeTab, setActiveTab] = useState<SubTab>('gps');
 
   // Popovers state
@@ -150,24 +149,20 @@ export default function FocusView({
   }, [customCatalog.pinned_presets, locationPresets]);
 
   // Network / USB state (NET-USB-001)
-  const [networkState, setNetworkState] = useState<InstanceUsbNetworkState | null>(null);
+  const queryClient = useQueryClient();
+  const instanceName = instance?.instance_name;
+  const { data: networkState = null } = useQuery({
+    queryKey: queryKeys.networkState(instanceName),
+    queryFn: () => api.getInstanceUsbNetworkState(instanceName!),
+    enabled: Boolean(instanceName),
+    refetchInterval: 5000,
+  });
+  const fetchNetworkState = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.networkState(instanceName) }),
+    [queryClient, instanceName]
+  );
+
   const [networkBusy, setNetworkBusy] = useState(false);
-
-  const fetchNetworkState = useCallback(async () => {
-    if (!instance) return;
-    try {
-      const st = await api.getInstanceUsbNetworkState(instance.instance_name);
-      setNetworkState(st);
-    } catch {
-      // Silenciar si no está disponible
-    }
-  }, [instance?.instance_name]);
-
-  useEffect(() => {
-    fetchNetworkState();
-    const interval = window.setInterval(fetchNetworkState, 5000);
-    return () => window.clearInterval(interval);
-  }, [fetchNetworkState]);
 
   // Health state
   const [healthChecking, setHealthChecking] = useState(false);
@@ -223,36 +218,19 @@ export default function FocusView({
         setSelectedCustomLoc(null);
       }
     }
-  }, [instance?.instance_name, instance?.location, customCatalog.locations, customCatalog.default_location]);
+  }, [instance, customCatalog.locations, customCatalog.default_location]);
 
-  // Consulta periódica del streaming de alta fidelidad (ws-scrcpy)
-  useEffect(() => {
-    if (!instance || !instance.running) {
-      setStreamInfo(null);
-      return;
-    }
-    const supportsWebCodecs = typeof window !== 'undefined' && 'VideoDecoder' in window;
-    let alive = true;
-
-    const checkStream = () => {
-      api.getStreamInfo(instance.instance_name, supportsWebCodecs ? 'webcodecs' : 'mse')
-        .then((info) => {
-          if (alive) setStreamInfo(info);
-        })
-        .catch(() => {
-          if (alive) setStreamInfo(null);
-        });
-    };
-
-    checkStream();
-    // Reintentar si ws-scrcpy estaba arrancando o tras reconexión
-    const retryTimer = window.setInterval(checkStream, 4000);
-
-    return () => {
-      alive = false;
-      window.clearInterval(retryTimer);
-    };
-  }, [instance?.instance_name, instance?.running]);
+  // Estado del streaming ws-scrcpy: se consulta hasta que esté disponible
+  const supportsWebCodecs = typeof window !== 'undefined' && 'VideoDecoder' in window;
+  const streamPlayer = supportsWebCodecs ? 'webcodecs' : 'mse';
+  const { data: streamData } = useQuery({
+    queryKey: queryKeys.streamInfo(instanceName, streamPlayer),
+    queryFn: () => api.getStreamInfo(instanceName!, streamPlayer),
+    enabled: Boolean(instanceName) && Boolean(instance?.running),
+    refetchInterval: (query) => (query.state.data?.available ? false : 4000),
+    retry: false,
+  });
+  const streamInfo = instance?.running ? streamData : undefined;
 
   if (!instance) {
     return (
@@ -671,15 +649,13 @@ export default function FocusView({
             {/* Escribir texto con Popover */}
             <Popover open={textOpen} onOpenChange={setTextOpen}>
               <PopoverTrigger asChild>
-                <div>
-                  <IconBtn
+                <IconBtn
                     icon={Type}
                     label="Escribir texto"
                     side="right"
                     variant={textOpen ? 'active' : 'ghost'}
                     disabled={!instance.running}
                   />
-                </div>
               </PopoverTrigger>
               <PopoverContent side="right" className="w-72 p-2">
                 <div className="mb-2 text-xs text-muted-foreground font-mono">Escribir vía ADB</div>
@@ -701,15 +677,13 @@ export default function FocusView({
             {/* Abrir URL con Popover */}
             <Popover open={urlOpen} onOpenChange={setUrlOpen}>
               <PopoverTrigger asChild>
-                <div>
-                  <IconBtn
+                <IconBtn
                     icon={Link2}
                     label="Abrir URL"
                     side="right"
                     variant={urlOpen ? 'active' : 'ghost'}
                     disabled={!instance.running}
                   />
-                </div>
               </PopoverTrigger>
               <PopoverContent side="right" className="w-72 p-2">
                 <div className="mb-2 text-xs text-muted-foreground font-mono">Abrir enlace en Chrome</div>
@@ -739,14 +713,12 @@ export default function FocusView({
 
             {/* Visor scrcpy web en pestaña dedicada (opcional) */}
             {streamInfo?.available && (
-              <a
-                href={streamInfo.embed_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Abrir scrcpy web en pestaña dedicada"
-              >
-                <IconBtn icon={ExternalLink} label="Abrir scrcpy web en pestaña" side="right" />
-              </a>
+              <IconBtn
+                icon={ExternalLink}
+                label="Abrir scrcpy web en pestaña"
+                side="right"
+                onClick={() => window.open(streamInfo.embed_url, '_blank', 'noopener,noreferrer')}
+              />
             )}
 
             {/* Eliminar CloudPhone */}
@@ -792,8 +764,11 @@ export default function FocusView({
           {/* Tarjeta de Módulos Interactivos (Mapa GPS, Proxy, Salud) */}
           <div className="flex-1 min-h-0 flex flex-col rounded-sm border border-border bg-card p-3 overflow-hidden">
             {/* Cabecera de Pestañas del Módulo */}
-            <div className="flex items-center gap-1 border-b border-border pb-2 shrink-0">
+            <div role="tablist" className="flex items-center gap-1 border-b border-border pb-2 shrink-0">
               <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'gps'}
                 onClick={() => setActiveTab('gps')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',
@@ -807,6 +782,9 @@ export default function FocusView({
               </button>
 
               <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'network'}
                 onClick={() => setActiveTab('network')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',
@@ -820,6 +798,9 @@ export default function FocusView({
               </button>
 
               <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'health'}
                 onClick={() => setActiveTab('health')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',

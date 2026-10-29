@@ -62,6 +62,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({
   const markerRef = useRef<L.Marker | null>(null);
   const pinnedMarkersLayerRef = useRef<L.LayerGroup | null>(null);
   const isInitializedRef = useRef(false);
+  const initialPosRef = useRef({ latitude, longitude });
 
   // Callback estable para onChange
   const onChangeRef = useRef(onChange);
@@ -96,8 +97,9 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       iconAnchor: [18, 18],
     });
 
-    const safeLat = typeof latitude === 'number' && !isNaN(latitude) ? latitude : -34.603722;
-    const safeLon = typeof longitude === 'number' && !isNaN(longitude) ? longitude : -58.381592;
+    const { latitude: initLat, longitude: initLon } = initialPosRef.current;
+    const safeLat = typeof initLat === 'number' && !isNaN(initLat) ? initLat : -34.603722;
+    const safeLon = typeof initLon === 'number' && !isNaN(initLon) ? initLon : -58.381592;
 
     const map = L.map(mapContainerRef.current, {
       center: [safeLat, safeLon],
@@ -155,7 +157,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       pinnedMarkersLayerRef.current = null;
       isInitializedRef.current = false;
     };
-  }, []); // Solo se ejecuta al montar
+  }, [handleMapClick]); // Solo se ejecuta al montar
 
   // Renderizar pines configurados en el mapa
   useEffect(() => {
