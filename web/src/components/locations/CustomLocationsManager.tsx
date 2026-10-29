@@ -24,7 +24,7 @@ import { api } from '../../lib/api';
 import { MapPicker } from '../MapPicker';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
-import { cn } from '../../lib/utils';
+import { cn, getErrorMessage } from '../../lib/utils';
 
 interface CustomLocationsManagerProps {
   instances: Instance[];
@@ -148,9 +148,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setLoading(true);
       const data = await api.getCustomLocations();
       setCatalog(data);
-      if (data.groups.length > 0 && !locGroupId) {
-        setLocGroupId(data.groups[0].id);
-      }
+      setLocGroupId((prev) => (!prev && data.groups.length > 0 ? data.groups[0].id : prev));
       // Inicializar el mapa con la ubicación predeterminada general al cargar
       if (!isMapInitializedRef.current && data.default_location) {
         isMapInitializedRef.current = true;
@@ -160,12 +158,12 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         if (data.default_location.timezone) setLocTimezone(data.default_location.timezone);
         if (data.default_location.altitude) setLocAltitude(data.default_location.altitude);
       }
-    } catch (err: any) {
-      toast.error(`Error al cargar ubicaciones custom: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al cargar ubicaciones custom: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
-  }, [locGroupId]);
+  }, []);
 
   useEffect(() => {
     loadCatalog();
@@ -301,8 +299,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
             : `Preset "${info.name}" desfijado de FocusView`
         );
       }
-    } catch (err: any) {
-      toast.error(`Error al alternar pin: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al alternar pin: ${getErrorMessage(err)}`);
     }
   };
 
@@ -326,8 +324,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       if (res.altitude) setLocAltitude(res.altitude);
 
       toast.success(`"${name}" configurada como ubicación predeterminada general y centrada en el mapa`);
-    } catch (err: any) {
-      toast.error(`Error al establecer predeterminada: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al establecer predeterminada: ${getErrorMessage(err)}`);
     }
   };
 
@@ -369,8 +367,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setLocIsPinned(false);
       setLocSetAsDefault(false);
       await loadCatalog();
-    } catch (err: any) {
-      toast.error(`Error al guardar: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al guardar: ${getErrorMessage(err)}`);
     } finally {
       setSavingLoc(false);
     }
@@ -385,8 +383,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         ...prev,
         locations: prev.locations.filter((l) => l.id !== id),
       }));
-    } catch (err: any) {
-      toast.error(`Error al eliminar ubicación: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al eliminar ubicación: ${getErrorMessage(err)}`);
     }
   };
 
@@ -404,8 +402,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       });
       toast.success(`Ubicación "${loc.name}" asignada a "${instanceName}"`);
       onRefreshInstances?.();
-    } catch (err: any) {
-      toast.error(`Error al asignar ubicación: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al asignar ubicación: ${getErrorMessage(err)}`);
     }
   };
 
@@ -439,8 +437,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setGroupNameInput('');
       setGroupDescInput('');
       await loadCatalog();
-    } catch (err: any) {
-      toast.error(`Error al guardar grupo: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al guardar grupo: ${getErrorMessage(err)}`);
     } finally {
       setSavingGroup(false);
     }
@@ -457,8 +455,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       if (selectedGroupId === groupId) setSelectedGroupId(null);
       if (locGroupId === groupId) setLocGroupId('');
       await loadCatalog();
-    } catch (err: any) {
-      toast.error(`Error al eliminar grupo: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al eliminar grupo: ${getErrorMessage(err)}`);
     }
   };
 

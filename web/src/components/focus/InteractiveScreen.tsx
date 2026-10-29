@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Power, Loader2 } from 'lucide-react';
 import type { Instance } from '../../types';
 import { api } from '../../lib/api';
-import { cn } from '../../lib/utils';
+import { cn, getErrorMessage } from '../../lib/utils';
 
 interface InteractiveScreenProps {
   instance: Instance;
@@ -104,8 +104,8 @@ export function InteractiveScreen({
       try {
         await api.sendTap(instance.instance_name, realX, realY);
         triggerFastRefresh();
-      } catch (err: any) {
-        onActionFeedback?.(`Error tap: ${err.message}`);
+      } catch (err) {
+        onActionFeedback?.(`Error tap: ${getErrorMessage(err)}`);
       }
     } else {
       // Si el desplazamiento es mayor o igual a 8 píxeles se trata de un SWIPE / ARRASTRE
@@ -120,8 +120,8 @@ export function InteractiveScreen({
       try {
         await api.sendSwipe(instance.instance_name, realX1, realY1, realX2, realY2, durationMs);
         triggerFastRefresh();
-      } catch (err: any) {
-        onActionFeedback?.(`Error swipe: ${err.message}`);
+      } catch (err) {
+        onActionFeedback?.(`Error swipe: ${getErrorMessage(err)}`);
       }
     }
   };

@@ -52,7 +52,7 @@ import { InteractiveScreen } from './InteractiveScreen';
 import { MapPicker } from '../MapPicker';
 import { getPresetDisplay } from '../locations/CustomLocationsManager';
 import { toast } from 'sonner';
-import { cn } from '../../lib/utils';
+import { cn, getErrorMessage } from '../../lib/utils';
 
 interface FocusViewProps {
   instance: Instance | null;
@@ -116,13 +116,11 @@ export default function FocusView({
     try {
       const cat = await api.getCustomLocations();
       setCustomCatalog(cat);
-      if (cat.groups.length > 0 && !customGroupInput) {
-        setCustomGroupInput(cat.groups[0].id);
-      }
+      setCustomGroupInput((prev) => (!prev && cat.groups.length > 0 ? cat.groups[0].id : prev));
     } catch {
       // Ignorar si falla la carga silenciosa
     }
-  }, [customGroupInput]);
+  }, []);
 
   useEffect(() => {
     fetchCustomCatalog();
@@ -189,8 +187,8 @@ export default function FocusView({
       setConfirmDeleteOpen(false);
       onChanged?.();
       onBack();
-    } catch (err: any) {
-      toast.error(`Error al eliminar: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al eliminar: ${getErrorMessage(err)}`);
     } finally {
       setDeletingInstance(false);
     }
@@ -305,14 +303,13 @@ export default function FocusView({
       }
       onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al cambiar estado', { id: toastId });
+      toast.error(e instanceof Error ? getErrorMessage(e) : 'Error al cambiar estado', { id: toastId });
     }
   };
 
   const handleDownload = async () => {
     try {
-      const res = await fetch(api.getScreenUrl(instance.instance_name));
-      const blob = await res.blob();
+      const blob = await api.getScreenshot(instance.instance_name);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -365,8 +362,8 @@ export default function FocusView({
       } else {
         toast.error(res.message || 'No se pudo iniciar scrcpy');
       }
-    } catch (err: any) {
-      toast.error(`Fallo al lanzar scrcpy: ${err.message}`);
+    } catch (err) {
+      toast.error(`Fallo al lanzar scrcpy: ${getErrorMessage(err)}`);
     }
   };
 
@@ -387,7 +384,7 @@ export default function FocusView({
       toast.success(`GPS actualizado: ${displayName}`, { id: toastId });
       onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al guardar ubicación', { id: toastId });
+      toast.error(e instanceof Error ? getErrorMessage(e) : 'Error al guardar ubicación', { id: toastId });
     } finally {
       setMapBusy(false);
     }
@@ -419,8 +416,8 @@ export default function FocusView({
       setSaveCustomPopoverOpen(false);
       await fetchCustomCatalog();
       setSelectedCustomLoc(created);
-    } catch (err: any) {
-      toast.error(`Error al guardar: ${err.message}`);
+    } catch (err) {
+      toast.error(`Error al guardar: ${getErrorMessage(err)}`);
     } finally {
       setSavingCustom(false);
     }
@@ -436,7 +433,7 @@ export default function FocusView({
       await fetchNetworkState();
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al aislar instancia', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al aislar instancia', { id: toastId });
     } finally {
       setNetworkBusy(false);
     }
@@ -456,7 +453,7 @@ export default function FocusView({
       await fetchNetworkState();
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Fallo al reclamar módem USB', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Fallo al reclamar módem USB', { id: toastId });
     } finally {
       setNetworkBusy(false);
     }
@@ -472,7 +469,7 @@ export default function FocusView({
       await fetchNetworkState();
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al rotar IP', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al rotar IP', { id: toastId });
     } finally {
       setNetworkBusy(false);
     }
@@ -486,7 +483,7 @@ export default function FocusView({
       if (h.ok) toast.success('Todas las verificaciones de integridad pasaron (100/100)');
       else toast.warning('Se detectaron advertencias de root o integridad');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al verificar salud');
+      toast.error(e instanceof Error ? getErrorMessage(e) : 'Error al verificar salud');
     } finally {
       setHealthChecking(false);
     }
@@ -500,7 +497,7 @@ export default function FocusView({
         .split('/')
         .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
         .join(' ')
-    : 'Samsung A54x';
+    : '—';
 
   const identity = instance.identity || {};
 
@@ -772,14 +769,14 @@ export default function FocusView({
               {[
                 ['Modelo', modelName],
                 ['Puerto ADB', String(instance.adb_port)],
-                ['IMEI', identity.imei ?? '351689227998429'],
-                ['Grupo', instance.carrier ?? 'ar_personal'],
-                ['Serial', identity.serial ?? 'R58RACBDED'],
+                ['IMEI', identity.imei ?? '—'],
+                ['Operadora', instance.carrier ?? '—'],
+                ['Serial', identity.serial ?? '—'],
                 ['Proxy', instance.proxy?.exit_ip ? `${instance.proxy.exit_ip} (${instance.proxy.type.toUpperCase()})` : (instance.proxy ? `${instance.proxy.host}:${instance.proxy.port}` : '—')],
                 ['Red USB', networkState?.public_ip ? `${networkState.public_ip} (Módem USB)` : (networkState?.state === 'QUARANTINE' ? 'Cuarentena (Aislado)' : (networkState?.state === 'WAITING_USB' ? `En Cola (#${networkState.queue_position})` : 'Cuarentena T=0'))],
-                ['Teléfono', identity.phone_number ?? '+549****3997'],
-                ['Ubicación GPS', instance.location?.custom_name ? `${instance.location.custom_name} (${instance.location.city})` : (instance.location?.city ?? 'Buenos Aires, Argentina (Obelisco)')],
-                ['Zona horaria', instance.location?.timezone ?? 'America/Argentina/Buenos_Aires'],
+                ['Teléfono', identity.phone_number ?? '—'],
+                ['Ubicación GPS', instance.location?.custom_name ? `${instance.location.custom_name} (${instance.location.city})` : (instance.location?.city ?? '—')],
+                ['Zona horaria', instance.location?.timezone ?? '—'],
               ].map(([k, v]) => (
                 <div
                   key={String(k)}
@@ -965,8 +962,8 @@ export default function FocusView({
                                               ? `"${loc.name}" fijada en accesos rápidos`
                                               : `"${loc.name}" desfijada de accesos rápidos`
                                           );
-                                        } catch (err: any) {
-                                          toast.error(`Error: ${err.message}`);
+                                        } catch (err) {
+                                          toast.error(`Error: ${getErrorMessage(err)}`);
                                         }
                                       }}
                                       className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
@@ -1084,7 +1081,7 @@ export default function FocusView({
                     {/* Presets Rápidos y Ubicaciones Custom Fijadas */}
                     <div className="hidden md:flex items-center gap-1 pl-1 border-l border-border/60 overflow-x-auto scrollbar-none max-w-[500px]">
                       {/* Presets Globales Fijados */}
-                      {pinnedPresetsList.map((c: any) => {
+                      {pinnedPresetsList.map((c) => {
                         const isSelected = !selectedCustomLoc && (mapCity === c.name || mapCity === c.city);
                         const isDefaultPreset = customCatalog.default_location?.target_type === 'preset' && customCatalog.default_location?.id === c.key;
                         return (
@@ -1292,15 +1289,15 @@ export default function FocusView({
                         <>
                           <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Módem Físico:</span>
-                            <span className="text-foreground">{(networkState.assigned_usb as any).model || 'Android'} ({(networkState.assigned_usb as any).serial})</span>
+                            <span className="text-foreground">{networkState.assigned_usb.model || 'Android'} ({networkState.assigned_usb.serial})</span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Interfaz / Gateway:</span>
-                            <span className="text-foreground">{(networkState.assigned_usb as any).iface} · {(networkState.assigned_usb as any).gateway}</span>
+                            <span className="text-foreground">{networkState.assigned_usb.iface} · {networkState.assigned_usb.gateway}</span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Operadora Móvil:</span>
-                            <span className="text-foreground">{(networkState.assigned_usb as any).carrier || 'Móvil'}</span>
+                            <span className="text-foreground">{networkState.assigned_usb.carrier || 'Móvil'}</span>
                           </div>
                         </>
                       )}
@@ -1351,27 +1348,28 @@ export default function FocusView({
                   </button>
                 </div>
 
-                {/* Métricas clave */}
+                {/* Resumen del diagnóstico real (GET /instances/{name}/health) */}
                 <div className="grid grid-cols-2 gap-2 text-xs font-mono shrink-0">
                   <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
-                    <span className="text-muted-foreground text-[10px]">Pixelscan Checker</span>
-                    <div className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-xs">
-                      <CheckCircle2 className="h-3 w-3" /> 100/100 Low Risk
+                    <span className="text-muted-foreground text-[10px]">Resultado</span>
+                    <div
+                      className={cn(
+                        'font-bold text-xs flex items-center gap-1',
+                        !healthReport
+                          ? 'text-muted-foreground'
+                          : healthReport.ok
+                          ? 'text-success'
+                          : 'text-warning'
+                      )}
+                    >
+                      {!healthReport ? '—' : healthReport.ok ? 'Sin alertas' : 'Con advertencias'}
                     </div>
                   </div>
                   <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
-                    <span className="text-muted-foreground text-[10px]">Root Detection Plus</span>
-                    <div className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-xs">
-                      <CheckCircle2 className="h-3 w-3" /> 0/39 Detecciones
+                    <span className="text-muted-foreground text-[10px]">Comprobaciones</span>
+                    <div className="font-bold text-foreground text-xs">
+                      {healthReport ? healthReport.reports.length : '—'}
                     </div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
-                    <span className="text-muted-foreground text-[10px]">Framework Root</span>
-                    <div className="font-bold text-foreground text-xs truncate">Magisk 30.6 + Zygisk</div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background/80 p-2 space-y-0.5">
-                    <span className="text-muted-foreground text-[10px]">Módulos Inyectados</span>
-                    <div className="font-bold text-foreground text-xs truncate">LSPosed / GmsCompat</div>
                   </div>
                 </div>
 

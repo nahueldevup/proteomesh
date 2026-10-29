@@ -2,6 +2,17 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import { MapPin, Navigation } from 'lucide-react';
 
+const escapeHtml = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const safeColor = (color: string | undefined, fallback: string) =>
+  color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
+
 export interface MapPinItem {
   id: string;
   name: string;
@@ -129,15 +140,15 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     mapRef.current = map;
     markerRef.current = marker;
 
-    // Forzar invalidateSize despues de que el DOM se estabilice
-    requestAnimationFrame(() => {
-      map.invalidateSize();
-    });
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 300);
+    const frame = requestAnimationFrame(() => map.invalidateSize());
+    const timer = window.setTimeout(() => map.invalidateSize(), 300);
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize());
+    resizeObserver.observe(mapContainerRef.current);
 
     return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
@@ -153,16 +164,17 @@ export const MapPicker: React.FC<MapPickerProps> = ({
 
     markers.forEach((m) => {
       if (typeof m.lat !== 'number' || typeof m.lon !== 'number' || isNaN(m.lat) || isNaN(m.lon)) return;
+      const color = m.isDefault ? '#f59e0b' : safeColor(m.color, '#10b981');
       const pinIcon = L.divIcon({
         className: 'proteomesh-pin-marker',
         html: `
           <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.6));">
-            <div style="display:flex;align-items:center;gap:3px;background:rgba(15,23,42,0.92);color:#f8fafc;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;border:1px solid ${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};white-space:nowrap;font-weight:600;">
+            <div style="display:flex;align-items:center;gap:3px;background:rgba(15,23,42,0.92);color:#f8fafc;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;border:1px solid ${color};white-space:nowrap;font-weight:600;">
               <span style="font-size:10px;">${m.isDefault ? '⭐' : '📍'}</span>
-              <span>${m.name}</span>
+              <span>${escapeHtml(m.name)}</span>
             </div>
-            <div style="width:2px;height:6px;background:${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};"></div>
-            <div style="width:6px;height:6px;border-radius:50%;background:${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};box-shadow:0 0 4px ${m.isDefault ? '#f59e0b' : (m.color || '#10b981')};"></div>
+            <div style="width:2px;height:6px;background:${color};"></div>
+            <div style="width:6px;height:6px;border-radius:50%;background:${color};box-shadow:0 0 4px ${color};"></div>
           </div>
         `,
         iconSize: [100, 34],
@@ -197,14 +209,6 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       });
     }
   }, [latitude, longitude]);
-
-  // Invalidar tamano cuando el contenedor cambia de visibilidad
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 200);
-    return () => clearTimeout(timer);
-  });
 
   const handlePresetClick = (preset: MapPresetItem) => {
     onChange(preset.lat, preset.lon, preset.label);

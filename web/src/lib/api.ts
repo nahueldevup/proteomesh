@@ -1,14 +1,21 @@
 import type {
   Instance,
+  DefaultLocation,
+  ClaimUsbResult,
+  DeclineOfferResult,
+  QuarantineResult,
+  RotateIpResult,
+  TestRotationResult,
+  TogglePinResult,
+  InstanceLocationPayload,
+  CreateInstancePayload,
   TemplateItem,
   Carrier,
   LocationData,
-  ProxyTestResult,
   ScrcpyLaunchResult,
   GroupResponse,
   ScrcpyStreamInfo,
   UsbNetworkOverview,
-  UsbPhysicalPhone,
   InstanceUsbNetworkState,
   IpLedgerResponse,
   CustomLocation,
@@ -39,12 +46,7 @@ export const api = {
     return handleResponse<Instance[]>(res);
   },
 
-  async getInstance(name: string): Promise<Instance> {
-    const res = await fetch(`${API_BASE}/instances/${name}`);
-    return handleResponse<Instance>(res);
-  },
-
-  async createInstance(data: any): Promise<Instance> {
+  async createInstance(data: CreateInstancePayload): Promise<Instance> {
     const res = await fetch(`${API_BASE}/instances`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -53,24 +55,24 @@ export const api = {
     return handleResponse<Instance>(res);
   },
 
-  async startInstance(name: string): Promise<any> {
+  async startInstance(name: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/start`, { method: 'POST' });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async stopInstance(name: string): Promise<any> {
+  async stopInstance(name: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/stop`, { method: 'POST' });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async deleteInstance(name: string): Promise<any> {
+  async deleteInstance(name: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}`, { method: 'DELETE' });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
   async getHealth(name: string): Promise<{ instance_name: string; ok: boolean; reports: string[] }> {
     const res = await fetch(`${API_BASE}/instances/${name}/health`);
-    return handleResponse<any>(res);
+    return handleResponse<{ instance_name: string; ok: boolean; reports: string[] }>(res);
   },
 
   // Catálogo de Plantillas
@@ -83,15 +85,6 @@ export const api = {
   async getCarriers(): Promise<Carrier[]> {
     const res = await fetch(`${API_BASE}/carriers`);
     return handleResponse<Carrier[]>(res);
-  },
-
-  async createCarrier(data: Carrier): Promise<Carrier> {
-    const res = await fetch(`${API_BASE}/carriers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    return handleResponse<Carrier>(res);
   },
 
   // Geolocalización
@@ -108,15 +101,6 @@ export const api = {
   async createCustomLocation(payload: Partial<CustomLocation>): Promise<CustomLocation> {
     const res = await fetch(`${API_BASE}/locations/custom`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    return handleResponse<CustomLocation>(res);
-  },
-
-  async updateCustomLocation(id: string, payload: Partial<CustomLocation>): Promise<CustomLocation> {
-    const res = await fetch(`${API_BASE}/locations/custom/${id}`, {
-      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
@@ -155,27 +139,13 @@ export const api = {
     return handleResponse<{ ok: boolean; deleted: string }>(res);
   },
 
-  async togglePin(targetType: 'custom' | 'preset', targetId: string, pinned?: boolean): Promise<any> {
+  async togglePin(targetType: 'custom' | 'preset', targetId: string, pinned?: boolean): Promise<TogglePinResult> {
     const res = await fetch(`${API_BASE}/locations/toggle-pin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_type: targetType, target_id: targetId, pinned }),
     });
-    return handleResponse<any>(res);
-  },
-
-  async updatePinnedPresets(pinnedPresets: string[]): Promise<{ ok: boolean; pinned_presets: string[] }> {
-    const res = await fetch(`${API_BASE}/locations/pinned-presets`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned_presets: pinnedPresets }),
-    });
-    return handleResponse<{ ok: boolean; pinned_presets: string[] }>(res);
-  },
-
-  async getDefaultLocation(): Promise<any> {
-    const res = await fetch(`${API_BASE}/locations/default`);
-    return handleResponse<any>(res);
+    return handleResponse<TogglePinResult>(res);
   },
 
   async setDefaultLocation(payload: {
@@ -188,51 +158,22 @@ export const api = {
     altitude?: number;
     accuracy?: number;
     timezone?: string;
-  }): Promise<any> {
+  }): Promise<DefaultLocation> {
     const res = await fetch(`${API_BASE}/locations/default`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return handleResponse<any>(res);
+    return handleResponse<DefaultLocation>(res);
   },
 
-  async getInstanceLocation(name: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/locations/instances/${name}`);
-    return handleResponse<any>(res);
-  },
-
-  async setInstanceLocation(name: string, payload: any): Promise<any> {
+  async setInstanceLocation(name: string, payload: InstanceLocationPayload): Promise<unknown> {
     const res = await fetch(`${API_BASE}/locations/instances/${name}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return handleResponse<any>(res);
-  },
-
-  // Proxies
-  async testProxy(payload: any): Promise<ProxyTestResult> {
-    const res = await fetch(`${API_BASE}/proxies/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    return handleResponse<ProxyTestResult>(res);
-  },
-
-  async setInstanceProxy(name: string, payload: any): Promise<any> {
-    const res = await fetch(`${API_BASE}/instances/${name}/proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    return handleResponse<any>(res);
-  },
-
-  async removeInstanceProxy(name: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/instances/${name}/proxy`, { method: 'DELETE' });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
   // =========================================================
@@ -243,17 +184,12 @@ export const api = {
     return handleResponse<UsbNetworkOverview>(res);
   },
 
-  async getUsbDevices(): Promise<{ devices: UsbPhysicalPhone[] }> {
-    const res = await fetch(`${API_BASE}/network/usb`);
-    return handleResponse<{ devices: UsbPhysicalPhone[] }>(res);
-  },
-
   async getInstanceUsbNetworkState(name: string): Promise<InstanceUsbNetworkState> {
     const res = await fetch(`${API_BASE}/instances/${name}/network/state`);
     return handleResponse<InstanceUsbNetworkState>(res);
   },
 
-  async claimUsb(name: string, preferredSerial?: string, stealFrom?: string): Promise<any> {
+  async claimUsb(name: string, preferredSerial?: string, stealFrom?: string): Promise<ClaimUsbResult> {
     const res = await fetch(`${API_BASE}/instances/${name}/network/claim-usb`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -262,44 +198,44 @@ export const api = {
         steal_from: stealFrom || null,
       }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<ClaimUsbResult>(res);
   },
 
-  async declineOffer(name: string, requeue: boolean = true): Promise<any> {
+  async declineOffer(name: string, requeue: boolean = true): Promise<DeclineOfferResult> {
     const res = await fetch(`${API_BASE}/instances/${name}/network/decline-offer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requeue }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<DeclineOfferResult>(res);
   },
 
-  async quarantineInstance(name: string): Promise<any> {
+  async quarantineInstance(name: string): Promise<QuarantineResult> {
     const res = await fetch(`${API_BASE}/instances/${name}/network/quarantine`, { method: 'POST' });
-    return handleResponse<any>(res);
+    return handleResponse<QuarantineResult>(res);
   },
 
-  async rotateInstanceIp(name: string): Promise<any> {
+  async rotateInstanceIp(name: string): Promise<RotateIpResult> {
     const res = await fetch(`${API_BASE}/instances/${name}/network/rotate-ip`, { method: 'POST' });
-    return handleResponse<any>(res);
+    return handleResponse<RotateIpResult>(res);
   },
 
-  async batchQuarantine(instances: string[]): Promise<any> {
+  async batchQuarantine(instances: string[]): Promise<unknown> {
     const res = await fetch(`${API_BASE}/network/batch-quarantine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instances }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async testUsbRotation(serial: string): Promise<any> {
+  async testUsbRotation(serial: string): Promise<TestRotationResult> {
     const res = await fetch(`${API_BASE}/network/usb/test-rotation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ serial }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<TestRotationResult>(res);
   },
 
   async getIpLedger(limit: number = 150, activeOnly: boolean = false): Promise<IpLedgerResponse> {
@@ -332,21 +268,27 @@ export const api = {
     return handleResponse<ScrcpyStreamInfo>(res);
   },
 
+  async getScreenshot(name: string): Promise<Blob> {
+    const res = await fetch(api.getScreenUrl(name));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  },
+
   getScreenUrl(name: string, timestamp?: number): string {
     const t = timestamp || Date.now();
     return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}`;
   },
 
-  async sendTap(name: string, x: number, y: number): Promise<any> {
+  async sendTap(name: string, x: number, y: number): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/input/tap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: Math.round(x), y: Math.round(y) }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async sendSwipe(name: string, x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<any> {
+  async sendSwipe(name: string, x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/input/swipe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -358,34 +300,34 @@ export const api = {
         duration_ms: durationMs,
       }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async sendKey(name: string, key: string): Promise<any> {
+  async sendKey(name: string, key: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/input/key`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async sendText(name: string, text: string): Promise<any> {
+  async sendText(name: string, text: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/input/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
-  async launchUrl(name: string, url: string): Promise<any> {
+  async launchUrl(name: string, url: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}/launch-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    return handleResponse<any>(res);
+    return handleResponse<unknown>(res);
   },
 
   // Control de Grupo (Multi-Touch)
@@ -442,15 +384,10 @@ export const api = {
     return { success, failed: results.length - success };
   },
 
-  async groupSetLocation(instances: string[], payload: any): Promise<{ success: number; failed: number }> {
+  async groupSetLocation(instances: string[], payload: InstanceLocationPayload): Promise<{ success: number; failed: number }> {
     const results = await Promise.allSettled(instances.map((name) => api.setInstanceLocation(name, payload)));
     const success = results.filter((r) => r.status === 'fulfilled').length;
     return { success, failed: results.length - success };
   },
 
-  async groupSetProxy(instances: string[], payload: any): Promise<{ success: number; failed: number }> {
-    const results = await Promise.allSettled(instances.map((name) => api.setInstanceProxy(name, payload)));
-    const success = results.filter((r) => r.status === 'fulfilled').length;
-    return { success, failed: results.length - success };
-  },
 };

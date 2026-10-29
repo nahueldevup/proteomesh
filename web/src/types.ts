@@ -60,20 +60,6 @@ export interface ProxyConfig {
   exit_ip?: string | null;
 }
 
-export interface ProxyTestResult {
-  ok: boolean;
-  ip?: string;
-  country?: string;
-  country_code?: string;
-  city?: string;
-  timezone?: string;
-  latitude?: number;
-  longitude?: number;
-  latency_ms?: number;
-  error?: string;
-  proxy?: ProxyConfig;
-}
-
 export interface Instance {
   instance_name: string;
   template?: string;
@@ -154,67 +140,6 @@ export interface GroupResponse {
   results: GroupActionResult[];
 }
 
-export interface RouteItem {
-  id: number;
-  label: string;
-  type: string;
-  host: string;
-  port: number;
-  username?: string | null;
-  auth?: boolean;
-  enabled: boolean;
-  status: 'active' | 'idle' | 'disabled';
-  assigned_instance?: string | null;
-  exit_ip?: string | null;
-  latency_ms?: number | null;
-  created_at?: string;
-}
-
-export interface UsbDevice {
-  serial: string;
-  state: string;
-  model?: string | null;
-  tether_enabled?: boolean;
-  usb_state?: string | null;
-  supported: boolean;
-  phase: number;
-}
-
-export interface RoutesOverview {
-  routes: RouteItem[];
-  usb_devices: UsbDevice[];
-  leases: Array<{
-    id: number;
-    instance_id: string;
-    exit_ip: string;
-    transport: string;
-    metadata?: Record<string, unknown>;
-    acquired_at?: string;
-  }>;
-  summary: { routes: number; active: number; quarantined: number };
-}
-
-export interface InstanceNetworkStatus {
-  instance: string;
-  running: boolean;
-  has_proxy: boolean;
-  proxy?: ProxyConfig | null;
-  lease?: {
-    exit_ip: string;
-    transport: string;
-    metadata?: Record<string, unknown>;
-    acquired_at?: string;
-  } | null;
-  tunnel_active: boolean;
-  quarantined: boolean;
-  usb_attached?: boolean;
-  state: 'routed' | 'quarantined' | 'direct' | 'pending' | string;
-  exit_ip?: string | null;
-  latency_ms?: number | null;
-  last_error?: string | null;
-  updated_at?: string | null;
-}
-
 // NET-USB-001 Types
 export interface UsbPhysicalPhone {
   serial: string;
@@ -277,10 +202,72 @@ export interface InstanceUsbNetworkState {
   running: boolean;
   state: 'QUARANTINE' | 'WAITING_USB' | 'OFFERED' | 'RELEASING' | 'ROTATING_IP' | 'CONNECTED_USB' | 'OFFLINE' | string;
   pending_offer?: PendingOffer | null;
-  assigned_usb?: Record<string, unknown> | null;
+  assigned_usb?: AssignedUsb | null;
   public_ip?: string | null;
   queue_position?: number | null;
   message?: string | null;
   error?: string | null;
   updated_at?: string | null;
+}
+
+export interface ClaimUsbResult {
+  status: 'connected' | 'waiting' | string;
+  message?: string;
+  queue_position?: number;
+  public_ip?: string | null;
+}
+
+export interface DeclineOfferResult {
+  status?: string;
+  next_offered?: string | null;
+}
+
+export interface QuarantineResult {
+  status?: string;
+  popped_next?: string | null;
+}
+
+export interface RotateIpResult {
+  status?: string;
+  new_ip: string;
+}
+
+export interface TestRotationResult {
+  status?: string;
+  elapsed_seconds: number;
+}
+
+export interface TogglePinResult {
+  location?: CustomLocation;
+  pinned_presets?: string[];
+}
+
+export interface InstanceLocationPayload {
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+  city?: string;
+  timezone?: string;
+  custom_name?: string;
+  custom_location_id?: string;
+}
+
+export interface CreateInstancePayload {
+  name: string;
+  template: string;
+  carrier: string;
+  phone_number?: string;
+  port: number;
+  start: boolean;
+  limits: { memory: string; cpus: string };
+  custom_location: InstanceLocationPayload;
+}
+
+export interface AssignedUsb {
+  serial?: string;
+  model?: string;
+  iface?: string;
+  gateway?: string;
+  carrier?: string;
 }

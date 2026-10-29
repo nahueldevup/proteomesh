@@ -18,8 +18,16 @@ import {
 import { api } from '../lib/api';
 import { MapPicker, type MapPinItem } from './MapPicker';
 import { getPresetDisplay } from './locations/CustomLocationsManager';
-import type { TemplateItem, Carrier, CustomLocation } from '../types';
-import { cn } from '../lib/utils';
+import type {
+  TemplateItem,
+  Carrier,
+  CustomLocation,
+  CustomLocationsCatalog,
+  CreateInstancePayload,
+  DefaultLocation,
+  LocationData,
+} from '../types';
+import { cn, getErrorMessage } from '../lib/utils';
 
 interface CreateDeviceModalProps {
   isOpen: boolean;
@@ -93,8 +101,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [customLocations, setCustomLocations] = useState<CustomLocation[]>([]);
   const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
   const [pinnedPresets, setPinnedPresets] = useState<string[]>([]);
-  const [defaultLocData, setDefaultLocData] = useState<any>(null);
-  const [locationPresets, setLocationPresets] = useState<Record<string, any>>({});
+  const [defaultLocData, setDefaultLocData] = useState<DefaultLocation | null>(null);
+  const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -126,7 +134,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       }
 
       // Cargar catálogos
-      const handleCatalogData = (locCatalog: any, locPresets: any) => {
+      const handleCatalogData = (locCatalog: CustomLocationsCatalog, locPresets: Record<string, LocationData> | undefined) => {
         setCustomLocations(locCatalog.locations || []);
         setPinnedPresets(locCatalog.pinned_presets || []);
         setDefaultLocData(locCatalog.default_location || null);
@@ -139,7 +147,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
           if (locCatalog.default_location.timezone) {
             setTimezone(locCatalog.default_location.timezone);
           }
-          const found = (locCatalog.locations || []).find((l: any) => l.id === locCatalog.default_location?.id);
+          const found = (locCatalog.locations || []).find((l: CustomLocation) => l.id === locCatalog.default_location?.id);
           if (found) setSelectedCustomLoc(found);
         }
       };
@@ -157,8 +165,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
             setCarriers(cData);
             handleCatalogData(locCatalog, locPresets);
           })
-          .catch((err: any) => {
-            setErrorMessage(err.message || 'Error al cargar catálogos del servidor');
+          .catch((err) => {
+            setErrorMessage(getErrorMessage(err) || 'Error al cargar catálogos del servidor');
           })
           .finally(() => setLoading(false));
       } else {
@@ -215,7 +223,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const payload: any = {
+      const payload: CreateInstancePayload = {
         name: name.trim().toLowerCase(),
         template: selectedModel,
         carrier: selectedCarrier,
@@ -244,8 +252,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         onSuccess();
         onClose();
       }, 700);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Error al aprovisionar el CloudPhone');
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err) || 'Error al aprovisionar el CloudPhone');
     } finally {
       setSubmitting(false);
     }

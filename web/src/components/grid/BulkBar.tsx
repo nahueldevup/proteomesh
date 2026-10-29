@@ -10,7 +10,6 @@ import {
   PackagePlus,
   MapPin,
   X,
-  VolumeX,
   Send,
   Loader2,
   Trash2,
@@ -22,6 +21,7 @@ import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
+import { getErrorMessage } from '../../lib/utils';
 import type { LocationData, CustomLocation } from '../../types';
 import { toast } from 'sonner';
 
@@ -90,8 +90,8 @@ export default function BulkBar({
       setConfirmDeleteOpen(false);
       onClear();
       onRefresh();
-    } catch (e: any) {
-      toast.error(`Error al eliminar: ${e.message}`);
+    } catch (e) {
+      toast.error(`Error al eliminar: ${getErrorMessage(e)}`);
     } finally {
       setBusy(null);
     }
@@ -106,7 +106,7 @@ export default function BulkBar({
       toast.success(`${count} CloudPhones actualizados`, { id: toastId });
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error en acción grupal', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error en acción grupal', { id: toastId });
     } finally {
       setBusy(null);
     }
@@ -118,7 +118,7 @@ export default function BulkBar({
       await api.groupKey(selectedNames, key);
       toast.success(`Tecla "${label}" enviada a ${count} dispositivos`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al enviar tecla');
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al enviar tecla');
     } finally {
       setBusy(null);
     }
@@ -134,7 +134,7 @@ export default function BulkBar({
       const res = await api.groupText(selectedNames, txt);
       toast.success(`Texto enviado a ${res.success} dispositivos`, { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al enviar texto en lote', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al enviar texto en lote', { id: toastId });
     }
   };
 
@@ -151,7 +151,7 @@ export default function BulkBar({
       const res = await api.groupLaunchUrl(selectedNames, url);
       toast.success(`URL abierta en ${res.success} dispositivos`, { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al abrir URL en lote', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al abrir URL en lote', { id: toastId });
     }
   };
 
@@ -180,7 +180,7 @@ export default function BulkBar({
       toast.success(`GPS actualizado a "${displayName}"`, { id: toastId });
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al cambiar GPS en lote', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al cambiar GPS en lote', { id: toastId });
     }
   };
 
@@ -192,7 +192,7 @@ export default function BulkBar({
       toast.success(`${count} CloudPhones puestos en cuarentena segura`, { id: toastId });
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al aislar en lote', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al aislar en lote', { id: toastId });
     } finally {
       setBusy(null);
     }
@@ -202,13 +202,17 @@ export default function BulkBar({
     setBusy('claim');
     const toastId = toast.loading(`Reclamando conexiones USB para ${count} CloudPhones...`);
     try {
-      for (const name of selectedNames) {
-        await api.claimUsb(name).catch(() => {});
+      const results = await Promise.allSettled(selectedNames.map((name) => api.claimUsb(name)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const ok = results.length - failed;
+      if (failed === 0) {
+        toast.success(`Reclamo USB enviado a ${ok} CloudPhones`, { id: toastId });
+      } else {
+        toast.warning(`Reclamo USB: ${ok} enviados, ${failed} con error`, { id: toastId });
       }
-      toast.success(`Solicitudes de USB enviadas para ${count} CloudPhones`, { id: toastId });
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al reclamar USB en lote', { id: toastId });
+      toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al reclamar USB en lote', { id: toastId });
     } finally {
       setBusy(null);
     }
@@ -233,13 +237,6 @@ export default function BulkBar({
           side="top"
           disabled={busy !== null}
           onClick={() => runLifecycle('start')}
-        />
-        <IconBtn
-          icon={VolumeX}
-          label="Silenciar audio en todos"
-          side="top"
-          variant="danger"
-          onClick={() => toast.info(`Audio silenciado en ${count} dispositivos`)}
         />
         <IconBtn
           icon={busy === 'restart' ? Loader2 : RotateCw}

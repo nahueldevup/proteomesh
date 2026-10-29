@@ -79,17 +79,21 @@ export default function UsbNetworkCenter({ instances, onSelectInstance }: UsbNet
 
     const expiresAt = offer.expires_at ? offer.expires_at * 1000 : (Date.now() + (offer.expires_in_seconds || 5) * 1000);
 
+    let refreshTimer: number | undefined;
     const updateCountdown = () => {
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setCountdown(remaining);
-      if (remaining <= 0) {
-        window.setTimeout(() => loadData(true), 800);
+      if (remaining <= 0 && refreshTimer === undefined) {
+        refreshTimer = window.setTimeout(() => loadData(true), 800);
       }
     };
 
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(refreshTimer);
+    };
   }, [data?.pending_offer, loadData]);
 
   useEffect(() => {

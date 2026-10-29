@@ -9,7 +9,7 @@ const APP_TONES = [
   'bg-success',
   'bg-warning',
   'bg-destructive',
-  'bg-chart-5',
+  'bg-accent',
   'bg-primary',
 ];
 

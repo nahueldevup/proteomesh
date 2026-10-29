@@ -2,18 +2,16 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Smartphone,
   MapPin,
-  ShieldCheck,
   Search,
   CheckSquare,
   Plus,
-  Command as CmdIcon,
   PanelLeftClose,
   Sun,
   Moon,
   Usb,
   Clock,
 } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
+import { Toaster } from 'sonner';
 import { api } from './lib/api';
 import type { Instance, LocationData, UsbNetworkOverview } from './types';
 import { CreateDeviceModal } from './components/CreateDeviceModal';
@@ -28,7 +26,7 @@ import { Slider } from './components/ui/slider';
 import { cn } from './lib/utils';
 
 type ViewMode = 'grid' | 'focus';
-type NavTab = 'instances' | 'network' | 'locations' | 'proxies';
+type NavTab = 'instances' | 'network' | 'locations';
 
 const NAV = [
   { id: 'instances' as const, label: 'CloudPhones', icon: Smartphone },
@@ -328,7 +326,7 @@ export function App() {
             })}
           </nav>
 
-          {/* Botones inferiores: Comandos y Modo Claro/Oscuro */}
+          {/* Botón inferior: Modo Claro/Oscuro */}
           <div
             className={cn(
               'flex border-t border-sidebar-border p-2',
@@ -336,13 +334,6 @@ export function App() {
             )}
           >
             <div className={cn('flex gap-1', sidebarCollapsed && 'flex-col items-center')}>
-              <IconBtn
-                icon={CmdIcon}
-                label="Comandos (Ctrl+K)"
-                side="right"
-                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={() => toast.info('Consola rápida disponible')}
-              />
               <IconBtn
                 icon={theme === 'dark' ? Sun : Moon}
                 label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
@@ -507,39 +498,6 @@ export function App() {
             />
           )}
 
-          {/* Pestaña: Proxies (Legado / Fase Futura) */}
-          {activeNav === 'proxies' && (
-            <div className="flex-1 overflow-auto p-5">
-              <div className="mx-auto max-w-lg space-y-4 py-8">
-                <div className="space-y-1 text-center">
-                  <ShieldCheck className="mx-auto h-7 w-7 text-primary" />
-                  <h3 className="text-sm font-bold text-foreground font-mono">
-                    Verificador de Proxies Residenciales
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Comprueba latencia, IP pública y país antes de asignarlo
-                  </p>
-                </div>
-
-                <div className="space-y-3 rounded-sm border border-border bg-card p-4">
-                  <label className="block text-xs font-mono font-medium text-foreground">
-                    Cadena de Proxy SOCKS5 / HTTP
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="socks5://user:pass@host:port"
-                    className="h-8 w-full rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <button
-                    onClick={() => toast.info('Función de test activa')}
-                    className="h-8 w-full rounded-sm bg-primary text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity"
-                  >
-                    Ejecutar Test de Conexión
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </main>
 
         {/* Modal de Creación */}
