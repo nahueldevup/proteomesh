@@ -51,43 +51,43 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
       }}
     >
       <div
-        className="w-full max-w-md rounded-lg border border-border/80 bg-surface/98 p-5 shadow-2xl shadow-black/80 space-y-3.5 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-md rounded-sm border border-border bg-card p-4 shadow-2xl space-y-3 animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabecera compacta y sobria */}
-        <div className="flex items-start gap-3">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400">
-            <AlertTriangle className="h-4 w-4" />
+        <div className="flex items-start gap-2.5">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-sm border border-destructive/40 bg-destructive/10 text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5" />
           </div>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="font-sans text-sm font-bold text-foreground truncate">
+            <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground truncate">
               {title}
             </h3>
-            <p className="text-xs text-muted-foreground leading-normal">
+            <p className="text-[11px] text-muted-foreground leading-normal">
               Esta acción es irreversible. Se detendrá el contenedor Docker y se purgarán todos sus datos y configuraciones.
             </p>
           </div>
         </div>
 
         {/* Lista de terminales a eliminar con tipografía técnica mono */}
-        <div className="rounded-md border border-border/60 bg-background/70 p-2.5 max-h-32 overflow-y-auto font-mono text-xs text-muted-foreground space-y-1">
+        <div className="rounded-sm border border-border bg-background/80 p-2 max-h-32 overflow-y-auto font-mono text-[11px] text-muted-foreground space-y-1">
           {instances.map((name) => (
-            <div key={name} className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
+            <div key={name} className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
               <span className="text-foreground font-semibold truncate">{name}</span>
             </div>
           ))}
         </div>
 
         {/* Botones de acción finos y minimalistas */}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
           <button
             type="button"
             disabled={busy}
             onClick={onClose}
-            className="h-8 rounded-md border border-border bg-background px-3 font-mono text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+            className="h-8 rounded-sm border border-border bg-background px-3 font-mono text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -95,7 +95,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="flex h-8 items-center gap-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 font-mono text-xs font-semibold transition-opacity disabled:opacity-50 shadow-sm"
+            className="flex h-8 items-center gap-1.5 rounded-sm bg-destructive text-destructive-foreground hover:opacity-90 px-3 font-mono text-xs font-semibold transition-opacity disabled:opacity-50"
           >
             {busy ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

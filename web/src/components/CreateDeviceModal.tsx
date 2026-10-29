@@ -360,20 +360,20 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       }}
     >
       <div
-        className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-lg border border-border/80 bg-surface/98 shadow-2xl shadow-black/80 overflow-hidden animate-in zoom-in-95 duration-150"
+        className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-sm border border-border bg-card shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Cabecera Técnica Lovable */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-background/50 shrink-0">
+        {/* Cabecera Técnica */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Smartphone className="h-4 w-4" />
+            <div className="grid h-7 w-7 place-items-center rounded-sm border border-primary/40 bg-primary/20 text-foreground font-mono">
+              <Smartphone className="h-3.5 w-3.5" />
             </div>
             <div>
-              <h2 className="font-sans text-sm font-bold text-foreground">Crear Nuevo CloudPhone</h2>
-              <p className="font-mono text-xs text-muted-foreground">
+              <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">Crear Nuevo CloudPhone</h2>
+              <p className="font-mono text-[11px] text-muted-foreground">
                 Configura hardware, operadora SIM, geolocalización y límites
               </p>
             </div>
@@ -381,9 +381,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            className="grid h-7 w-7 place-items-center rounded-sm border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 

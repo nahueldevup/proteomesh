@@ -8,7 +8,6 @@ import {
   Plus,
   Command as CmdIcon,
   PanelLeftClose,
-  PanelLeftOpen,
   Sun,
   Moon,
   Usb,
@@ -47,14 +46,14 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [focusedName, setFocusedName] = useState<string | null>(null);
 
-  // Columnas dinámicas del mosaico (8 por defecto, como en Lovable)
+  // Columnas dinámicas del mosaico (8 por defecto)
   const [cols, setCols] = useState(8);
 
   // Selección múltiple y control de grupo
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [groupMode, setGroupMode] = useState(false);
 
-  // Barra lateral colapsable (colapsada por defecto como en Lovable)
+  // Barra lateral colapsable
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -114,7 +113,7 @@ export function App() {
     fetchUsbOverview();
     const interval = setInterval(() => {
       fetchUsbOverview();
-    }, 5000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [fetchUsbOverview]);
 
@@ -135,7 +134,6 @@ export function App() {
   useEffect(() => {
     fetchInstances();
     const interval = setInterval(() => {
-      // Pausar polling en segundo plano si el modal de creación está abierto
       if (!isCreateOpen) {
         fetchInstances();
       }
@@ -211,34 +209,36 @@ export function App() {
       <div className="flex h-screen w-full overflow-hidden bg-background">
         <Toaster richColors position="top-right" theme={theme} />
 
-        {/* ── BARRA LATERAL (APP SHELL MODERNO) ───────────────────── */}
+        {/* ── BARRA LATERAL (INSPIRADA EN LINEAR / SUPABASE) ───────────────────── */}
         <aside
           className={cn(
-            'flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200',
-            sidebarCollapsed ? 'w-14' : 'w-56'
+            'flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 select-none',
+            sidebarCollapsed ? 'w-13' : 'w-52'
           )}
         >
           {/* Cabecera / Toggle superior del Sidebar */}
           {sidebarCollapsed ? (
-            <div className="flex h-14 items-center justify-center border-b border-sidebar-border px-2">
-              <IconBtn
-                icon={PanelLeftOpen}
-                label="Expandir menú (Ctrl+B)"
-                side="right"
-                className="text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            <div className="flex h-12 items-center justify-center border-b border-sidebar-border px-1">
+              <button
+                type="button"
                 onClick={() => setSidebarCollapsed(false)}
-              />
+                title="Expandir menú (Ctrl+B)"
+                className="grid h-7 w-7 place-items-center rounded-sm border border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground font-mono text-xs font-bold hover:border-primary/50 transition-colors"
+              >
+                PM
+              </button>
             </div>
           ) : (
-            <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary font-mono text-xs font-bold text-primary-foreground shadow-sm">
+            <div className="flex h-12 items-center justify-between border-b border-sidebar-border px-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-primary/40 bg-primary/20 text-foreground font-mono text-[11px] font-black">
                   PM
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-bold tracking-wide text-sidebar-foreground">PROTEOMESH</div>
-                  <div className="font-mono text-[10px] text-muted-foreground">
-                    {onlineCount}/{instances.length} online
+                  <div className="truncate font-mono text-xs font-bold tracking-wider text-sidebar-foreground">PROTEOMESH</div>
+                  <div className="flex items-center gap-1 font-mono text-[10px] text-sidebar-foreground/60">
+                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', onlineCount > 0 ? 'bg-success' : 'bg-muted-foreground/40')} />
+                    <span>{onlineCount}/{instances.length} online</span>
                   </div>
                 </div>
               </div>
@@ -246,7 +246,7 @@ export function App() {
                 icon={PanelLeftClose}
                 label="Contraer menú (Ctrl+B)"
                 side="right"
-                className="shrink-0 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 onClick={() => setSidebarCollapsed(true)}
               />
             </div>
@@ -259,9 +259,8 @@ export function App() {
                 <IconBtn
                   icon={Plus}
                   label="Crear CloudPhone"
-                  variant="primary"
                   side="right"
-                  className="h-9 w-9 rounded-lg"
+                  className="h-7 w-7 rounded-sm border border-primary/40 bg-primary/20 text-foreground hover:bg-primary/30"
                   onClick={() => {
                     setCreatePresetModel(undefined);
                     setIsCreateOpen(true);
@@ -275,16 +274,21 @@ export function App() {
                   setCreatePresetModel(undefined);
                   setIsCreateOpen(true);
                 }}
-                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all active:scale-[0.98]"
+                className="flex h-7.5 w-full items-center justify-center gap-1.5 rounded-sm border border-primary/40 bg-primary/20 text-foreground font-mono text-xs font-bold hover:bg-primary/30 transition-colors active:scale-[0.99]"
               >
-                <Plus className="h-4 w-4 stroke-[2.5]" />
+                <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
                 <span className="truncate">Crear CloudPhone</span>
               </button>
             )}
           </div>
 
           {/* Navegación */}
-          <nav className="flex flex-1 flex-col gap-1 p-2 pt-1">
+          <nav className="flex flex-1 flex-col gap-0.5 p-2 pt-1">
+            {!sidebarCollapsed && (
+              <div className="px-2 pt-1 pb-1 font-mono text-[9px] font-bold text-sidebar-foreground/40 uppercase tracking-widest">
+                Vistas
+              </div>
+            )}
             {NAV.map((n) => {
               const active = activeNav === n.id;
               return (
@@ -296,14 +300,29 @@ export function App() {
                   }}
                   title={sidebarCollapsed ? n.label : undefined}
                   className={cn(
-                    'flex h-9 items-center gap-3 rounded-md px-2.5 text-sm transition-colors text-left',
+                    'flex h-7.5 items-center rounded-sm text-xs transition-colors text-left font-sans',
+                    sidebarCollapsed ? 'justify-center w-full px-0' : 'gap-2 px-2',
                     active
-                      ? 'bg-sidebar-accent text-primary font-medium'
-                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                      ? 'bg-sidebar-accent text-sidebar-foreground font-semibold border-l-2 border-primary'
+                      : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
                   )}
                 >
-                  <n.icon className="h-4 w-4 shrink-0" />
-                  {!sidebarCollapsed && <span className="truncate">{n.label}</span>}
+                  <n.icon className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-primary' : 'text-sidebar-foreground/70')} />
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="truncate flex-1">{n.label}</span>
+                      {n.id === 'instances' && (
+                        <span className="font-mono text-[10px] text-sidebar-foreground/50 bg-sidebar-accent/60 px-1 py-0.2 rounded-xs">
+                          {instances.length}
+                        </span>
+                      )}
+                      {n.id === 'network' && usbOverview && (
+                        <span className={cn('font-mono text-[10px] px-1 py-0.2 rounded-xs', usbOverview.summary.waiting_count > 0 ? 'bg-primary/20 text-foreground font-bold' : 'text-sidebar-foreground/50 bg-sidebar-accent/60')}>
+                          {usbOverview.summary.free_usb}/{usbOverview.summary.total_usb}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </button>
               );
             })}
@@ -312,8 +331,8 @@ export function App() {
           {/* Botones inferiores: Comandos y Modo Claro/Oscuro */}
           <div
             className={cn(
-              'flex gap-1 border-t border-sidebar-border p-2',
-              sidebarCollapsed ? 'flex-col items-center' : 'items-center justify-between'
+              'flex border-t border-sidebar-border p-2',
+              sidebarCollapsed ? 'flex-col items-center gap-1' : 'items-center justify-between'
             )}
           >
             <div className={cn('flex gap-1', sidebarCollapsed && 'flex-col items-center')}>
@@ -321,17 +340,19 @@ export function App() {
                 icon={CmdIcon}
                 label="Comandos (Ctrl+K)"
                 side="right"
+                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 onClick={() => toast.info('Consola rápida disponible')}
               />
               <IconBtn
                 icon={theme === 'dark' ? Sun : Moon}
                 label={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
                 side="right"
+                className="h-7 w-7 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 onClick={toggleTheme}
               />
             </div>
             {!sidebarCollapsed && (
-              <span className="font-mono text-[10px] text-muted-foreground/60 pr-1 select-none">
+              <span className="font-mono text-[10px] text-sidebar-foreground/40 pr-1 select-none">
                 v2.4
               </span>
             )}
@@ -340,30 +361,30 @@ export function App() {
 
         {/* ── ÁREA PRINCIPAL ───────────────────────────────────────────────── */}
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Cabecera / Toolbar (Exacta de Lovable) */}
+          {/* Cabecera / Toolbar */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 bg-background">
+            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 bg-card/40">
               {/* Buscador */}
-              <div className="relative w-64 min-w-0">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <div className="relative w-60 min-w-0">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar…"
-                  className="h-9 w-full rounded-full border border-input bg-surface pl-8 pr-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="Buscar CloudPhone…"
+                  className="h-8 w-full rounded-sm border border-border bg-card pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
                 />
               </div>
 
               {/* Filtro segmentado: Todos / Online / Offline */}
-              <div className="flex rounded-full border border-border p-0.5 text-xs bg-background">
+              <div className="flex rounded-sm border border-border bg-muted/40 p-0.5 text-xs">
                 {(['all', 'online', 'offline'] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => setStatusFilter(f)}
                     className={cn(
-                      'rounded-full px-3.5 py-1 text-xs transition-colors',
+                      'rounded-xs px-2.5 py-0.5 text-xs font-mono font-medium transition-colors',
                       statusFilter === f
-                        ? 'bg-accent text-foreground font-medium'
+                        ? 'bg-card text-foreground font-bold shadow-xs'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
@@ -372,17 +393,17 @@ export function App() {
                 ))}
               </div>
 
-              {/* Indicador de Pool USB en Tiempo Real (NET-USB-001) */}
+              {/* Indicador de Pool USB en Tiempo Real */}
               <div className="flex items-center gap-1.5 pl-1">
                 <button
                   onClick={() => setActiveNav('network')}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-hover transition-colors"
+                  className="h-8 inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2.5 text-xs font-mono font-medium text-foreground hover:bg-muted transition-colors"
                   title="Abrir Centro de Red USB"
                 >
-                  <Usb className="h-3.5 w-3.5 text-primary" />
+                  <Usb className="h-3 w-3 text-primary" />
                   <span>
-                    USB Libres:{' '}
-                    <strong className={cn(usbOverview && usbOverview.summary.free_usb > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-muted-foreground')}>
+                    USB:{' '}
+                    <strong className={cn(usbOverview && usbOverview.summary.free_usb > 0 ? 'text-success font-bold' : 'text-muted-foreground')}>
                       {usbOverview ? `${usbOverview.summary.free_usb}/${usbOverview.summary.total_usb}` : '—'}
                     </strong>
                   </span>
@@ -390,7 +411,7 @@ export function App() {
                 {usbOverview && usbOverview.summary.waiting_count > 0 && (
                   <button
                     onClick={() => setActiveNav('network')}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/30 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                    className="h-8 inline-flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2.5 text-xs font-mono font-bold text-foreground hover:bg-primary/20 transition-colors"
                     title="Ver CloudPhones en cola de espera"
                   >
                     <Clock className="h-3 w-3" />
@@ -404,11 +425,12 @@ export function App() {
                 icon={CheckSquare}
                 label="Seleccionar todo (Ctrl+A)"
                 onClick={toggleSelectAll}
+                className="h-8 w-8 rounded-sm"
               />
 
               {/* Slider de Columnas (min 4, max 12) + Selector de Tema */}
               <div className="ml-auto flex items-center gap-3">
-                <div className="flex w-36 items-center gap-2 font-mono text-xs text-muted-foreground">
+                <div className="flex w-32 items-center gap-2 font-mono text-xs text-muted-foreground">
                   <Slider
                     min={4}
                     max={12}
@@ -416,13 +438,14 @@ export function App() {
                     value={[cols]}
                     onValueChange={(v) => setCols(v[0] ?? 8)}
                   />
-                  <span>{cols}</span>
+                  <span>{cols} cols</span>
                 </div>
                 <div className="h-4 w-px bg-border" />
                 <IconBtn
                   icon={theme === 'dark' ? Sun : Moon}
                   label={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
                   onClick={toggleTheme}
+                  className="h-8 w-8 rounded-sm"
                 />
               </div>
             </header>
@@ -430,7 +453,7 @@ export function App() {
 
           {/* Cuerpo Central */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <div className="grid-bg flex-1 overflow-auto p-4 pb-24">
+            <div className="grid-bg flex-1 overflow-auto p-3.5 pb-24">
               <DeviceGrid
                 instances={filteredInstances}
                 selected={selectedNames}
@@ -486,11 +509,11 @@ export function App() {
 
           {/* Pestaña: Proxies (Legado / Fase Futura) */}
           {activeNav === 'proxies' && (
-            <div className="flex-1 overflow-auto p-6">
-              <div className="mx-auto max-w-xl space-y-4 py-8">
+            <div className="flex-1 overflow-auto p-5">
+              <div className="mx-auto max-w-lg space-y-4 py-8">
                 <div className="space-y-1 text-center">
-                  <ShieldCheck className="mx-auto h-8 w-8 text-primary" />
-                  <h3 className="text-sm font-bold text-foreground">
+                  <ShieldCheck className="mx-auto h-7 w-7 text-primary" />
+                  <h3 className="text-sm font-bold text-foreground font-mono">
                     Verificador de Proxies Residenciales
                   </h3>
                   <p className="text-xs text-muted-foreground">
@@ -498,18 +521,18 @@ export function App() {
                   </p>
                 </div>
 
-                <div className="space-y-3 rounded-xl border border-border bg-card p-5">
-                  <label className="block text-xs font-medium text-foreground">
+                <div className="space-y-3 rounded-sm border border-border bg-card p-4">
+                  <label className="block text-xs font-mono font-medium text-foreground">
                     Cadena de Proxy SOCKS5 / HTTP
                   </label>
                   <input
                     type="text"
                     placeholder="socks5://user:pass@host:port"
-                    className="h-9 w-full rounded-md border border-input bg-surface px-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 w-full rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                   <button
                     onClick={() => toast.info('Función de test activa')}
-                    className="h-9 w-full rounded-md bg-primary text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity"
+                    className="h-8 w-full rounded-sm bg-primary text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity"
                   >
                     Ejecutar Test de Conexión
                   </button>
@@ -528,7 +551,7 @@ export function App() {
           presetModel={createPresetModel}
         />
 
-        {/* Barra Flotante de Acciones en Lote (Idéntica a Lovable) */}
+        {/* Barra Flotante de Acciones en Lote */}
         {activeNav === 'instances' && viewMode === 'grid' && selectedNames.size > 0 && (
           <BulkBar
             selectedNames={selectedList}

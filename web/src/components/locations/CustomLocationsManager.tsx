@@ -13,11 +13,11 @@ import {
   ChevronDown,
   ChevronUp,
   Globe,
-  Compass,
   Edit2,
   X,
   Pin,
   Star,
+  Check,
 } from 'lucide-react';
 import type { CustomLocation, LocationGroup, Instance, LocationData, CustomLocationsCatalog } from '../../types';
 import { api } from '../../lib/api';
@@ -123,6 +123,14 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const [locSetAsDefault, setLocSetAsDefault] = useState(false);
   const [savingLoc, setSavingLoc] = useState(false);
   const [showAdvancedCoords, setShowAdvancedCoords] = useState(false);
+  const [formGroupSelectOpen, setFormGroupSelectOpen] = useState(false);
+  const [groupsDropdownOpen, setGroupsDropdownOpen] = useState(false);
+  const [groupFilterQuery, setGroupFilterQuery] = useState('');
+  const [pinnedPopoverOpen, setPinnedPopoverOpen] = useState(false);
+  const [pinnedSearchQuery, setPinnedSearchQuery] = useState('');
+  const [locPageSize, setLocPageSize] = useState<number>(15);
+  const [locPage, setLocPage] = useState<number>(1);
+  const [locPageSizeOpen, setLocPageSizeOpen] = useState(false);
 
   // Estados para crear/editar grupo
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -132,9 +140,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const [groupDescInput, setGroupDescInput] = useState('');
   const [savingGroup, setSavingGroup] = useState(false);
 
-  // Estado para desplegar presets globales oficiales
-  const [showPresetsGlobal, setShowPresetsGlobal] = useState(false);
-  const [presetSearchQuery, setPresetSearchQuery] = useState('');
   const isMapInitializedRef = useRef(false);
 
   // Cargar catálogo inicial
@@ -176,45 +181,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     return list.map((key) => getPresetDisplay(key, locationPresets));
   }, [catalog.pinned_presets, locationPresets]);
 
-  // Catálogo completo de presets combinados
-  const allPresetsMap = useMemo(() => {
-    const map: Record<
-      string,
-      { key: string; name: string; city: string; latitude: number; longitude: number; timezone: string; altitude?: number }
-    > = {
-      ...GLOBAL_PRESETS_MAP,
-    };
-    if (locationPresets) {
-      Object.entries(locationPresets).forEach(([k, v]) => {
-        const cleanK = k.toLowerCase();
-        if (!map[cleanK]) {
-          map[cleanK] = {
-            key: cleanK,
-            name: v.city.split(',')[0],
-            city: v.city,
-            latitude: v.latitude,
-            longitude: v.longitude,
-            timezone: v.timezone || 'UTC',
-            altitude: v.altitude,
-          };
-        }
-      });
-    }
-    return map;
-  }, [locationPresets]);
-
-  const filteredPresets = useMemo(() => {
-    const q = presetSearchQuery.trim().toLowerCase();
-    const entries = Object.entries(allPresetsMap);
-    if (!q) return entries;
-    return entries.filter(
-      ([key, loc]) =>
-        key.toLowerCase().includes(q) ||
-        loc.name.toLowerCase().includes(q) ||
-        loc.city.toLowerCase().includes(q)
-    );
-  }, [allPresetsMap, presetSearchQuery]);
-
   // Filtrado de ubicaciones custom
   const filteredLocations = useMemo(() => {
     return catalog.locations.filter((loc) => {
@@ -233,6 +199,78 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     catalog.groups.forEach((g) => map.set(g.id, g));
     return map;
   }, [catalog.groups]);
+
+  // Lista unificada de accesos rápidos para el Popover
+  const combinedPinnedItems = useMemo(() => {
+    const items: Array<{
+      type: 'custom' | 'preset';
+      id: string;
+      name: string;
+      city: string;
+      latitude: number;
+      longitude: number;
+      timezone?: string;
+      altitude?: number;
+      groupColor?: string;
+    }> = [];
+
+    pinnedPresetsList.forEach((p) => {
+      items.push({
+        type: 'preset',
+        id: p.key,
+        name: p.name,
+        city: p.city,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        timezone: p.timezone,
+        altitude: p.altitude,
+      });
+    });
+
+    pinnedLocations.forEach((loc) => {
+      const grp = loc.group_id ? groupsMap.get(loc.group_id) : null;
+      items.push({
+        type: 'custom',
+        id: loc.id,
+        name: loc.name,
+        city: loc.city,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        timezone: loc.timezone,
+        altitude: loc.altitude,
+        groupColor: grp?.color,
+      });
+    });
+
+    return items;
+  }, [pinnedPresetsList, pinnedLocations, groupsMap]);
+
+  const filteredPinnedList = useMemo(() => {
+    const q = pinnedSearchQuery.trim().toLowerCase();
+    if (!q) return combinedPinnedItems;
+    return combinedPinnedItems.filter(
+      (item) => item.name.toLowerCase().includes(q) || item.city.toLowerCase().includes(q)
+    );
+  }, [combinedPinnedItems, pinnedSearchQuery]);
+
+  const selectedGroup = useMemo(() => {
+    return catalog.groups.find((g) => g.id === selectedGroupId);
+  }, [catalog.groups, selectedGroupId]);
+
+  const filteredDropdownGroups = useMemo(() => {
+    const q = groupFilterQuery.trim().toLowerCase();
+    if (!q) return catalog.groups;
+    return catalog.groups.filter((g) => g.name.toLowerCase().includes(q));
+  }, [catalog.groups, groupFilterQuery]);
+
+  const totalLocPages = Math.max(1, Math.ceil(filteredLocations.length / locPageSize));
+  const paginatedLocations = useMemo(() => {
+    return filteredLocations.slice((locPage - 1) * locPageSize, locPage * locPageSize);
+  }, [filteredLocations, locPage, locPageSize]);
+
+  useEffect(() => {
+    setLocPage(1);
+  }, [searchQuery, selectedGroupId, locPageSize]);
 
   // Toggle pin de custom location o de preset oficial
   const handleTogglePin = async (type: 'custom' | 'preset', id: string, pinned?: boolean) => {
@@ -450,54 +488,29 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     toast.info(`Centrado en: ${loc.name}`);
   };
 
+  const selectedFormGroup = useMemo(() => {
+    return catalog.groups.find((g) => g.id === locGroupId);
+  }, [catalog.groups, locGroupId]);
+
   return (
-    <div className="flex-1 overflow-auto p-4 md:p-6 space-y-5">
-      {/* Cabecera Principal */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
-              <Compass className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base md:text-lg font-bold text-foreground">
-                Geolocalización & Ubicaciones Personalizadas
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Crea, agrupa y asigna coordenadas GPS a tus instancias de forma intuitiva
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={openNewGroupModal}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors shadow-xs"
-          >
-            <FolderPlus className="h-3.5 w-3.5 text-primary" />
-            <span>Nuevo Grupo</span>
-          </button>
-        </div>
-      </div>
-
+    <div className="flex-1 overflow-auto p-3.5 md:p-5 space-y-3.5">
       {/* Grid Principal: Lista Compacta a la Izquierda / Mapa & Creador a la Derecha */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* COLUMNA IZQUIERDA: Grupos y Lista Compacta de Ubicaciones (7 Cols) */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-7 space-y-3">
           {/* Banner: Ubicación Predeterminada General del Sistema */}
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 shadow-xs space-y-2">
+          <div className="rounded-sm border border-border bg-card p-3 space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-500 border border-amber-500/40">
-                  <Star className="h-4 w-4 fill-amber-500" />
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-sm bg-primary/20 text-foreground border border-primary/40 font-mono">
+                  <Star className="h-3.5 w-3.5 fill-current text-primary" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-foreground">
                       Ubicación Predeterminada del Sistema
                     </span>
-                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    <span className="rounded-xs bg-primary/20 px-1.5 py-0.2 text-[9px] font-mono font-bold text-foreground border border-primary/40">
                       Activa por Defecto
                     </span>
                   </div>
@@ -517,15 +530,15 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                     if (catalog.default_location!.timezone) setLocTimezone(catalog.default_location!.timezone);
                     toast.info(`Centrado en predeterminada: ${catalog.default_location!.name}`);
                   }}
-                  className="flex items-center gap-1 rounded-md border border-amber-500/40 bg-background/80 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                  className="flex items-center gap-1 rounded-sm border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors"
                 >
-                  <Navigation className="h-3 w-3 text-amber-500" />
+                  <Navigation className="h-3 w-3 text-primary" />
                   <span>Ver en Mapa</span>
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-3 pt-1 text-xs border-t border-amber-500/20 flex-wrap">
+            <div className="flex items-center gap-3 pt-1 text-xs border-t border-border flex-wrap">
               <div className="flex items-center gap-1.5">
                 <span className="text-muted-foreground text-[11px]">Ubicación:</span>
                 <span className="font-bold text-foreground">{catalog.default_location?.name || 'Buenos Aires'}</span>
@@ -540,152 +553,319 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
             </div>
           </div>
 
-          {/* Panel: Accesos Rápidos Activos en FocusView */}
-          <div className="rounded-xl border border-border bg-card/75 p-3.5 shadow-xs space-y-2.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  <Pin className="h-4 w-4 fill-amber-500" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-foreground">
-                      Accesos Rápidos en FocusView
-                    </span>
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-mono font-semibold text-amber-600 dark:text-amber-400">
-                      {pinnedLocations.length + pinnedPresetsList.length} fijados
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Aparecen directamente en la barra GPS de FocusView. Puedes desfijar ciudades oficiales y fijar tus ubicaciones personalizadas.
-                  </p>
-                </div>
-              </div>
-            </div>
+          {/* Barra de Filtro y Gestión de Grupos vía Popover Estandarizado con Scroll */}
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2 font-mono">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {/* Botón rápido: Todas */}
+              <button
+                type="button"
+                onClick={() => setSelectedGroupId(null)}
+                className={cn(
+                  'h-7.5 flex items-center gap-1.5 rounded-sm px-2.5 text-xs font-mono font-medium transition-colors border shrink-0',
+                  selectedGroupId === null
+                    ? 'bg-primary text-primary-foreground border-primary font-bold shadow-xs'
+                    : 'bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground'
+                )}
+                title="Mostrar ubicaciones de todos los grupos"
+              >
+                <Layers className="h-3 w-3" />
+                <span>Todas ({catalog.locations.length})</span>
+              </button>
 
-            {/* Chips de fijados */}
-            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              {pinnedLocations.length === 0 && pinnedPresetsList.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border p-2.5 text-center text-xs text-muted-foreground w-full">
-                  No hay accesos fijados actualmente. Fija presets oficiales o ubicaciones custom haciendo clic en el icono de pin.
-                </div>
-              ) : (
-                <>
-                  {/* Presets Globales Fijados */}
-                  {pinnedPresetsList.map((p) => (
-                    <div
-                      key={`preset-${p.key}`}
-                      className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground shadow-xs hover:border-border/80 transition-colors"
-                    >
-                      <Globe className="h-3 w-3 text-primary shrink-0" />
-                      <span className="font-semibold">{p.name}</span>
-                      <span className="text-[9px] font-mono text-muted-foreground uppercase opacity-75">(Preset)</span>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePin('preset', p.key, false)}
-                        title={`Desfijar ${p.name} de FocusView`}
-                        className="rounded-full p-0.5 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors ml-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Ubicaciones Custom Fijadas */}
-                  {pinnedLocations.map((loc) => {
-                    const grp = loc.group_id ? groupsMap.get(loc.group_id) : null;
-                    return (
-                      <div
-                        key={`custom-${loc.id}`}
-                        className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-foreground shadow-xs transition-colors"
-                      >
-                        <span
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: grp?.color || '#10b981' }}
-                        />
-                        <span className="font-bold text-primary">{loc.name}</span>
-                        <span className="text-[9px] text-muted-foreground truncate max-w-[90px]">({loc.city})</span>
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePin('custom', loc.id, false)}
-                          title={`Desfijar ${loc.name} de FocusView`}
-                          className="rounded-full p-0.5 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors ml-0.5"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Barra de Filtros por Grupo */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
-            <button
-              onClick={() => setSelectedGroupId(null)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors shrink-0 border',
-                selectedGroupId === null
-                  ? 'bg-primary text-primary-foreground border-primary font-semibold shadow-xs'
-                  : 'bg-card text-muted-foreground border-border hover:bg-accent hover:text-foreground'
-              )}
-            >
-              <Layers className="h-3.5 w-3.5" />
-              <span>Todas ({catalog.locations.length})</span>
-            </button>
-
-            {catalog.groups.map((group) => {
-              const count = catalog.locations.filter((l) => l.group_id === group.id).length;
-              const isSelected = selectedGroupId === group.id;
-              return (
-                <div key={group.id} className="relative group shrink-0">
+              {/* Popover con Scroll para ver, filtrar y gestionar TODOS los grupos */}
+              <Popover open={groupsDropdownOpen} onOpenChange={setGroupsDropdownOpen}>
+                <PopoverTrigger asChild>
                   <button
-                    onClick={() => setSelectedGroupId(group.id)}
+                    type="button"
                     className={cn(
-                      'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors border',
-                      isSelected
-                        ? 'bg-card border-foreground/30 text-foreground font-semibold shadow-xs'
-                        : 'bg-card text-muted-foreground border-border hover:bg-accent hover:text-foreground'
+                      'h-7.5 flex items-center justify-between gap-2 rounded-sm border px-2.5 text-xs font-mono font-medium transition-colors shrink-0 max-w-[240px]',
+                      selectedGroupId !== null
+                        ? 'border-primary/50 bg-primary/20 text-foreground font-bold shadow-xs'
+                        : 'border-border bg-card text-foreground hover:bg-muted'
                     )}
+                    title="Ver todos los grupos creados, filtrar o gestionarlos"
                   >
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: group.color || '#10b981' }}
-                    />
-                    <span>{group.name}</span>
-                    <span className="ml-1 text-[10px] font-mono opacity-60">({count})</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      {selectedGroup ? (
+                        <>
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: selectedGroup.color || '#10b981' }}
+                          />
+                          <span className="truncate">{selectedGroup.name}</span>
+                          <span className="text-[10px] text-muted-foreground opacity-80">
+                            ({catalog.locations.filter((l) => l.group_id === selectedGroup.id).length})
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Folder className="h-3 w-3 text-primary shrink-0" />
+                          <span className="truncate">Grupos</span>
+                          <span className="text-[10px] text-muted-foreground">({catalog.groups.length})</span>
+                        </>
+                      )}
+                    </div>
+                    <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", groupsDropdownOpen && "rotate-180")} />
                   </button>
+                </PopoverTrigger>
 
-                  {/* Acciones de Grupo en Hover o activo */}
-                  {isSelected && (
-                    <div className="inline-flex items-center ml-1 gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditGroupModal(group);
-                        }}
-                        title="Editar grupo"
-                        className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteGroup(group.id, group.name);
-                        }}
-                        title="Eliminar grupo"
-                        className="rounded p-1 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                <PopoverContent align="start" sideOffset={4} className="w-80 p-2 space-y-1.5 font-mono shadow-2xl">
+                  {/* Cabecera del Popover */}
+                  <div className="flex items-center justify-between border-b border-border/60 pb-1.5 px-1">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                        Grupos Creados ({catalog.groups.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupsDropdownOpen(false);
+                        openNewGroupModal();
+                      }}
+                      className="flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Nuevo Grupo</span>
+                    </button>
+                  </div>
+
+                  {/* Buscador interno de grupos si hay más de 3 */}
+                  {catalog.groups.length > 3 && (
+                    <div className="relative px-0.5">
+                      <Search className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Buscar grupo..."
+                        value={groupFilterQuery}
+                        onChange={(e) => setGroupFilterQuery(e.target.value)}
+                        className="w-full h-7 rounded-xs border border-border bg-background pl-7 pr-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
                     </div>
                   )}
-                </div>
-              );
-            })}
+
+                  {/* Opción rápida: Ver Todas */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGroupId(null);
+                      setGroupsDropdownOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between rounded-xs px-2 py-1.5 text-xs text-left transition-colors",
+                      selectedGroupId === null
+                        ? "bg-primary/20 text-foreground font-bold"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-3 w-3 text-muted-foreground" />
+                      <span>Todas las Ubicaciones</span>
+                    </div>
+                    <span className="text-[10px] font-mono opacity-60">({catalog.locations.length})</span>
+                  </button>
+
+                  {/* Lista Vertical con Scroll de TODOS los grupos creados */}
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5 divide-y divide-border/30">
+                    {filteredDropdownGroups.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-muted-foreground">
+                        {catalog.groups.length === 0
+                          ? "No hay grupos creados aún."
+                          : `No se encontró ningún grupo para "${groupFilterQuery}".`}
+                      </div>
+                    ) : (
+                      filteredDropdownGroups.map((group) => {
+                        const count = catalog.locations.filter((l) => l.group_id === group.id).length;
+                        const isSelected = selectedGroupId === group.id;
+
+                        return (
+                          <div
+                            key={group.id}
+                            className={cn(
+                              "flex items-center justify-between rounded-xs px-2 py-1 text-xs transition-colors group/item",
+                              isSelected
+                                ? "bg-primary/20 text-foreground font-bold"
+                                : "hover:bg-muted/60 text-foreground"
+                            )}
+                          >
+                            {/* Clic en el grupo para filtrar */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGroupId(group.id);
+                                setGroupsDropdownOpen(false);
+                              }}
+                              className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                              title={`Filtrar por ${group.name} (${count} ubicaciones)`}
+                            >
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: group.color || '#10b981' }}
+                              />
+                              <span className="truncate font-medium">{group.name}</span>
+                              <span className="text-[10px] text-muted-foreground shrink-0 opacity-70">
+                                ({count})
+                              </span>
+                            </button>
+
+                            {/* Acciones de Editar y Eliminar en cada fila */}
+                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setGroupsDropdownOpen(false);
+                                  openEditGroupModal(group);
+                                }}
+                                title={`Editar grupo "${group.name}"`}
+                                className="h-6 w-6 rounded-xs flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background border border-transparent hover:border-border transition-colors"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteGroup(group.id, group.name);
+                                }}
+                                title={`Eliminar grupo "${group.name}"`}
+                                className="h-6 w-6 rounded-xs flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Popover con Scroll para ver y gestionar los Accesos Rápidos de FocusView */}
+              <Popover open={pinnedPopoverOpen} onOpenChange={setPinnedPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'h-7.5 flex items-center justify-between gap-1.5 rounded-sm border px-2.5 text-xs font-mono font-medium transition-colors shrink-0',
+                      combinedPinnedItems.length > 0
+                        ? 'border-border bg-card text-foreground hover:bg-muted'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                    )}
+                    title="Ver y gestionar accesos rápidos fijados en FocusView"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Pin className={cn("h-3 w-3", combinedPinnedItems.length > 0 ? "text-primary fill-current" : "text-muted-foreground")} />
+                      <span>Accesos Rápidos</span>
+                      <span className="text-[10px] text-muted-foreground">({combinedPinnedItems.length})</span>
+                    </div>
+                    <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", pinnedPopoverOpen && "rotate-180")} />
+                  </button>
+                </PopoverTrigger>
+
+                <PopoverContent align="start" sideOffset={4} className="w-80 p-2 space-y-1.5 font-mono shadow-2xl">
+                  {/* Cabecera del Popover */}
+                  <div className="flex items-center justify-between border-b border-border/60 pb-1.5 px-1">
+                    <div className="flex items-center gap-1.5">
+                      <Pin className="h-3.5 w-3.5 text-primary fill-current" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                        Accesos Rápidos FocusView ({combinedPinnedItems.length})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Fijados</span>
+                  </div>
+
+                  {/* Buscador interno si hay varios fijados */}
+                  {combinedPinnedItems.length > 3 && (
+                    <div className="relative px-0.5">
+                      <Search className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Buscar acceso rápido..."
+                        value={pinnedSearchQuery}
+                        onChange={(e) => setPinnedSearchQuery(e.target.value)}
+                        className="w-full h-7 rounded-xs border border-border bg-background pl-7 pr-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  )}
+
+                  {/* Lista con Scroll Vertical de Accesos Rápidos */}
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5 divide-y divide-border/30">
+                    {filteredPinnedList.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-muted-foreground px-2">
+                        {combinedPinnedItems.length === 0
+                          ? "No hay accesos rápidos fijados. Fija ubicaciones con el icono de pin (📌) en la lista de abajo."
+                          : `No se encontró ningún acceso rápido para \"${pinnedSearchQuery}\".`}
+                      </div>
+                    ) : (
+                      filteredPinnedList.map((item) => (
+                        <div
+                          key={`${item.type}-${item.id}`}
+                          className="flex items-center justify-between rounded-xs px-2 py-1 text-xs hover:bg-muted/60 text-foreground transition-colors group/pinned"
+                        >
+                          {/* Clic para centrar en mapa */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMapLat(item.latitude);
+                              setMapLon(item.longitude);
+                              setMapCity(item.city);
+                              if (item.timezone) setLocTimezone(item.timezone);
+                              if (item.altitude) setLocAltitude(item.altitude);
+                              toast.info(`Centrado en: ${item.name}`);
+                              setPinnedPopoverOpen(false);
+                            }}
+                            className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                            title={`Centrar en mapa: ${item.name} (${item.city})`}
+                          >
+                            {item.type === 'custom' ? (
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: item.groupColor || '#10b981' }}
+                              />
+                            ) : (
+                              <Globe className="h-3 w-3 text-primary shrink-0" />
+                            )}
+                            <div className="truncate flex-1">
+                              <span className="font-medium text-foreground">{item.name}</span>
+                              <span className="text-[10px] text-muted-foreground ml-1">({item.city})</span>
+                            </div>
+                          </button>
+
+                          {/* Botón para Desfijar */}
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePin(item.type, item.id, false)}
+                            title={`Desfijar ${item.name} de FocusView`}
+                            className="h-6 w-6 rounded-xs flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors ml-1 shrink-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="pt-1 border-t border-border/50 px-1 text-[10px] text-muted-foreground">
+                    Aparecen directamente como accesos rápidos en la barra GPS de FocusView.
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Botón "+ Nuevo Grupo" */}
+            <button
+              type="button"
+              onClick={openNewGroupModal}
+              className="h-7.5 flex items-center gap-1.5 rounded-sm border border-dashed border-border hover:border-primary/60 bg-card px-2.5 text-xs font-mono font-medium text-foreground hover:bg-muted transition-colors shrink-0 shadow-xs"
+              title="Crear un nuevo grupo de geolocalizaciones"
+            >
+              <FolderPlus className="h-3.5 w-3.5 text-primary" />
+              <span>+ Nuevo Grupo</span>
+            </button>
           </div>
 
           {/* Buscador Rápido */}
@@ -696,12 +876,12 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
               placeholder="Buscar por nombre personalizado o ciudad..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-8.5 rounded-lg border border-border bg-card pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+              className="w-full h-8 rounded-sm border border-border bg-card pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs font-mono"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground p-0.5"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -716,294 +896,265 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                 Cargando ubicaciones...
               </div>
             ) : filteredLocations.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
-                <MapPin className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+              <div className="rounded-sm border border-dashed border-border bg-card/50 p-8 text-center font-mono">
+                <MapPin className="mx-auto h-7 w-7 text-muted-foreground/50 mb-2" />
                 <p className="text-xs font-semibold text-foreground">No hay ubicaciones en esta vista</p>
-                <p className="text-[11px] text-muted-foreground mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1 font-sans">
                   Usa el mapa interactivo de la derecha para fijar coordenadas y guardarlas.
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border/60 rounded-xl border border-border bg-card shadow-xs overflow-hidden">
-                {filteredLocations.map((loc) => {
-                  const grp = loc.group_id ? groupsMap.get(loc.group_id) : null;
-                  const isDefaultLoc = catalog.default_location?.id === loc.id;
-                  return (
-                    <div
-                      key={loc.id}
-                      className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-accent/40"
-                    >
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        {/* Dot del grupo */}
-                        <div
-                          className="mt-1 h-2.5 w-2.5 rounded-full shrink-0 shadow-xs"
-                          style={{ backgroundColor: grp?.color || '#94a3b8' }}
-                          title={grp?.name || 'Sin grupo'}
-                        />
+              <>
+                {/* Tabla de Ubicaciones con Scroll Interno y Cabecera Pegajosa */}
+                <div className="overflow-x-auto rounded-sm border border-border bg-card max-h-[380px] overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 z-10 border-b border-border bg-card font-mono text-[10px] font-bold text-muted-foreground uppercase tracking-wider shadow-xs">
+                      <tr>
+                        <th className="px-3 py-2 bg-card">Ubicación & Grupo</th>
+                        <th className="px-3 py-2 bg-card">Ciudad & Coordenadas</th>
+                        <th className="px-3 py-2 bg-card">Estado</th>
+                        <th className="px-3 py-2 bg-card text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border font-mono text-[11px]">
+                      {paginatedLocations.map((loc) => {
+                        const grp = loc.group_id ? groupsMap.get(loc.group_id) : null;
+                        const isDefaultLoc = catalog.default_location?.id === loc.id;
+                        return (
+                          <tr key={loc.id} className="hover:bg-muted/30 transition-colors">
+                            {/* Ubicación & Grupo */}
+                            <td className="px-3 py-1.5 align-middle">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-2 w-2 rounded-full shrink-0 shadow-xs"
+                                  style={{ backgroundColor: grp?.color || '#94a3b8' }}
+                                  title={grp?.name || 'Sin grupo'}
+                                />
+                                <div className="min-w-0">
+                                  <div className="font-bold text-foreground text-xs font-sans truncate">
+                                    {loc.name}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground font-mono">
+                                    {grp ? grp.name : '(Sin grupo)'}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
 
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-xs text-foreground truncate">
-                              {loc.name}
-                            </span>
-                            {isDefaultLoc && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 text-[9px] font-bold text-amber-600 dark:text-amber-400">
-                                <Star className="h-2.5 w-2.5 fill-amber-500" />
-                                <span>Predeterminada General</span>
-                              </span>
-                            )}
-                            {grp && (
-                              <span
-                                className="inline-flex items-center rounded-full px-1.5 py-0.2 text-[9px] font-medium"
-                                style={{
-                                  backgroundColor: `${grp.color || '#10b981'}15`,
-                                  color: grp.color || '#10b981',
-                                  border: `1px solid ${grp.color || '#10b981'}30`,
-                                }}
-                              >
-                                {grp.name}
-                              </span>
-                            )}
-                          </div>
+                            {/* Ciudad y Coordenadas */}
+                            <td className="px-3 py-1.5 align-middle">
+                              <div className="truncate text-foreground font-sans text-xs">
+                                {loc.city}
+                              </div>
+                              <div className="text-[10px] font-mono text-muted-foreground">
+                                {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
+                              </div>
+                            </td>
 
-                          <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5">
-                            <span>{loc.city}</span>
-                            <span>•</span>
-                            <span className="font-mono text-[10px]">
-                              {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                            {/* Badges de Estado */}
+                            <td className="px-3 py-1.5 align-middle">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {isDefaultLoc && (
+                                  <span className="inline-flex items-center gap-1 rounded-xs bg-primary/20 border border-primary/40 px-1.5 py-0.2 text-[9px] font-bold text-foreground">
+                                    <Star className="h-2.5 w-2.5 fill-current text-primary" />
+                                    Predeterminada
+                                  </span>
+                                )}
+                                {loc.is_pinned && (
+                                  <span className="inline-flex items-center gap-1 rounded-xs bg-card border border-border px-1.5 py-0.2 text-[9px] font-medium text-foreground">
+                                    <Pin className="h-2.5 w-2.5 fill-current text-primary" />
+                                    Fijada
+                                  </span>
+                                )}
+                                {!isDefaultLoc && !loc.is_pinned && (
+                                  <span className="text-[10px] text-muted-foreground">—</span>
+                                )}
+                              </div>
+                            </td>
 
-                      {/* Botones de acción compactos */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {/* Botón: Centrar en Mapa */}
-                        <button
-                          onClick={() => handleSelectOnMap(loc)}
-                          title="Ver en el mapa"
-                          className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        >
-                          <Navigation className="h-3.5 w-3.5 text-primary" />
-                        </button>
+                            {/* Acciones compactas */}
+                            <td className="px-3 py-1.5 align-middle text-right">
+                              <div className="inline-flex items-center justify-end gap-1">
+                                {/* Botón: Centrar en Mapa */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectOnMap(loc)}
+                                  title="Ver y centrar en el mapa"
+                                  className="h-6 w-6 rounded-xs flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-transparent hover:border-border"
+                                >
+                                  <Navigation className="h-3 w-3 text-primary" />
+                                </button>
 
-                        {/* Botón: Establecer como Predeterminada del Sistema */}
-                        <button
-                          type="button"
-                          onClick={() => handleSetDefaultLocation('custom', loc.id, loc.name)}
-                          title={isDefaultLoc ? 'Ubicación predeterminada general activa' : 'Establecer como ubicación predeterminada general para nuevos contenedores'}
-                          className={cn(
-                            'rounded p-1.5 transition-colors',
-                            isDefaultLoc
-                              ? 'text-amber-500 bg-amber-500/15'
-                              : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'
-                          )}
-                        >
-                          <Star className={cn('h-3.5 w-3.5', isDefaultLoc && 'fill-amber-500')} />
-                        </button>
+                                {/* Botón: Establecer como Predeterminada */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetDefaultLocation('custom', loc.id, loc.name)}
+                                  title={isDefaultLoc ? 'Ubicación predeterminada general activa' : `Establecer ${loc.name} como predeterminada general`}
+                                  className={cn(
+                                    'h-6 w-6 rounded-xs flex items-center justify-center transition-colors border border-transparent',
+                                    isDefaultLoc
+                                      ? 'text-foreground bg-primary/20 border-primary/40'
+                                      : 'text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border'
+                                  )}
+                                >
+                                  <Star className={cn('h-3 w-3', isDefaultLoc ? 'fill-current text-primary' : '')} />
+                                </button>
 
-                        {/* Botón: Fijar / Desfijar Pin */}
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePin('custom', loc.id, !loc.is_pinned)}
-                          title={loc.is_pinned ? 'Desfijar de accesos rápidos de FocusView' : 'Fijar en accesos rápidos de FocusView'}
-                          className={cn(
-                            'rounded p-1.5 transition-colors',
-                            loc.is_pinned
-                              ? 'text-amber-500 bg-amber-500/15 hover:bg-amber-500/25'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                          )}
-                        >
-                          <Pin className={cn('h-3.5 w-3.5', loc.is_pinned && 'fill-amber-500')} />
-                        </button>
+                                {/* Botón: Fijar / Desfijar Pin */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePin('custom', loc.id, !loc.is_pinned)}
+                                  title={loc.is_pinned ? 'Desfijar de FocusView' : 'Fijar en accesos rápidos de FocusView'}
+                                  className={cn(
+                                    'h-6 w-6 rounded-xs flex items-center justify-center transition-colors border border-transparent',
+                                    loc.is_pinned
+                                      ? 'text-foreground bg-primary/20 border-primary/40'
+                                      : 'text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border'
+                                  )}
+                                >
+                                  <Pin className={cn('h-3 w-3', loc.is_pinned ? 'fill-current text-primary' : '')} />
+                                </button>
 
-                        {/* Botón: Asignar a Contenedor */}
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              title="Asignar a contenedor..."
-                              className="flex items-center gap-1 rounded bg-secondary px-2 py-1 text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                            >
-                              <Smartphone className="h-3 w-3 text-primary" />
-                              <span className="hidden sm:inline">Asignar</span>
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent align="end" className="w-64 p-2">
-                            <div className="text-[11px] font-bold text-foreground mb-1.5 px-1 border-b border-border/50 pb-1">
-                              Asignar "{loc.name}" a:
-                            </div>
-                            <div className="max-h-48 overflow-y-auto space-y-1">
-                              {instances.length === 0 ? (
-                                <p className="text-[11px] text-muted-foreground p-1">No hay instancias creadas.</p>
-                              ) : (
-                                instances.map((inst) => (
-                                  <button
-                                    key={inst.instance_name}
-                                    onClick={() => handleAssignToInstance(inst.instance_name, loc)}
-                                    className="w-full flex items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-accent transition-colors"
-                                  >
-                                    <div className="flex items-center gap-1.5 truncate">
-                                      <span
-                                        className={cn(
-                                          'h-2 w-2 rounded-full shrink-0',
-                                          inst.running ? 'bg-emerald-500' : 'bg-muted-foreground/40'
-                                        )}
-                                      />
-                                      <span className="font-medium text-foreground truncate">{inst.instance_name}</span>
+                                {/* Botón: Asignar a Contenedor */}
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      title="Asignar a CloudPhone..."
+                                      className="inline-flex items-center gap-1 h-6 px-1.5 rounded-xs border border-border bg-card text-[10px] font-mono font-medium text-foreground hover:bg-muted transition-colors"
+                                    >
+                                      <Smartphone className="h-2.5 w-2.5 text-primary" />
+                                      <span>Asignar</span>
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent align="end" sideOffset={4} className="w-64 p-2 font-mono shadow-2xl">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 px-1 border-b border-border/50 pb-1">
+                                      Asignar "{loc.name}" a:
                                     </div>
-                                    <span className="text-[10px] font-mono text-muted-foreground shrink-0">
-                                      :{inst.adb_port}
-                                    </span>
-                                  </button>
-                                ))
+                                    <div className="max-h-48 overflow-y-auto space-y-0.5 pr-0.5">
+                                      {instances.length === 0 ? (
+                                        <p className="text-[11px] text-muted-foreground p-1 font-sans">No hay instancias creadas.</p>
+                                      ) : (
+                                        instances.map((inst) => (
+                                          <button
+                                            key={inst.instance_name}
+                                            type="button"
+                                            onClick={() => handleAssignToInstance(inst.instance_name, loc)}
+                                            className="w-full flex items-center justify-between rounded-xs px-2 py-1 text-left text-xs hover:bg-muted transition-colors"
+                                          >
+                                            <div className="flex items-center gap-1.5 truncate">
+                                              <span
+                                                className={cn(
+                                                  'h-1.5 w-1.5 rounded-full shrink-0',
+                                                  inst.running ? 'bg-success' : 'bg-muted-foreground/40'
+                                                )}
+                                              />
+                                              <span className="font-medium text-foreground truncate">{inst.instance_name}</span>
+                                            </div>
+                                            <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+                                              :{inst.adb_port}
+                                            </span>
+                                          </button>
+                                        ))
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+
+                                {/* Botón: Eliminar */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLocation(loc.id, loc.name)}
+                                  title={`Eliminar "${loc.name}"`}
+                                  className="h-6 w-6 rounded-xs flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Barra de Paginación y Contador de Ubicaciones */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-border/60 text-[11px] font-mono">
+                  <span className="text-muted-foreground">
+                    Mostrando {filteredLocations.length === 0 ? 0 : (locPage - 1) * locPageSize + 1} - {Math.min(locPage * locPageSize, filteredLocations.length)} de {filteredLocations.length} ubicaciones
+                  </span>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground text-[10px]">Límite:</span>
+                      <Popover open={locPageSizeOpen} onOpenChange={setLocPageSizeOpen}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-6 flex items-center gap-1 rounded-xs border border-border bg-card px-1.5 text-[10px] font-mono text-foreground hover:bg-muted transition-colors"
+                            title="Cambiar límite de registros por página"
+                          >
+                            <span>{locPageSize}</span>
+                            <ChevronDown className={cn("h-2.5 w-2.5 opacity-60 transition-transform duration-200", locPageSizeOpen && "rotate-180")} />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent side="top" align="center" sideOffset={4} className="w-20 p-1 space-y-0.5 font-mono text-[10px] shadow-xl">
+                          {[10, 15, 25, 50].map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => {
+                                setLocPageSize(size);
+                                setLocPage(1);
+                                setLocPageSizeOpen(false);
+                              }}
+                              className={cn(
+                                "w-full flex items-center justify-between rounded-xs px-2 py-1 text-[10px] font-mono text-left transition-colors",
+                                locPageSize === size
+                                  ? "bg-primary/20 text-foreground font-bold"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
                               )}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-
-                        {/* Botón: Eliminar */}
-                        <button
-                          onClick={() => handleDeleteLocation(loc.id, loc.name)}
-                          title="Eliminar ubicación"
-                          className="rounded p-1.5 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                            >
+                              <span>{size}</span>
+                              {locPageSize === size && <Check className="h-2.5 w-2.5 text-primary" />}
+                            </button>
+                          ))}
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
-          {/* Sección Plegable: Presets Oficiales Globales */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
-            <button
-              onClick={() => setShowPresetsGlobal(!showPresetsGlobal)}
-              className="w-full flex items-center justify-between p-3 text-xs font-semibold text-foreground hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Globe className="h-3.5 w-3.5 text-primary" />
-                <span>Presets Globales Oficiales ({Object.keys(allPresetsMap).length})</span>
-                <span className="text-[10px] font-mono text-muted-foreground">
-                  ({pinnedPresetsList.length} fijados)
-                </span>
-              </div>
-              {showPresetsGlobal ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-
-            {showPresetsGlobal && (
-              <div className="p-3 border-t border-border space-y-2.5">
-                {/* Buscador de presets */}
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Buscar ciudad o país oficial..."
-                    value={presetSearchQuery}
-                    onChange={(e) => setPresetSearchQuery(e.target.value)}
-                    className="w-full h-8 rounded-lg border border-border bg-background pl-8 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-                  />
-                  {presetSearchQuery && (
-                    <button
-                      onClick={() => setPresetSearchQuery('')}
-                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                  {filteredPresets.map(([key, loc]) => {
-                    const isPinned = catalog.pinned_presets?.includes(key.toLowerCase());
-                    const isDefaultPreset = catalog.default_location?.target_type === 'preset' && catalog.default_location?.id === key.toLowerCase();
-                    return (
-                      <div
-                        key={key}
-                        className={cn(
-                          'flex items-center justify-between p-2 rounded-lg border transition-colors group',
-                          isDefaultPreset
-                            ? 'border-amber-500/50 bg-amber-500/10'
-                            : isPinned
-                            ? 'border-amber-500/40 bg-amber-500/5'
-                            : 'border-border/70 hover:border-primary/50 bg-card hover:bg-accent/30'
-                        )}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={locPage <= 1}
+                        onClick={() => setLocPage((p) => Math.max(1, p - 1))}
+                        className="h-6 px-2 rounded-xs border border-border bg-card text-[10px] font-mono font-medium text-foreground hover:bg-muted disabled:opacity-30 transition-colors"
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMapLat(loc.latitude);
-                            setMapLon(loc.longitude);
-                            setMapCity(loc.city);
-                            setLocName(loc.name);
-                            setLocTimezone(loc.timezone || 'America/Argentina/Buenos_Aires');
-                            if (loc.altitude) setLocAltitude(loc.altitude);
-                            toast.info(`Cargado al mapa: ${loc.city}`);
-                          }}
-                          className="flex flex-col text-left min-w-0 flex-1 mr-2"
-                        >
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="text-[11px] font-bold text-foreground truncate">{loc.name}</span>
-                            {isDefaultPreset && (
-                              <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-bold bg-amber-500/20 px-1 rounded flex items-center gap-0.5">
-                                <Star className="h-2.5 w-2.5 fill-amber-500" /> Predeterminada
-                              </span>
-                            )}
-                            {isPinned && !isDefaultPreset && (
-                              <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-1 rounded">
-                                Fijado
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-muted-foreground truncate">{loc.city}</span>
-                          <span className="text-[9px] font-mono text-muted-foreground opacity-70">
-                            {loc.latitude.toFixed(2)}, {loc.longitude.toFixed(2)}
-                          </span>
-                        </button>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleSetDefaultLocation('preset', key, loc.name)}
-                            title={isDefaultPreset ? 'Preset predeterminado general activo' : `Establecer ${loc.name} como predeterminada del sistema`}
-                            className={cn(
-                              'rounded p-1.5 transition-colors',
-                              isDefaultPreset
-                                ? 'text-amber-500 bg-amber-500/20'
-                                : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'
-                            )}
-                          >
-                            <Star className={cn('h-3.5 w-3.5', isDefaultPreset && 'fill-amber-500')} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePin('preset', key, !isPinned)}
-                            title={isPinned ? 'Desfijar de accesos rápidos de FocusView' : 'Fijar en accesos rápidos de FocusView'}
-                            className={cn(
-                              'rounded p-1.5 transition-colors',
-                              isPinned
-                                ? 'text-amber-500 bg-amber-500/15 hover:bg-amber-500/25'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                            )}
-                          >
-                            <Pin className={cn('h-3.5 w-3.5', isPinned && 'fill-amber-500')} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        Anterior
+                      </button>
+                      <span className="px-1 text-[10px] font-mono text-muted-foreground">
+                        {locPage} / {totalLocPages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={locPage >= totalLocPages}
+                        onClick={() => setLocPage((p) => Math.min(totalLocPages, p + 1))}
+                        className="h-6 px-2 rounded-xs border border-border bg-card text-[10px] font-mono font-medium text-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
 
         {/* COLUMNA DERECHA: Creador Interactivo Asistido por Mapa (5 Cols) */}
-        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-4">
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-3">
+        <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-3.5">
+          <div className="rounded-sm border border-border bg-card p-3.5 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-primary" />
@@ -1059,7 +1210,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
             {/* Formulario de Creación Rápida */}
             <form onSubmit={handleSaveLocation} className="space-y-3 pt-1 border-t border-border/60">
               <div>
-                <label className="block text-[11px] font-semibold text-foreground mb-1">
+                <label className="block text-[11px] font-semibold text-foreground mb-1 font-mono">
                   Nombre Personalizado *
                 </label>
                 <input
@@ -1068,38 +1219,85 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                   placeholder="Ej: Oficina Palermo, Depósito Norte, Sucursal 4..."
                   value={locName}
                   onChange={(e) => setLocName(e.target.value)}
-                  className="w-full h-8.5 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                  className="w-full h-8 rounded-sm border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[11px] font-semibold text-foreground mb-1">
+                  <label className="block text-[11px] font-semibold text-foreground mb-1 font-mono">
                     Grupo de Geolocalización
                   </label>
-                  <select
-                    value={locGroupId}
-                    onChange={(e) => setLocGroupId(e.target.value)}
-                    className="w-full h-8.5 rounded-lg border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="">(Sin Grupo)</option>
-                    {catalog.groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Popover open={formGroupSelectOpen} onOpenChange={setFormGroupSelectOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="w-full h-8 flex items-center justify-between rounded-sm border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted/40 transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          {selectedFormGroup ? (
+                            <>
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: selectedFormGroup.color || '#10b981' }}
+                              />
+                              <span className="truncate font-medium">{selectedFormGroup.name}</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground font-mono text-[11px]">(Sin Grupo)</span>
+                          )}
+                        </div>
+                        <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", formGroupSelectOpen && "rotate-180")} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" sideOffset={4} className="w-56 p-1 space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocGroupId('');
+                          setFormGroupSelectOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-1.5 rounded-xs px-2 py-1 text-xs text-left font-mono transition-colors",
+                          locGroupId === '' ? "bg-primary/20 text-foreground font-bold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        <span>(Sin Grupo)</span>
+                      </button>
+                      {catalog.groups.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => {
+                            setLocGroupId(g.id);
+                            setFormGroupSelectOpen(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2 rounded-xs px-2 py-1 text-xs text-left font-mono transition-colors",
+                            locGroupId === g.id ? "bg-primary/20 text-foreground font-bold" : "text-foreground hover:bg-muted"
+                          )}
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: g.color || '#10b981' }}
+                          />
+                          <span className="truncate flex-1">{g.name}</span>
+                          {locGroupId === g.id && <Check className="h-3 w-3 text-primary ml-auto" />}
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-foreground mb-1">
+                  <label className="block text-[11px] font-semibold text-foreground mb-1 font-mono">
                     Ciudad / Referencia
                   </label>
                   <input
                     type="text"
                     value={mapCity}
                     onChange={(e) => setMapCity(e.target.value)}
-                    className="w-full h-8.5 rounded-lg border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full h-8 rounded-sm border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
                   />
                 </div>
               </div>
@@ -1123,7 +1321,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                         type="text"
                         value={locTimezone}
                         onChange={(e) => setLocTimezone(e.target.value)}
-                        className="w-full h-7 rounded border border-input bg-background px-2 font-mono text-[11px] text-foreground"
+                        className="w-full h-7 rounded-sm border border-input bg-background px-2 font-mono text-[11px] text-foreground"
                       />
                     </div>
                     <div>
@@ -1132,37 +1330,57 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                         type="number"
                         value={locAltitude}
                         onChange={(e) => setLocAltitude(Number(e.target.value))}
-                        className="w-full h-7 rounded border border-input bg-background px-2 font-mono text-[11px] text-foreground"
+                        className="w-full h-7 rounded-sm border border-input bg-background px-2 font-mono text-[11px] text-foreground"
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Opción para fijar directamente en accesos rápidos */}
+              {/* Opción para fijar directamente en accesos rápidos con Checkboxes Personalizados */}
               <div className="space-y-1.5 pt-0.5">
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-sm border border-border/60 hover:border-border bg-card/40 transition-colors select-none">
+                  <div
+                    className={cn(
+                      "h-4 w-4 rounded-xs border flex items-center justify-center transition-colors shrink-0",
+                      locIsPinned
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background"
+                    )}
+                  >
+                    {locIsPinned && <Check className="h-3 w-3 stroke-[3]" />}
+                  </div>
                   <input
                     type="checkbox"
                     checked={locIsPinned}
                     onChange={(e) => setLocIsPinned(e.target.checked)}
-                    className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                    className="sr-only"
                   />
-                  <span className="text-xs text-foreground font-medium flex items-center gap-1.5 select-none">
-                    <Pin className="h-3 w-3 text-amber-500 fill-amber-500" />
+                  <span className="text-xs text-foreground font-medium flex items-center gap-1.5">
+                    <Pin className="h-3 w-3 text-primary fill-current" />
                     <span>Fijar en accesos rápidos de FocusView</span>
                   </span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2.5 cursor-pointer p-1.5 rounded-sm border border-border/60 hover:border-border bg-card/40 transition-colors select-none">
+                  <div
+                    className={cn(
+                      "h-4 w-4 rounded-xs border flex items-center justify-center transition-colors shrink-0",
+                      locSetAsDefault
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background"
+                    )}
+                  >
+                    {locSetAsDefault && <Check className="h-3 w-3 stroke-[3]" />}
+                  </div>
                   <input
                     type="checkbox"
                     checked={locSetAsDefault}
                     onChange={(e) => setLocSetAsDefault(e.target.checked)}
-                    className="rounded border-border text-amber-500 focus:ring-amber-500 h-3.5 w-3.5"
+                    className="sr-only"
                   />
-                  <span className="text-xs text-foreground font-medium flex items-center gap-1.5 select-none">
-                    <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                  <span className="text-xs text-foreground font-medium flex items-center gap-1.5">
+                    <Star className="h-3 w-3 text-primary fill-current" />
                     <span>Establecer como ubicación predeterminada general del sistema</span>
                   </span>
                 </label>
@@ -1171,7 +1389,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
               <button
                 type="submit"
                 disabled={savingLoc || !locName.trim()}
-                className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary h-9 font-semibold text-xs text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+                className="w-full flex items-center justify-center gap-1.5 rounded-sm bg-primary h-8.5 font-bold font-mono text-xs text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 shadow-xs"
               >
                 {savingLoc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                 <span>Guardar Ubicación Custom</span>

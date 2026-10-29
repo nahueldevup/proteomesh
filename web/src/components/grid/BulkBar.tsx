@@ -215,11 +215,11 @@ export default function BulkBar({
   };
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-border bg-popover/95 p-1.5 shadow-2xl backdrop-blur">
-        {/* Contador de seleccionados en verde neón exacto de Lovable */}
-        <div className="flex items-center gap-2 px-2 font-mono text-xs">
-          <span className="grid h-6 min-w-6 place-items-center rounded bg-primary px-1 font-bold text-primary-foreground">
+    <div className="pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-4">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-sm border border-border bg-card p-1 shadow-md">
+        {/* Contador de seleccionados en ámbar técnico */}
+        <div className="flex items-center gap-2 px-1.5 font-mono text-xs">
+          <span className="grid h-6 min-w-6 place-items-center rounded-xs bg-primary px-1 font-bold text-primary-foreground font-mono">
             {count}
           </span>
         </div>

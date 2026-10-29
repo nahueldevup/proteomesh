@@ -584,10 +584,10 @@ export default function FocusView({
         {/* Columna Izquierda: Celular con Bisel Exacto + Cápsula Vertical Única */}
         <div className="flex h-full items-center gap-2">
           {/* Bisel del Smartphone con Pantalla Interactiva Táctil */}
-          <div className="h-full rounded-2xl bg-bezel p-1.5 shadow-2xl flex items-center justify-center">
+          <div className="h-full rounded-sm bg-bezel p-1 border border-border flex items-center justify-center">
             <div
               style={{ aspectRatio: `${nativeWidth} / ${nativeHeight}` }}
-              className="relative h-full overflow-hidden rounded-xl bg-black border border-border/40 select-none flex flex-col"
+              className="relative h-full overflow-hidden rounded-xs bg-black border border-border/40 select-none flex flex-col"
             >
               {instance.running ? (
                 streamMode === 'scrcpy' && cleanEmbedUrl ? (
@@ -612,8 +612,8 @@ export default function FocusView({
             </div>
           </div>
 
-          {/* Barra Única Vertical de Control (Exacta de Lovable con Popovers) */}
-          <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-1 shadow-lg">
+          {/* Barra Única Vertical de Control (Con Popovers) */}
+          <div className="flex flex-col gap-1 rounded-sm border border-border bg-card p-1">
             {/* Encender / Apagar */}
             <IconBtn
               icon={Power}
@@ -764,10 +764,10 @@ export default function FocusView({
           </div>
         </div>
 
-        {/* Columna Derecha: Tarjeta de Metadatos (Compacta en 2 columnas) + Módulos Interactivos */}
-        <div className="min-w-0 flex-1 flex flex-col gap-3 h-full overflow-hidden">
-          {/* Tarjeta de Metadatos (Distribución compacta en 2 columnas, espaciado fino Lovable) */}
-          <div className="rounded-xl border border-border bg-surface p-3 font-mono text-xs shadow-md shrink-0">
+        {/* Columna Derecha: Tarjeta de Metadatos + Módulos Interactivos */}
+        <div className="min-w-0 flex-1 flex flex-col gap-2.5 h-full overflow-hidden">
+          {/* Tarjeta de Metadatos (Distribución compacta en 2 columnas) */}
+          <div className="rounded-sm border border-border bg-card p-2.5 font-mono text-xs shrink-0">
             <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
               {[
                 ['Modelo', modelName],
@@ -783,55 +783,55 @@ export default function FocusView({
               ].map(([k, v]) => (
                 <div
                   key={String(k)}
-                  className="flex items-center justify-between gap-2 border-b border-border/40 py-1"
+                  className="flex items-center justify-between gap-2 border-b border-border/40 py-0.5"
                 >
-                  <span className="text-muted-foreground text-[11px] shrink-0">{k}</span>
-                  <span className="truncate text-foreground font-medium text-[11px] text-right">{v}</span>
+                  <span className="text-muted-foreground text-[10px] shrink-0">{k}</span>
+                  <span className="truncate text-foreground font-medium text-[10px] text-right">{v}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Tarjeta de Módulos Interactivos Reincorporados (Mapa GPS, Proxy, Salud) */}
-          <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-border bg-surface p-3.5 shadow-md overflow-hidden">
+          {/* Tarjeta de Módulos Interactivos (Mapa GPS, Proxy, Salud) */}
+          <div className="flex-1 min-h-0 flex flex-col rounded-sm border border-border bg-card p-3 overflow-hidden">
             {/* Cabecera de Pestañas del Módulo */}
-            <div className="flex items-center gap-1 border-b border-border pb-2.5 shrink-0">
+            <div className="flex items-center gap-1 border-b border-border pb-2 shrink-0">
               <button
                 onClick={() => setActiveTab('gps')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',
                   activeTab === 'gps'
-                    ? 'bg-accent text-foreground font-semibold border border-border'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    ? 'bg-muted text-foreground font-bold border border-border'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
-                <MapPin className="h-3.5 w-3.5 text-primary" />
+                <MapPin className="h-3 w-3 text-primary" />
                 <span>Geolocalización GPS</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('network')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',
                   activeTab === 'network'
-                    ? 'bg-accent text-foreground font-semibold border border-border'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    ? 'bg-muted text-foreground font-bold border border-border'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
-                <Usb className="h-3.5 w-3.5 text-primary" />
+                <Usb className="h-3 w-3 text-primary" />
                 <span>Red USB & Cuarentena</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('health')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 rounded-xs px-2.5 py-1 text-xs font-mono font-medium transition-colors',
                   activeTab === 'health'
-                    ? 'bg-accent text-foreground font-semibold border border-border'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    ? 'bg-muted text-foreground font-bold border border-border'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
-                <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                <CheckCircle2 className="h-3 w-3 text-primary" />
                 <span>Salud & Antifraude</span>
               </button>
             </div>
@@ -848,10 +848,10 @@ export default function FocusView({
                         <button
                           type="button"
                           className={cn(
-                            'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors shadow-xs',
+                            'flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-mono font-medium border transition-colors',
                             selectedCustomLoc
-                              ? 'bg-primary/10 border-primary/40 text-primary font-semibold'
-                              : 'bg-background border-border text-foreground hover:bg-accent'
+                              ? 'bg-primary/20 border-primary/50 text-foreground font-semibold'
+                              : 'bg-background border-border text-foreground hover:bg-muted'
                           )}
                           title="Seleccionar entre tus ubicaciones personalizadas guardadas"
                         >
@@ -859,10 +859,10 @@ export default function FocusView({
                           <span className="truncate max-w-[130px]">
                             {selectedCustomLoc ? selectedCustomLoc.name : 'Ubicación Custom'}
                           </span>
-                          <ChevronDown className="h-3 w-3 opacity-60 shrink-0" />
+                          <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", customSelectorOpen && "rotate-180")} />
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent align="start" className="w-80 p-2.5 space-y-2">
+                      <PopoverContent align="start" sideOffset={4} className="w-80 p-2.5 space-y-2">
                         <div className="flex items-center justify-between border-b border-border/50 pb-1.5 px-0.5">
                           <span className="text-[11px] font-bold text-foreground">Ubicaciones Personalizadas</span>
                           <span className="text-[10px] font-mono text-muted-foreground">
@@ -993,14 +993,19 @@ export default function FocusView({
                       <PopoverTrigger asChild>
                         <button
                           type="button"
-                          className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors shadow-xs"
+                          className={cn(
+                            "flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-mono font-medium transition-colors",
+                            saveCustomPopoverOpen
+                              ? "border-primary bg-primary/20 text-foreground font-semibold"
+                              : "border-border bg-background text-foreground hover:bg-muted"
+                          )}
                           title="Guardar coordenadas actuales del mapa como nueva ubicación custom"
                         >
-                          <Plus className="h-3.5 w-3.5 text-primary" />
+                          <Plus className={cn("h-3.5 w-3.5 text-primary transition-transform duration-200", saveCustomPopoverOpen && "rotate-45")} />
                           <span>Guardar Custom</span>
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent align="start" className="w-72 p-3 space-y-3">
+                      <PopoverContent align="start" sideOffset={4} className="w-72 p-3 space-y-3">
                         <div className="border-b border-border/50 pb-1.5">
                           <span className="text-xs font-bold text-foreground">Guardar Ubicación Custom</span>
                           <div className="text-[10px] font-mono text-muted-foreground mt-0.5">

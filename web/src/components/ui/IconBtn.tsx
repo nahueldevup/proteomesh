@@ -5,12 +5,12 @@ import { cn } from '../../lib/utils';
 export type IconBtnVariant = 'ghost' | 'solid' | 'primary' | 'danger' | 'success' | 'active';
 
 const variants: Record<IconBtnVariant, string> = {
-  ghost: 'text-foreground/80 hover:text-foreground hover:bg-accent',
-  solid: 'bg-secondary text-secondary-foreground hover:bg-accent border border-border',
-  primary: 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm font-bold',
-  danger: 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/15',
-  success: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15',
-  active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/40',
+  ghost: 'text-foreground/80 hover:text-foreground hover:bg-muted',
+  solid: 'bg-card text-foreground hover:bg-muted border border-border',
+  primary: 'bg-primary text-primary-foreground hover:opacity-90 font-bold',
+  danger: 'text-destructive hover:bg-destructive/15',
+  success: 'text-success hover:bg-success/15',
+  active: 'bg-primary/20 text-foreground ring-1 ring-primary/60 font-semibold',
 };
 
 interface IconBtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -45,7 +45,7 @@ export const IconBtn = forwardRef<HTMLButtonElement, IconBtnProps>(function Icon
           aria-label={label}
           disabled={disabled}
           className={cn(
-            'inline-flex shrink-0 items-center justify-center rounded-md transition-colors',
+            'inline-flex shrink-0 items-center justify-center rounded-sm transition-colors',
             'disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             sz,
