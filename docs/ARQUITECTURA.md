@@ -101,10 +101,9 @@ redroid-integrity-lab/
 ├── web/                           # Panel React 19 + TypeScript + Vite 8 + Tailwind 4
 │   └── src/
 │       ├── App.tsx                # Estado de grid/focus, selección y modo grupo
-│       ├── components/grid/       # Mosaico: DeviceGrid, DeviceCard, GroupActionBar
-│       ├── components/focus/      # FocusView, ControlPanel, InfoAccordion, ScreenStream
-│       ├── components/ScreenViewer.tsx  # Visor canvas + iframe scrcpy
-│       └── lib/api.ts, types.ts   # Cliente REST/WS tipado
+│       ├── components/grid/       # Mosaico: DeviceGrid, DeviceCard, BulkBar
+│       ├── components/focus/      # FocusView, InteractiveScreen (fallback HD)
+│       └── lib/api.ts, types.ts   # Cliente REST tipado
 ├── tests/host/                    # Suites del motor, API, grupo y proxies
 ├── docker-compose.ws-scrcpy.yml   # ws-scrcpy contenedorizado (network_mode: host)
 ├── src/
@@ -213,7 +212,7 @@ React (5173) ──REST──► FastAPI (8000) ──subprocess──► instan
      │                     │
      │                     ├──GET /instances/{name}/screen        (JPEG, thumbnails/captura)
      │                     ├──GET /instances/{name}/stream-info   (disponibilidad ws-scrcpy)
-     │                     └──WS  /instances/{name}/ws-stream     (JPEG ~3 FPS, fallback)
+     │                     └──WS  /instances/{name}/ws-stream     (JPEG ~3 FPS, legado: sin consumidor en la UI)
      │
      └──iframe──► ws-scrcpy (8001) ──proxy-adb──► scrcpy server (H.264 30 FPS)
 ```

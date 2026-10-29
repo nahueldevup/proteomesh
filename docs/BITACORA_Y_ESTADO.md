@@ -1324,6 +1324,18 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 80. CHORE(WEB-015) — Limpieza del Frontend: Código Muerto, API Sin Uso y Datos Reales (2026-10-29)
+
+* **Punto de partida:** se commitearon los cambios de trabajo pendientes antes de limpiar (`6101e13` backend y ubicaciones, `62c48d4` frontend de centro USB, ubicaciones, grid y modales).
+* **Decisiones:**
+  - `ws-scrcpy` (H.264, 30 FPS) es el camino principal de la vista enfocada. `ws-stream` (JPEG ~3 FPS) es legado y no se usa desde la UI; el endpoint del backend se mantiene.
+  - Pestaña Proxies retirada del panel (no se reimplementará). Los datos de proxy de cada instancia siguen visibles en la vista enfocada.
+  - Panel de salud: muestra `ok` y `reports` reales de `GET /instances/{name}/health`. Se eliminan las métricas fijas (100/100, 0/39) y los fallbacks de identidad.
+* **Alcance (en curso):** eliminación de `ScreenViewer`, `ScreenStream`, `GroupActionBar`, `ControlPanel` e `InfoAccordion`; retiro de métodos y tipos de `lib/api.ts` y `types.ts` sin uso; retiro de "Silenciar audio" y botón Ctrl+K; escape de HTML en marcadores Leaflet; corrección de timers y efectos; estilos de animación; Radix Dialog; `React.lazy`; TanStack Query por dominio; lint a cero.
+* **Estado:** **en curso**. Esta entrada se completará con los hashes de cada commit al cerrar la limpieza.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
