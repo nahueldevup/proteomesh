@@ -33,12 +33,18 @@ export function InteractiveScreen({
     frameInFlightRef.current = true;
     const url = api.getScreenUrl(instance.instance_name, Date.now());
     const img = new Image();
+    const safetyTimeout = window.setTimeout(() => {
+      frameInFlightRef.current = false;
+    }, 2500);
+
     img.onload = () => {
+      window.clearTimeout(safetyTimeout);
       frameInFlightRef.current = false;
       setCurrentFrame(url);
       setIsLoadingFirst(false);
     };
     img.onerror = () => {
+      window.clearTimeout(safetyTimeout);
       frameInFlightRef.current = false;
     };
     img.src = url;

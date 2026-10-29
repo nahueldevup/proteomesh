@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '../../lib/queries';
+import { queryKeys, useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -95,12 +95,8 @@ export default function FocusView({
   const [mapCity, setMapCity] = useState('Buenos Aires');
   const [mapBusy, setMapBusy] = useState(false);
 
-  // Catálogo de Ubicaciones Custom & Pins
-  const [customCatalog, setCustomCatalog] = useState<CustomLocationsCatalog>({
-    groups: [],
-    locations: [],
-    pinned_presets: ['ba', 'sao-paulo', 'miami', 'new-york'],
-  });
+  // Catálogo de Ubicaciones Custom & Pins (compartido via TanStack Query)
+  const { data: customCatalog = EMPTY_CATALOG } = useLocationsCatalog();
   const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
   const [customSelectorOpen, setCustomSelectorOpen] = useState(false);
   const [customSearchQuery, setCustomSearchQuery] = useState('');
@@ -110,20 +106,6 @@ export default function FocusView({
   const [saveCustomIsPinned, setSaveCustomIsPinned] = useState(true);
   const [savingCustom, setSavingCustom] = useState(false);
   const lastLoadedInstanceNameRef = useRef<string | null>(null);
-
-  const fetchCustomCatalog = useCallback(async () => {
-    try {
-      const cat = await api.getCustomLocations();
-      setCustomCatalog(cat);
-      setCustomGroupInput((prev) => (!prev && cat.groups.length > 0 ? cat.groups[0].id : prev));
-    } catch {
-      // Ignorar si falla la carga silenciosa
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCustomCatalog();
-  }, [fetchCustomCatalog]);
 
   // Búsqueda y filtrado de ubicaciones custom en selector
   const filteredCustomLocations = useMemo<CustomLocation[]>(() => {
@@ -392,7 +374,7 @@ export default function FocusView({
       );
       setCustomNameInput('');
       setSaveCustomPopoverOpen(false);
-      await fetchCustomCatalog();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
       setSelectedCustomLoc(created);
     } catch (err) {
       toast.error(`Error al guardar: ${getErrorMessage(err)}`);
@@ -932,12 +914,19 @@ export default function FocusView({
                                         e.stopPropagation();
                                         try {
                                           await api.togglePin('custom', loc.id, !loc.is_pinned);
-                                          setCustomCatalog((prev) => ({
-                                            ...prev,
-                                            locations: prev.locations.map((l) =>
-                                              l.id === loc.id ? { ...l, is_pinned: !loc.is_pinned } : l
-                                            ),
-                                          }));
+                                          queryClient.setQueryData<CustomLocationsCatalog>(
+                                            queryKeys.locationsCatalog,
+                                            (prev) => {
+                                              if (!prev) return prev;
+                                              return {
+                                                ...prev,
+                                                locations: prev.locations.map((l) =>
+                                                  l.id === loc.id ? { ...l, is_pinned: !loc.is_pinned } : l
+                                                ),
+                                              };
+                                            }
+                                          );
+                                          queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
                                           toast.success(
                                             !loc.is_pinned
                                               ? `"${loc.name}" fijada en accesos rápidos`

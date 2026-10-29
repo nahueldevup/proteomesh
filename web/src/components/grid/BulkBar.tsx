@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Power,
   RotateCw,
@@ -21,8 +21,9 @@ import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
+import { useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
 import { getErrorMessage } from '../../lib/utils';
-import type { LocationData, CustomLocation } from '../../types';
+import type { LocationData } from '../../types';
 import { toast } from 'sonner';
 
 interface BulkBarProps {
@@ -55,15 +56,8 @@ export default function BulkBar({
   const [apkValue, setApkValue] = useState('');
 
   const [gpsOpen, setGpsOpen] = useState(false);
-  const [customLocations, setCustomLocations] = useState<CustomLocation[]>([]);
-
-  useEffect(() => {
-    if (gpsOpen) {
-      api.getCustomLocations()
-        .then((res) => setCustomLocations(res.locations || []))
-        .catch(() => {});
-    }
-  }, [gpsOpen]);
+  const { data: catalog = EMPTY_CATALOG } = useLocationsCatalog({ enabled: gpsOpen });
+  const customLocations = catalog.locations;
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);

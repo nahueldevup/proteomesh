@@ -16,16 +16,14 @@ import {
   Pin,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { useLocationsCatalog, useLocationPresets, EMPTY_PRESETS } from '../lib/queries';
 import { MapPicker, type MapPinItem } from './MapPicker';
 import { getPresetDisplay } from '../lib/locations';
 import type {
   TemplateItem,
   Carrier,
   CustomLocation,
-  CustomLocationsCatalog,
   CreateInstancePayload,
-  DefaultLocation,
-  LocationData,
 } from '../types';
 import { cn, getErrorMessage } from '../lib/utils';
 
@@ -58,6 +56,9 @@ const CPU_PRESETS = [
   { label: '4 Hilos (0-3)', value: '0-3' },
   { label: '8 Hilos (0-7)', value: '0-7' },
 ];
+
+const EMPTY_LOCATIONS: CustomLocation[] = [];
+const EMPTY_PINNED: string[] = [];
 
 export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   isOpen,
@@ -95,14 +96,18 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [city, setCity] = useState('Buenos Aires');
   const [timezone, setTimezone] = useState('America/Argentina/Buenos_Aires');
 
-  // Catalogs
+  // Catalogs via TanStack Query (shared cache)
+  const { data: locCatalog } = useLocationsCatalog({ enabled: isOpen });
+  const { data: locPresets = EMPTY_PRESETS } = useLocationPresets({ enabled: isOpen });
+
+  const customLocations = locCatalog?.locations ?? EMPTY_LOCATIONS;
+  const pinnedPresets = locCatalog?.pinned_presets ?? EMPTY_PINNED;
+  const defaultLocData = locCatalog?.default_location ?? null;
+  const locationPresets = locPresets;
+
   const [templates, setTemplates] = useState<Record<string, TemplateItem[]>>({});
   const [carriers, setCarriers] = useState<Carrier[]>([]);
-  const [customLocations, setCustomLocations] = useState<CustomLocation[]>([]);
   const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
-  const [pinnedPresets, setPinnedPresets] = useState<string[]>([]);
-  const [defaultLocData, setDefaultLocData] = useState<DefaultLocation | null>(null);
-  const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -111,6 +116,26 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
 
   // Prevención de reinicio: Inicializar SOLO una vez al pasar de cerrado a abierto
   const prevIsOpenRef = useRef(false);
+  const defaultLocationAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && locCatalog?.default_location && !defaultLocationAppliedRef.current) {
+      defaultLocationAppliedRef.current = true;
+      const def = locCatalog.default_location;
+      setLatitude(def.latitude);
+      setLongitude(def.longitude);
+      setCity(def.city);
+      if (def.timezone) {
+        setTimezone(def.timezone);
+      }
+      const found = (locCatalog.locations || []).find((l: CustomLocation) => l.id === def.id);
+      if (found) setSelectedCustomLoc(found);
+    }
+    if (!isOpen) {
+      defaultLocationAppliedRef.current = false;
+    }
+  }, [isOpen, locCatalog]);
+
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
       setActiveStep('device');
@@ -133,51 +158,17 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         if (b) setSelectedBrand(b);
       }
 
-      // Cargar catálogos
-      const handleCatalogData = (locCatalog: CustomLocationsCatalog, locPresets: Record<string, LocationData> | undefined) => {
-        setCustomLocations(locCatalog.locations || []);
-        setPinnedPresets(locCatalog.pinned_presets || []);
-        setDefaultLocData(locCatalog.default_location || null);
-        setLocationPresets(locPresets || {});
-
-        if (locCatalog.default_location) {
-          setLatitude(locCatalog.default_location.latitude);
-          setLongitude(locCatalog.default_location.longitude);
-          setCity(locCatalog.default_location.city);
-          if (locCatalog.default_location.timezone) {
-            setTimezone(locCatalog.default_location.timezone);
-          }
-          const found = (locCatalog.locations || []).find((l: CustomLocation) => l.id === locCatalog.default_location?.id);
-          if (found) setSelectedCustomLoc(found);
-        }
-      };
-
       if (Object.keys(templates).length === 0) {
         setLoading(true);
-        Promise.all([
-          api.getTemplates(),
-          api.getCarriers(),
-          api.getCustomLocations(),
-          api.getLocationPresets().catch(() => ({})),
-        ])
-          .then(([tData, cData, locCatalog, locPresets]) => {
+        Promise.all([api.getTemplates(), api.getCarriers()])
+          .then(([tData, cData]) => {
             setTemplates(tData);
             setCarriers(cData);
-            handleCatalogData(locCatalog, locPresets);
           })
           .catch((err) => {
             setErrorMessage(getErrorMessage(err) || 'Error al cargar catálogos del servidor');
           })
           .finally(() => setLoading(false));
-      } else {
-        Promise.all([
-          api.getCustomLocations(),
-          api.getLocationPresets().catch(() => ({})),
-        ])
-          .then(([locCatalog, locPresets]) => {
-            handleCatalogData(locCatalog, locPresets);
-          })
-          .catch(() => {});
       }
     }
     prevIsOpenRef.current = isOpen;

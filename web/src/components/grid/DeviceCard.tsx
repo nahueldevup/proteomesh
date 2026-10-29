@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, useRef } from 'react';
 import { Router, ShieldAlert, RotateCw, Loader2, ArrowRightLeft, Bell, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Instance, PendingOffer, UsbPhysicalPhone } from '../../types';
@@ -42,11 +42,30 @@ function DeviceCard({
   const [offerDismissed, setOfferDismissed] = useState(false);
   const [offerCountdown, setOfferCountdown] = useState<number | null>(null);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(true);
+
+  // Pausar actualización periódica de pantalla cuando la tarjeta está fuera del viewport
   useEffect(() => {
-    if (!instance.running) return;
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { rootMargin: '100px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!instance.running || !isVisible) return;
     const interval = window.setInterval(() => setTick((t) => t + 1), 4000);
     return () => window.clearInterval(interval);
-  }, [instance.running, instance.instance_name]);
+  }, [instance.running, instance.instance_name, isVisible]);
 
   useEffect(() => {
     if (!showRouterPopover && !showBellPopover) return;
@@ -215,6 +234,7 @@ function DeviceCard({
 
   return (
     <div
+      ref={cardRef}
       onClick={(e) => onToggleSelect(instance.instance_name, e.shiftKey)}
       onDoubleClick={() => onOpen(instance.instance_name)}
       onContextMenu={handleContextMenu}
@@ -240,28 +260,28 @@ function DeviceCard({
         {/* Status badge superior: SOLO CUARENTENA O NOMBRE DE INTERFAZ (Ancho contenido) */}
         <div className="absolute right-1 top-1 z-20 flex items-center">
           {actionStatus === 'rotating' ? (
-            <span className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-primary/50 px-1 py-0.2 text-[8px] font-bold font-mono">
+            <span className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-primary/50 px-1 py-px text-[8px] font-bold font-mono">
               <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
               ROTANDO
             </span>
           ) : actionStatus === 'claiming' ? (
-            <span className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-primary/50 px-1 py-0.2 text-[8px] font-bold font-mono">
+            <span className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-primary/50 px-1 py-px text-[8px] font-bold font-mono">
               <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
               RECLAMANDO
             </span>
           ) : actionStatus === 'quarantining' ? (
-            <span className="inline-flex items-center gap-1 rounded-xs bg-destructive/15 text-destructive border border-destructive/40 px-1 py-0.2 text-[8px] font-bold font-mono">
+            <span className="inline-flex items-center gap-1 rounded-xs bg-destructive/15 text-destructive border border-destructive/40 px-1 py-px text-[8px] font-bold font-mono">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               AISLANDO
             </span>
           ) : actionStatus === 'declining' ? (
-            <span className="inline-flex items-center gap-1 rounded-xs bg-muted text-muted-foreground border border-border px-1 py-0.2 text-[8px] font-bold font-mono">
+            <span className="inline-flex items-center gap-1 rounded-xs bg-muted text-muted-foreground border border-border px-1 py-px text-[8px] font-bold font-mono">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               CEDIENDO
             </span>
           ) : assignedDev ? (
             <span
-              className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-border px-1.5 py-0.2 text-[8px] font-mono font-medium max-w-[85px] truncate"
+              className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-border px-1.5 py-px text-[8px] font-mono font-medium max-w-[85px] truncate"
               title={`Conectado por ${assignedDev.iface} (${assignedDev.carrier})`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />
@@ -269,7 +289,7 @@ function DeviceCard({
             </span>
           ) : instance.running ? (
             <span
-              className="inline-flex items-center gap-1 rounded-xs bg-muted/90 text-muted-foreground border border-border px-1.5 py-0.2 text-[8px] font-mono max-w-[85px] truncate"
+              className="inline-flex items-center gap-1 rounded-xs bg-muted/90 text-muted-foreground border border-border px-1.5 py-px text-[8px] font-mono max-w-[85px] truncate"
               title="En cuarentena segura"
             >
               CUARENTENA
@@ -552,15 +572,55 @@ function DeviceCard({
   );
 }
 
-export default memo(
-  DeviceCard,
-  (prev, next) =>
-    prev.index === next.index &&
-    prev.selected === next.selected &&
-    prev.syncMode === next.syncMode &&
-    prev.onToggleSelect === next.onToggleSelect &&
-    prev.onOpen === next.onOpen &&
-    prev.onNetworkChange === next.onNetworkChange &&
-    JSON.stringify(prev.instance) === JSON.stringify(next.instance) &&
-    JSON.stringify(prev.usb) === JSON.stringify(next.usb)
-);
+function areDeviceCardPropsEqual(prev: DeviceCardProps, next: DeviceCardProps): boolean {
+  if (
+    prev.index !== next.index ||
+    prev.selected !== next.selected ||
+    prev.syncMode !== next.syncMode ||
+    prev.onToggleSelect !== next.onToggleSelect ||
+    prev.onOpen !== next.onOpen ||
+    prev.onNetworkChange !== next.onNetworkChange
+  ) {
+    return false;
+  }
+
+  const pu = prev.usb;
+  const nu = next.usb;
+  if (
+    pu.isOffered !== nu.isOffered ||
+    pu.isWaiting !== nu.isWaiting ||
+    pu.waitingPos !== nu.waitingPos ||
+    pu.assignedDev?.serial !== nu.assignedDev?.serial ||
+    pu.assignedDev?.carrier !== nu.assignedDev?.carrier ||
+    pu.assignedDev?.iface !== nu.assignedDev?.iface ||
+    pu.pendingOffer?.expires_at !== nu.pendingOffer?.expires_at ||
+    pu.pendingOffer?.instance !== nu.pendingOffer?.instance
+  ) {
+    return false;
+  }
+
+  const pi = prev.instance;
+  const ni = next.instance;
+  if (
+    pi.instance_name !== ni.instance_name ||
+    pi.running !== ni.running ||
+    pi.adb_port !== ni.adb_port ||
+    pi.carrier !== ni.carrier ||
+    pi.docker_status !== ni.docker_status ||
+    pi.identity?.phone_number !== ni.identity?.phone_number ||
+    pi.location?.custom_name !== ni.location?.custom_name ||
+    pi.location?.city !== ni.location?.city ||
+    pi.location?.latitude !== ni.location?.latitude ||
+    pi.location?.longitude !== ni.location?.longitude ||
+    pi.proxy?.host !== ni.proxy?.host ||
+    pi.proxy?.port !== ni.proxy?.port ||
+    pi.limits?.memory !== ni.limits?.memory ||
+    pi.limits?.cpus !== ni.limits?.cpus
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export default memo(DeviceCard, areDeviceCardPropsEqual);

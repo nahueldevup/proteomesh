@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MapPin,
   Plus,
@@ -20,7 +20,9 @@ import {
   Check,
 } from 'lucide-react';
 import type { CustomLocation, LocationGroup, Instance, LocationData, CustomLocationsCatalog } from '../../types';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { useLocationsCatalog, EMPTY_CATALOG, queryKeys } from '../../lib/queries';
 import { MapPicker } from '../MapPicker';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
@@ -49,12 +51,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   onRefreshInstances,
   locationPresets = {},
 }) => {
-  const [catalog, setCatalog] = useState<CustomLocationsCatalog>({
-    groups: [],
-    locations: [],
-    pinned_presets: ['ba', 'sao-paulo', 'miami', 'new-york'],
-  });
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: catalog = EMPTY_CATALOG, isLoading: loading } = useLocationsCatalog();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -89,32 +87,17 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
 
   const isMapInitializedRef = useRef(false);
 
-  // Cargar catálogo inicial
-  const loadCatalog = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await api.getCustomLocations();
-      setCatalog(data);
-      setLocGroupId((prev) => (!prev && data.groups.length > 0 ? data.groups[0].id : prev));
-      // Inicializar el mapa con la ubicación predeterminada general al cargar
-      if (!isMapInitializedRef.current && data.default_location) {
-        isMapInitializedRef.current = true;
-        setMapLat(data.default_location.latitude);
-        setMapLon(data.default_location.longitude);
-        setMapCity(data.default_location.city);
-        if (data.default_location.timezone) setLocTimezone(data.default_location.timezone);
-        if (data.default_location.altitude) setLocAltitude(data.default_location.altitude);
-      }
-    } catch (err) {
-      toast.error(`Error al cargar ubicaciones custom: ${getErrorMessage(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Inicializar el mapa con la ubicación predeterminada general al cargar
   useEffect(() => {
-    loadCatalog();
-  }, [loadCatalog]);
+    if (!isMapInitializedRef.current && catalog.default_location) {
+      isMapInitializedRef.current = true;
+      setMapLat(catalog.default_location.latitude);
+      setMapLon(catalog.default_location.longitude);
+      setMapCity(catalog.default_location.city);
+      if (catalog.default_location.timezone) setLocTimezone(catalog.default_location.timezone);
+      if (catalog.default_location.altitude) setLocAltitude(catalog.default_location.altitude);
+    }
+  }, [catalog.default_location]);
 
   // Listas de pines activos para la barra FocusView
   const pinnedLocations = useMemo(() => {
@@ -209,13 +192,25 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   }, [catalog.groups, groupFilterQuery]);
 
   const totalLocPages = Math.max(1, Math.ceil(filteredLocations.length / locPageSize));
+  const activeLocPage = Math.min(Math.max(1, locPage), totalLocPages);
   const paginatedLocations = useMemo(() => {
-    return filteredLocations.slice((locPage - 1) * locPageSize, locPage * locPageSize);
-  }, [filteredLocations, locPage, locPageSize]);
+    return filteredLocations.slice((activeLocPage - 1) * locPageSize, activeLocPage * locPageSize);
+  }, [filteredLocations, activeLocPage, locPageSize]);
 
-  useEffect(() => {
+  const changeSelectedGroupId = (id: string | null) => {
+    setSelectedGroupId(id);
     setLocPage(1);
-  }, [searchQuery, selectedGroupId, locPageSize]);
+  };
+
+  const changeSearchQuery = (query: string) => {
+    setSearchQuery(query);
+    setLocPage(1);
+  };
+
+  const changeLocPageSize = (size: number) => {
+    setLocPageSize(size);
+    setLocPage(1);
+  };
 
   // Toggle pin de custom location o de preset oficial
   const handleTogglePin = async (type: 'custom' | 'preset', id: string, pinned?: boolean) => {
@@ -223,10 +218,13 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       const res = await api.togglePin(type, id, pinned);
       if (type === 'custom') {
         const updated = res.location as CustomLocation;
-        setCatalog((prev) => ({
-          ...prev,
-          locations: prev.locations.map((loc) => (loc.id === id ? { ...loc, is_pinned: updated.is_pinned } : loc)),
-        }));
+        queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            locations: prev.locations.map((loc) => (loc.id === id ? { ...loc, is_pinned: updated.is_pinned } : loc)),
+          };
+        });
         toast.success(
           updated.is_pinned
             ? `"${updated.name}" fijada en accesos rápidos de FocusView`
@@ -234,10 +232,13 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         );
       } else {
         const pinnedList = (res.pinned_presets || []) as string[];
-        setCatalog((prev) => ({
-          ...prev,
-          pinned_presets: pinnedList,
-        }));
+        queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            pinned_presets: pinnedList,
+          };
+        });
         const isNowPinned = pinnedList.includes(id.toLowerCase());
         const info = getPresetDisplay(id, locationPresets);
         toast.success(
@@ -246,6 +247,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
             : `Preset "${info.name}" desfijado de FocusView`
         );
       }
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
     } catch (err) {
       toast.error(`Error al alternar pin: ${getErrorMessage(err)}`);
     }
@@ -258,10 +260,14 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         target_type: type,
         target_id: id,
       });
-      setCatalog((prev) => ({
-        ...prev,
-        default_location: res,
-      }));
+      queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          default_location: res,
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
 
       // Centrar y actualizar inmediatamente el mapa interactivo de la derecha
       setMapLat(res.latitude);
@@ -313,7 +319,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setLocName('');
       setLocIsPinned(false);
       setLocSetAsDefault(false);
-      await loadCatalog();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
     } catch (err) {
       toast.error(`Error al guardar: ${getErrorMessage(err)}`);
     } finally {
@@ -326,10 +332,14 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     try {
       await api.deleteCustomLocation(id);
       toast.success(`Ubicación "${name}" eliminada`);
-      setCatalog((prev) => ({
-        ...prev,
-        locations: prev.locations.filter((l) => l.id !== id),
-      }));
+      queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          locations: prev.locations.filter((l) => l.id !== id),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
     } catch (err) {
       toast.error(`Error al eliminar ubicación: ${getErrorMessage(err)}`);
     }
@@ -383,7 +393,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setEditingGroup(null);
       setGroupNameInput('');
       setGroupDescInput('');
-      await loadCatalog();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
     } catch (err) {
       toast.error(`Error al guardar grupo: ${getErrorMessage(err)}`);
     } finally {
@@ -399,9 +409,9 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     try {
       await api.deleteLocationGroup(groupId);
       toast.success(`Grupo "${groupName}" eliminado`);
-      if (selectedGroupId === groupId) setSelectedGroupId(null);
+      if (selectedGroupId === groupId) changeSelectedGroupId(null);
       if (locGroupId === groupId) setLocGroupId('');
-      await loadCatalog();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
     } catch (err) {
       toast.error(`Error al eliminar grupo: ${getErrorMessage(err)}`);
     }
@@ -455,7 +465,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                     <span className="text-xs font-bold text-foreground">
                       Ubicación Predeterminada del Sistema
                     </span>
-                    <span className="rounded-xs bg-primary/20 px-1.5 py-0.2 text-[9px] font-mono font-bold text-foreground border border-primary/40">
+                    <span className="rounded-xs bg-primary/20 px-1.5 py-px text-[9px] font-mono font-bold text-foreground border border-primary/40">
                       Activa por Defecto
                     </span>
                   </div>
@@ -504,7 +514,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
               {/* Botón rápido: Todas */}
               <button
                 type="button"
-                onClick={() => setSelectedGroupId(null)}
+                onClick={() => changeSelectedGroupId(null)}
                 className={cn(
                   'h-7.5 flex items-center gap-1.5 rounded-sm px-2.5 text-xs font-mono font-medium transition-colors border shrink-0',
                   selectedGroupId === null
@@ -594,7 +604,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedGroupId(null);
+                      changeSelectedGroupId(null);
                       setGroupsDropdownOpen(false);
                     }}
                     className={cn(
@@ -638,7 +648,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                             <button
                               type="button"
                               onClick={() => {
-                                setSelectedGroupId(group.id);
+                                changeSelectedGroupId(group.id);
                                 setGroupsDropdownOpen(false);
                               }}
                               className="flex-1 min-w-0 flex items-center gap-2 text-left"
@@ -820,12 +830,13 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
               type="text"
               placeholder="Buscar por nombre personalizado o ciudad..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => changeSearchQuery(e.target.value)}
               className="w-full h-8 rounded-sm border border-border bg-card pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs font-mono"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                type="button"
+                onClick={() => changeSearchQuery('')}
                 className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground p-0.5"
               >
                 <X className="h-3.5 w-3.5" />
@@ -900,13 +911,13 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                             <td className="px-3 py-1.5 align-middle">
                               <div className="flex items-center gap-1 flex-wrap">
                                 {isDefaultLoc && (
-                                  <span className="inline-flex items-center gap-1 rounded-xs bg-primary/20 border border-primary/40 px-1.5 py-0.2 text-[9px] font-bold text-foreground">
+                                  <span className="inline-flex items-center gap-1 rounded-xs bg-primary/20 border border-primary/40 px-1.5 py-px text-[9px] font-bold text-foreground">
                                     <Star className="h-2.5 w-2.5 fill-current text-primary" />
                                     Predeterminada
                                   </span>
                                 )}
                                 {loc.is_pinned && (
-                                  <span className="inline-flex items-center gap-1 rounded-xs bg-card border border-border px-1.5 py-0.2 text-[9px] font-medium text-foreground">
+                                  <span className="inline-flex items-center gap-1 rounded-xs bg-card border border-border px-1.5 py-px text-[9px] font-medium text-foreground">
                                     <Pin className="h-2.5 w-2.5 fill-current text-primary" />
                                     Fijada
                                   </span>
@@ -1050,8 +1061,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                               key={size}
                               type="button"
                               onClick={() => {
-                                setLocPageSize(size);
-                                setLocPage(1);
+                                changeLocPageSize(size);
                                 setLocPageSizeOpen(false);
                               }}
                               className={cn(

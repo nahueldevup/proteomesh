@@ -13,9 +13,8 @@ import {
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys, useInstances, useUsbOverview } from './lib/queries';
-import { api } from './lib/api';
-import type { Instance, LocationData } from './types';
+import { queryKeys, useInstances, useUsbOverview, useLocationPresets, EMPTY_PRESETS } from './lib/queries';
+import type { Instance } from './types';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -88,8 +87,8 @@ export function App() {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
   };
 
-  // Datos para otras pestañas
-  const [locationPresets, setLocationPresets] = useState<Record<string, LocationData>>({});
+  // Datos de presets de ubicación globales
+  const { data: locationPresets = EMPTY_PRESETS } = useLocationPresets();
 
   // Atajo de teclado universal Ctrl+B / Cmd+B para alternar el menú lateral
   useEffect(() => {
@@ -127,12 +126,6 @@ export function App() {
       return next.size === prev.size ? prev : next;
     });
   }, [instancesData]);
-
-  useEffect(() => {
-    if (activeNav === 'locations' && Object.keys(locationPresets).length === 0) {
-      api.getLocationPresets().then(setLocationPresets).catch(console.error);
-    }
-  }, [activeNav, locationPresets]);
 
   const filteredInstances = useMemo(() => instances.filter((inst) => {
     const q = searchQuery.toLowerCase();
@@ -299,12 +292,12 @@ export function App() {
                     <>
                       <span className="truncate flex-1">{n.label}</span>
                       {n.id === 'instances' && (
-                        <span className="font-mono text-[10px] text-sidebar-foreground/50 bg-sidebar-accent/60 px-1 py-0.2 rounded-xs">
+                        <span className="font-mono text-[10px] text-sidebar-foreground/50 bg-sidebar-accent/60 px-1 py-px rounded-xs">
                           {instances.length}
                         </span>
                       )}
                       {n.id === 'network' && usbOverview && (
-                        <span className={cn('font-mono text-[10px] px-1 py-0.2 rounded-xs', usbOverview.summary.waiting_count > 0 ? 'bg-primary/20 text-foreground font-bold' : 'text-sidebar-foreground/50 bg-sidebar-accent/60')}>
+                        <span className={cn('font-mono text-[10px] px-1 py-px rounded-xs', usbOverview.summary.waiting_count > 0 ? 'bg-primary/20 text-foreground font-bold' : 'text-sidebar-foreground/50 bg-sidebar-accent/60')}>
                           {usbOverview.summary.free_usb}/{usbOverview.summary.total_usb}
                         </span>
                       )}
@@ -331,11 +324,6 @@ export function App() {
                 onClick={toggleTheme}
               />
             </div>
-            {!sidebarCollapsed && (
-              <span className="font-mono text-[10px] text-sidebar-foreground/40 pr-1 select-none">
-                v2.4
-              </span>
-            )}
           </div>
         </aside>
 

@@ -354,7 +354,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
                           <button
                             type="button"
                             onClick={() => onSelectInstance?.(dev.assigned_instance!)}
-                            className="inline-flex items-center gap-1 rounded-xs bg-primary/20 border border-primary/40 px-1.5 py-0.2 text-[9px] font-mono font-bold text-foreground hover:bg-primary/30 transition-colors"
+                            className="inline-flex items-center gap-1 rounded-xs bg-primary/20 border border-primary/40 px-1.5 py-px text-[9px] font-mono font-bold text-foreground hover:bg-primary/30 transition-colors"
                             title={`Ver ${dev.assigned_instance} en FocusView`}
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-success" />
@@ -362,7 +362,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
                             <ExternalLink className="h-2 w-2 opacity-60 shrink-0" />
                           </button>
                         ) : (
-                          <span className="inline-flex items-center rounded-xs bg-muted/60 border border-border px-1.5 py-0.2 text-[9px] font-mono text-muted-foreground">
+                          <span className="inline-flex items-center rounded-xs bg-muted/60 border border-border px-1.5 py-px text-[9px] font-mono text-muted-foreground">
                             ○ Libre
                           </span>
                         )}
@@ -371,7 +371,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
 
                     {/* Fila Media: Metadatos con chips técnicos */}
                     <div className="text-[10px] font-mono text-muted-foreground truncate flex items-center gap-1.5">
-                      <span className="rounded-xs bg-muted/70 border border-border px-1 py-0.2 text-[9px] text-foreground font-bold">
+                      <span className="rounded-xs bg-muted/70 border border-border px-1 py-px text-[9px] text-foreground font-bold">
                         {dev.iface}
                       </span>
                       <span>•</span>
@@ -505,7 +505,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
           {data?.pending_offer && (
             <div className="rounded-xs border border-primary/60 bg-primary/10 p-2 space-y-1.5 font-mono shrink-0">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="rounded-xs bg-primary text-primary-foreground px-1 py-0.2 font-bold uppercase tracking-wide">
+                <span className="rounded-xs bg-primary text-primary-foreground px-1 py-px font-bold uppercase tracking-wide">
                   Turno Activo (#1)
                 </span>
                 <span className="font-bold text-foreground">
@@ -582,7 +582,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
                         <div className="font-bold text-foreground truncate text-xs flex items-center gap-1.5">
                           <span>{inst}</span>
                           {isNext && (
-                            <span className="rounded-xs bg-primary/20 border border-primary/40 px-1 py-0.2 text-[8px] font-bold text-foreground">
+                            <span className="rounded-xs bg-primary/20 border border-primary/40 px-1 py-px text-[8px] font-bold text-foreground">
                               Próximo Turno
                             </span>
                           )}
