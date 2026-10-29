@@ -1324,15 +1324,25 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
-### 80. CHORE(WEB-015) — Limpieza del Frontend: Código Muerto, API Sin Uso y Datos Reales (2026-10-29)
+### 80. CHORE(WEB-015) — Limpieza del Frontend: Código Muerto, API Tipada, Datos Reales, Accesibilidad y Red Consolidada (2026-10-29)
 
-* **Punto de partida:** se commitearon los cambios de trabajo pendientes antes de limpiar (`6101e13` backend y ubicaciones, `62c48d4` frontend de centro USB, ubicaciones, grid y modales).
+* **Punto de partida:** commits de trabajo pendiente `6101e13` (backend y ubicaciones) y `62c48d4` (frontend), y documentación previa a la limpieza en `6a1ee6a`.
 * **Decisiones:**
-  - `ws-scrcpy` (H.264, 30 FPS) es el camino principal de la vista enfocada. `ws-stream` (JPEG ~3 FPS) es legado y no se usa desde la UI; el endpoint del backend se mantiene.
+  - `ws-scrcpy` (H.264, 30 FPS) es el camino principal de la vista enfocada. `ws-stream` (JPEG ~3 FPS) es legado: el endpoint del backend se mantiene, pero la UI no lo consume.
   - Pestaña Proxies retirada del panel (no se reimplementará). Los datos de proxy de cada instancia siguen visibles en la vista enfocada.
-  - Panel de salud: muestra `ok` y `reports` reales de `GET /instances/{name}/health`. Se eliminan las métricas fijas (100/100, 0/39) y los fallbacks de identidad.
-* **Alcance (en curso):** eliminación de `ScreenViewer`, `ScreenStream`, `GroupActionBar`, `ControlPanel` e `InfoAccordion`; retiro de métodos y tipos de `lib/api.ts` y `types.ts` sin uso; retiro de "Silenciar audio" y botón Ctrl+K; escape de HTML en marcadores Leaflet; corrección de timers y efectos; estilos de animación; Radix Dialog; `React.lazy`; TanStack Query por dominio; lint a cero.
-* **Estado:** **en curso**. Esta entrada se completará con los hashes de cada commit al cerrar la limpieza.
+  - Panel de salud: muestra `ok` y `reports` reales de `GET /instances/{name}/health`. Se eliminaron las métricas fijas (100/100, 0/39) y los valores de identidad inventados.
+  - Acción "Instalar app" se mantiene tal cual.
+* **Cambios por commit:**
+  - `58877a0` — código muerto: `ScreenViewer`, `ScreenStream`, `GroupActionBar`, `ControlPanel`, `InfoAccordion`, `App.css`, assets sin referencias, `.scrcpy-frame`; dependencias `autoprefixer` y `postcss`.
+  - `8b9e1ee` — `lib/api.ts` sin métodos de proxy ni otros 10 métodos sin uso, respuestas tipadas, cero `any`; `getScreenshot` reemplaza el `fetch` directo; pestaña Proxies y botón Ctrl+K retirados; "Silenciar audio" retirado; el reclamo USB en lote cuenta errores; salud y ficha de identidad con datos reales; escape HTML y validación de color en marcadores Leaflet; `ResizeObserver` con limpieza en `MapPicker`; una sola recarga al vencer una oferta USB; catálogo sin refetch por cambio de grupo; `tw-animate-css` instalado y utilidad `scrollbar-none`, keyframe `pm-pulse` y clase `bg-chart-5` corregida.
+  - `3eec9a7` — modales `ConfirmDeleteModal` y `CreateDeviceModal` sobre Radix Dialog; Escape ya no limpia la selección con un diálogo abierto; popovers sin `div` envolvente y pestañas con roles ARIA; `DeviceCard` memorizada con datos USB por instancia; `React.lazy` para CreateDeviceModal, FocusView, UsbNetworkCenter y CustomLocationsManager (bundle principal 729 KB → 390 KB); `InteractiveScreen` con una sola captura en vuelo; TanStack Query para el poll USB compartido, instancias, estado de red de la instancia, libro de IPs y stream-info (se detiene al estar disponible); presets movidos a `lib/locations.ts`.
+* **Verificación:** `tsc` sin errores, `npm run build` correcto, prueba en navegador contra el backend local: grid, centro de red, modal de creación (Escape lo cierra) y vista enfocada cargan sin errores de consola.
+* **Pendiente (no incluido en esta limpieza):**
+  - 9 advertencias `set-state-in-effect` de oxlint (derivación de estado en `App`, `DeviceCard`, `UsbNetworkCenter`, `CustomLocationsManager`, `FocusView` e `InteractiveScreen`). Requieren rediseñar el estado derivado.
+  - Catálogos de ubicaciones aún sin TanStack Query (`FocusView`, `CustomLocationsManager`, `BulkBar`, `CreateDeviceModal`).
+  - `py-0.2` (16 usos) y etiqueta "v2.4" sin revisar visualmente.
+  - Medición con React Profiler antes y después de la memorización.
+* **Estado:** WEB-015 **completado con pendientes listados**, validado el 2026-10-29.
 
 ---
 
