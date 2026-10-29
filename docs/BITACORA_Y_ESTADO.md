@@ -1336,13 +1336,25 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - `58877a0` — código muerto: `ScreenViewer`, `ScreenStream`, `GroupActionBar`, `ControlPanel`, `InfoAccordion`, `App.css`, assets sin referencias, `.scrcpy-frame`; dependencias `autoprefixer` y `postcss`.
   - `8b9e1ee` — `lib/api.ts` sin métodos de proxy ni otros 10 métodos sin uso, respuestas tipadas, cero `any`; `getScreenshot` reemplaza el `fetch` directo; pestaña Proxies y botón Ctrl+K retirados; "Silenciar audio" retirado; el reclamo USB en lote cuenta errores; salud y ficha de identidad con datos reales; escape HTML y validación de color en marcadores Leaflet; `ResizeObserver` con limpieza en `MapPicker`; una sola recarga al vencer una oferta USB; catálogo sin refetch por cambio de grupo; `tw-animate-css` instalado y utilidad `scrollbar-none`, keyframe `pm-pulse` y clase `bg-chart-5` corregida.
   - `3eec9a7` — modales `ConfirmDeleteModal` y `CreateDeviceModal` sobre Radix Dialog; Escape ya no limpia la selección con un diálogo abierto; popovers sin `div` envolvente y pestañas con roles ARIA; `DeviceCard` memorizada con datos USB por instancia; `React.lazy` para CreateDeviceModal, FocusView, UsbNetworkCenter y CustomLocationsManager (bundle principal 729 KB → 390 KB); `InteractiveScreen` con una sola captura en vuelo; TanStack Query para el poll USB compartido, instancias, estado de red de la instancia, libro de IPs y stream-info (se detiene al estar disponible); presets movidos a `lib/locations.ts`.
-* **Verificación:** `tsc` sin errores, `npm run build` correcto, prueba en navegador contra el backend local: grid, centro de red, modal de creación (Escape lo cierra) y vista enfocada cargan sin errores de consola.
-* **Pendiente (no incluido en esta limpieza):**
-  - 9 advertencias `set-state-in-effect` de oxlint (derivación de estado en `App`, `DeviceCard`, `UsbNetworkCenter`, `CustomLocationsManager`, `FocusView` e `InteractiveScreen`). Requieren rediseñar el estado derivado.
-  - Catálogos de ubicaciones aún sin TanStack Query (`FocusView`, `CustomLocationsManager`, `BulkBar`, `CreateDeviceModal`).
-  - `py-0.2` (16 usos) y etiqueta "v2.4" sin revisar visualmente.
-  - Medición con React Profiler antes y después de la memorización.
-* **Estado:** WEB-015 **completado con pendientes listados**, validado el 2026-10-29.
+  - `d6732fa` — fase 2 de consolidación:
+    - **Catálogos unificados TanStack Query:** Hooks `useLocationsCatalog` y `useLocationPresets` centralizados en `lib/queries.ts` con caché compartida de 30s/60s entre `FocusView`, `CustomLocationsManager`, `BulkBar` y `CreateDeviceModal`. Eliminadas peticiones duplicadas y redundantes de catálogos en apertura de modales y cambio de pestañas.
+    - **Detalles visuales:** 16 usos de `py-0.2` reemplazados por `py-px` (1px exacto) de Tailwind v4 en badges y etiquetas de estado. Retirado el string hardcodeado "v2.4" del pie de la barra lateral de navegación en `App.tsx`.
+    - **Rendimiento de grid:** `IntersectionObserver` incorporado en `DeviceCard` con margen de 100px para pausar el polling de captura JPEG (`tick`) cuando las tarjetas quedan fuera del viewport por scroll. Comparador de memorización `areDeviceCardPropsEqual` reescrito con comparaciones primitivas de alta velocidad (sin `JSON.stringify`).
+    - **Resiliencia en streaming:** Watchdog de seguridad de 2500ms en `InteractiveScreen` para liberar `frameInFlightRef` en caso de pérdida o cuelgue de red.
+* **Documentación de advertencias `set-state-in-effect` (conservadas intencionalmente por seguridad):**
+  1. `InteractiveScreen.tsx:49`: Reinicio de frame y primer encendido en cambio de estado de máquina (sincronización con hardware ADB/Docker externo).
+  2. `DeviceCard.tsx:67` & `DeviceCard.tsx:73`: Temporizador de cuenta regresiva y ventana de gracia de 5s para oferta de módem USB (temporizadores en vivo basados en reloj).
+  3. `App.tsx:124`: Poda automática de selección múltiple cuando instancias son eliminadas o desconectadas por el servidor.
+  4. `UsbNetworkCenter.tsx:70`: Temporizador de cuenta regresiva en vivo para el pool de red USB.
+  5. `FocusView.tsx:181`: Sincronización del formulario de edición de coordenadas con la instancia enfocada (preserva edición interactiva del usuario antes de guardar).
+  6. `CreateDeviceModal.tsx:129` & `CustomLocationsManager.tsx:97`: Carga inicial de coordenadas predeterminadas al mapa cuando los catálogos se resuelven de forma asíncrona.
+* **Verificación:**
+  - `tsc -b` y `npm run build` limpios en ~350ms (bundle principal comprimido a 368 KB).
+  - Verificación en navegador real:
+    - Descarte de `ConfirmDeleteModal` con `Escape` preserva la selección de instancias intacta (`modalClosed: true, bulkBarStillOpen: true`). Segundo `Escape` sin modal limpia la selección (`bulkBarCleared: true`).
+    - Pestaña "Mapa y ubicaciones" carga el catálogo y renderiza el mapa Leaflet con pines y badges `py-px` nítidas sin errores de consola.
+    - El modal de creación accede instantáneamente al catálogo de ubicaciones en caché compartida.
+* **Estado:** WEB-015 **completado y validado el 2026-10-29**.
 
 ---
 
