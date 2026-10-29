@@ -247,7 +247,3 @@
   border: none !important;
 }
 
-.scrcpy-frame {
-  image-rendering: auto;
-  image-rendering: -webkit-optimize-contrast;
-}
