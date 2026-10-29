@@ -37,6 +37,8 @@ class DeclineOfferRequest(BaseModel):
 @router.get("/network/status", summary="Resumen global de red USB, cola FIFO y dispositivos")
 async def get_network_overview():
     devices = await usb_network_service.discover_usb_devices()
+    # Si hay un módem libre y cola en espera sin oferta activa, promueve automáticamente al primero
+    await usb_network_service.check_and_promote(devices)
     ttl = ip_ledger.get_ttl_setting()
     total = len(devices)
     free = sum(1 for d in devices if d.status == "idle")

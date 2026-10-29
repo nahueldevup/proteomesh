@@ -6,6 +6,48 @@
       "color": "#10b981",
       "description": "Ubicaciones generales y puntos clave",
       "created_at": "2026-10-28T00:47:34.489683+00:00"
+    },
+    {
+      "id": "grp_4_da6fde",
+      "name": "4",
+      "color": "#10b981",
+      "description": "55",
+      "created_at": "2026-10-28T23:59:57.517599+00:00"
+    },
+    {
+      "id": "grp_2_021d4b",
+      "name": "2",
+      "color": "#10b981",
+      "description": "3",
+      "created_at": "2026-10-29T00:00:01.653522+00:00"
+    },
+    {
+      "id": "grp_3_60710c",
+      "name": "3",
+      "color": "#10b981",
+      "description": "4",
+      "created_at": "2026-10-29T00:00:05.861555+00:00"
+    },
+    {
+      "id": "grp_1_42d7cd",
+      "name": "1",
+      "color": "#6366f1",
+      "description": "1",
+      "created_at": "2026-10-29T00:15:39.398345+00:00"
+    },
+    {
+      "id": "grp_212_1265eb",
+      "name": "212",
+      "color": "#10b981",
+      "description": "",
+      "created_at": "2026-10-29T00:22:42.218983+00:00"
+    },
+    {
+      "id": "grp_121_1fb1c9",
+      "name": "121",
+      "color": "#10b981",
+      "description": "",
+      "created_at": "2026-10-29T00:22:46.546802+00:00"
     }
   ],
   "locations": [
@@ -34,6 +76,19 @@
       "timezone": "America/Argentina/Buenos_Aires",
       "is_pinned": true,
       "created_at": "2026-10-28T12:59:06.903166+00:00"
+    },
+    {
+      "id": "loc_12_407b31",
+      "name": "12",
+      "group_id": "grp_121_1fb1c9",
+      "city": "Formosa",
+      "latitude": -26.204734,
+      "longitude": -58.199815,
+      "altitude": 25.0,
+      "accuracy": 4.2,
+      "timezone": "America/Argentina/Buenos_Aires",
+      "is_pinned": false,
+      "created_at": "2026-10-29T00:23:05.026823+00:00"
     }
   ],
   "pinned_presets": [],

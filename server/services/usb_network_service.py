@@ -124,6 +124,34 @@ class UsbNetworkService:
                     "error": f"Fallo al auto-conectar: {str(e)}",
                 }
 
+            # Promover a la siguiente instancia si aún quedan dispositivos libres y cola esperando
+            try:
+                await self.check_and_promote_unlocked()
+            except Exception as e:
+                logger.error(f"Error al verificar promoción post-timer: {e}")
+
+    async def check_and_promote_unlocked(self, devices: Optional[List[UsbDevice]] = None) -> Optional[Dict[str, Any]]:
+        """Si hay instancias esperando y hay un módem libre sin oferta activa, promueve al primero de la cola."""
+        if self._pending_offer or not self.waiting_queue:
+            return self.get_pending_offer()
+
+        if devices is None:
+            devices = await self.discover_usb_devices()
+
+        idle_devices = [d for d in devices if d.status == "idle"]
+        if not idle_devices:
+            return None
+
+        # Encontramos un módem libre y no hay oferta activa: ofertar al primero de la cola
+        candidate = self.waiting_queue[0]
+        target_serial = idle_devices[0].serial
+        logger.info(f"Cola FIFO: detectado módem libre '{target_serial}', iniciando oferta de 5s para '{candidate}'")
+        return self._start_offer_unlocked(candidate, device_serial=target_serial)
+
+    async def check_and_promote(self, devices: Optional[List[UsbDevice]] = None) -> Optional[Dict[str, Any]]:
+        async with self._lock:
+            return await self.check_and_promote_unlocked(devices)
+
     def _container_ip(self, instance_name: str) -> Optional[str]:
         try:
             res = subprocess.run(
