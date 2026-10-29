@@ -1407,6 +1407,27 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 83. FIX(WEB-018) — Despliegue Automático de Oferta USB y Contador Dinámico en Tarjetas (2026-10-29)
+
+* **Objetivo:** Resolver el problema por el cual el cartel de "Turno Disponible" quedaba oculto en la campana en lugar de emerger a la superficie automáticamente, y corregir el contador de gracia de 5s que se mostraba estático.
+* **Causa raíz:**
+  - Al poner una instancia en espera de red USB desde el menú de Router (`handleClaimUsb`), se llamaba indebidamente a `setOfferDismissed(true)`. Al llegar el turno posterior, la oferta seguía marcada como descartada, bloqueando tanto la visibilidad emergente automática como el inicio del temporizador `setInterval`.
+  - El contador de gracia se apoyaba en dependencias propensas a re-ejecución con cada sondeo de red en lugar del timestamp de expiración absoluto.
+* **Cambios principales:**
+  - `web/src/components/grid/DeviceCard.tsx`:
+    - Eliminado `setOfferDismissed(true)` en `handleClaimUsb` (solo se descarta si el usuario cancela o pulsa '✕' explícitamente).
+    - Agregado efecto centinela con `lastOfferExpiresAtRef` para garantizar que toda nueva oferta entrante restablezca `offerDismissed` a `false`, haciendo emerger la tarjeta en primer plano sobre la pantalla.
+    - Temporizador dinámico corregido: cálculo fluido en base a `offerExpiresAt * 1000`, evitando congelamientos y garantizando una sola llamada a `onNetworkChange` al expirar.
+    - El clic manual en la campanita resetea el descarte de oferta si existe una activa.
+  - `web/src/lib/queries.ts`:
+    - Sondeo dinámico inteligente: frecuencia de 1000ms cuando hay instancias en `waiting_queue` o una oferta pendiente, y 3000ms en reposo general, permitiendo detectar el módem liberado al instante.
+* **Verificación:**
+  - Lint y Build de producción (`npm run build`) limpios en 294ms.
+  - Suite de tests host (`.venv/bin/pytest tests/host/`): **115 / 115 pasando**.
+* **Estado:** WEB-018 **completado y validado el 2026-10-29**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

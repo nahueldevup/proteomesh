@@ -44,6 +44,7 @@ function DeviceCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(true);
+  const lastOfferExpiresAtRef = useRef<number | null>(null);
 
   // Pausar actualización periódica de pantalla cuando la tarjeta está fuera del viewport
   useEffect(() => {
@@ -102,30 +103,44 @@ function DeviceCard({
   const { isOffered, pendingOffer, isWaiting, waitingPos, assignedDev } = usb;
   const offerExpiresAt = pendingOffer?.expires_at ?? null;
   const offerSeconds = pendingOffer?.expires_in_seconds ?? null;
+  const offerSecondsRef = useRef(offerSeconds);
 
   useEffect(() => {
-    if (!isOffered) {
+    offerSecondsRef.current = offerSeconds;
+  }, [offerSeconds]);
+
+  // Asegurar que cualquier oferta nueva siempre emerja a la superficie automáticamente
+  useEffect(() => {
+    if (isOffered) {
+      if (!lastOfferExpiresAtRef.current || (offerExpiresAt && offerExpiresAt !== lastOfferExpiresAtRef.current)) {
+        lastOfferExpiresAtRef.current = offerExpiresAt ?? Date.now();
+        setOfferDismissed(false);
+      }
+    } else {
+      lastOfferExpiresAtRef.current = null;
       setOfferDismissed(false);
     }
-  }, [isOffered]);
+  }, [isOffered, offerExpiresAt]);
 
   useEffect(() => {
     if (!isOffered || offerDismissed) {
       setOfferCountdown(null);
       return;
     }
-    const expiresAt = offerExpiresAt ? offerExpiresAt * 1000 : (Date.now() + (offerSeconds || 5) * 1000);
+    const expiresAt = offerExpiresAt ? offerExpiresAt * 1000 : (Date.now() + (offerSecondsRef.current || 5) * 1000);
+    let triggered = false;
     const updateCountdown = () => {
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setOfferCountdown(remaining);
-      if (remaining <= 0) {
+      if (remaining <= 0 && !triggered) {
+        triggered = true;
         onNetworkChange?.();
       }
     };
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [isOffered, offerExpiresAt, offerSeconds, offerDismissed, onNetworkChange]);
+  }, [isOffered, offerExpiresAt, offerDismissed, onNetworkChange]);
 
   const handleScreenTap = async (relX: number, relY: number) => {
     if (!syncMode || !instance.running) return;
@@ -140,8 +155,6 @@ function DeviceCard({
 
   const handleClaimUsb = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setOfferDismissed(true);
-    setOfferCountdown(null);
     setShowRouterPopover(false);
     setShowBellPopover(false);
     if (!instance.running) {
@@ -551,6 +564,9 @@ function DeviceCard({
                   e.stopPropagation();
                   setShowBellPopover((prev) => !prev);
                   setShowRouterPopover(false);
+                  if (isOffered) {
+                    setOfferDismissed(false);
+                  }
                 }}
                 className={cn(
                   'h-5.5 w-5.5 flex items-center justify-center rounded-xs border transition-colors relative',

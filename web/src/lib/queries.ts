@@ -31,8 +31,13 @@ export function useUsbOverview() {
   return useQuery<UsbNetworkOverview>({
     queryKey: queryKeys.usb,
     queryFn: () => api.getUsbNetworkStatus(),
-    refetchInterval: (query) =>
-      query.state.data?.pending_offer ? 2000 : 3000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.pending_offer || (data?.waiting_queue && data.waiting_queue.length > 0)) {
+        return 1000;
+      }
+      return 3000;
+    },
     refetchIntervalInBackground: false,
   });
 }
