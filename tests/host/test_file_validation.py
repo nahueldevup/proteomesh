@@ -14,7 +14,7 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from server.services.file_manager import validate_phone_path, PathValidationError
+from server.services.file_manager import validate_phone_path, PathValidationError, FileManagerError
 from server.config import ALLOWED_FILE_ROOTS
 
 
@@ -81,10 +81,17 @@ class FilePathValidationTest(unittest.TestCase):
         with self.assertRaises(PathValidationError):
             validate_phone_path("phone-80", "/sdcard/Download/foto\x00.jpg")
 
-    def test_rejects_operating_on_root_itself(self):
+    def test_rejects_deleting_root_itself(self):
+        # Listar/subir en una raíz está permitido; borrarla no.
         self._patch_realpath()
-        with self.assertRaises(PathValidationError):
-            validate_phone_path("phone-80", "/sdcard/Download")
+        with patch(
+            "server.services.file_manager._adb_serial_or_raise", return_value="127.0.0.1:5580"
+        ), patch(
+            "server.services.file_manager._stat_entry", return_value=("regular file", 0, 0)
+        ):
+            with self.assertRaises(FileManagerError):
+                from server.services.file_manager import delete_file
+                delete_file("phone-80", "/sdcard/Download")
 
     def test_accepts_dash_starting_path_with_dash_dash(self):
         # Los nombres que empiezan con '-' son seguros gracias al uso de --
