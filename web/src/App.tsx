@@ -88,6 +88,7 @@ export function App() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createPresetModel, setCreatePresetModel] = useState<string | undefined>(undefined);
+  const [filesPreselectedInstance, setFilesPreselectedInstance] = useState<string | undefined>(undefined);
 
   // Tema Claro / Oscuro con persistencia en localStorage
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -196,6 +197,11 @@ export function App() {
     setViewMode('focus');
   }, []);
 
+  const openFilesManager = useCallback((name?: string) => {
+    setFilesPreselectedInstance(name);
+    setActiveNav('files');
+  }, []);
+
   return (
     <TooltipProvider delayDuration={150}>
       <SidebarProvider defaultOpen={false}>
@@ -286,7 +292,10 @@ export function App() {
                       icon={FolderArchive}
                       label="APKs y Archivos"
                       active={activeNav === 'files'}
-                      onClick={() => setActiveNav('files')}
+                      onClick={() => {
+                        setFilesPreselectedInstance(undefined);
+                        setActiveNav('files');
+                      }}
                     />
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -407,6 +416,7 @@ export function App() {
                 onClearSelection={clearSelection}
                 usbOverview={usbOverview}
                 onNetworkChange={fetchUsbOverview}
+                onOpenFilesManager={openFilesManager}
               />
             </div>
           )}
@@ -425,6 +435,7 @@ export function App() {
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 locationPresets={locationPresets}
+                onOpenFilesManager={openFilesManager}
               />
             </div>
           )}
@@ -454,6 +465,8 @@ export function App() {
           {activeNav === 'files' && (
             <ApkFileManager
               instances={instances}
+              preselectedInstance={filesPreselectedInstance}
+              initialTab={filesPreselectedInstance ? 'files' : 'apks'}
               onRefreshInstances={fetchInstances}
             />
           )}

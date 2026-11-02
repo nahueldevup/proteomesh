@@ -7,6 +7,7 @@ duplicados, extracción de metadatos con aapt2 e instalación en instancias
 activas con concurrencia limitada.
 """
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -17,7 +18,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from server.config import (
     APK_REPO_DIR,
@@ -67,13 +68,18 @@ class ApkRepository:
         except OSError:
             pass
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         with self._get_connection() as conn:

@@ -8,6 +8,7 @@ import fcntl
 import shutil
 import shlex
 import asyncio
+import logging
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse, urlencode
@@ -20,6 +21,9 @@ from server.config import (
     CARRIERS_DIR,
     INSTANCES_DIR,
 )
+from server.services.apk_repository import apk_repository, ApkRepositoryError
+
+logger = logging.getLogger(__name__)
 
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
@@ -286,6 +290,13 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         except Exception:
             pass
 
+    # Instalar APKs marcados como default tras el arranque (nunca falla la creación)
+    if req.start:
+        try:
+            await _install_default_apks(req.name, req.default_apks)
+        except Exception as e:
+            logger.warning(f"[create_instance_async] Instalación de APKs por defecto falló para {req.name}: {e}")
+
     return get_single_instance(req.name)
 
 
@@ -372,6 +383,79 @@ async def restart_instance_async(name: str) -> Dict[str, Any]:
     except Exception:
         pass
     return await start_instance_async(name)
+
+
+async def _wait_for_boot_completed(serial: str, timeout: float = 120.0) -> bool:
+    """Espera a que sys.boot_completed sea '1' vía adb."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        proc = await asyncio.create_subprocess_exec(
+            "adb", "-s", serial, "shell", "getprop", "sys.boot_completed",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if stdout.decode().strip() == "1":
+            return True
+        await asyncio.sleep(2.0)
+    return False
+
+
+async def _install_default_apks(
+    name: str,
+    default_apks: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    """Instala APKs por defecto tras el arranque. Nunca falla la creación por esto."""
+    result = {"installed": 0, "failed": 0, "skipped": 0, "errors": []}
+    try:
+        apk_ids = default_apks if default_apks is not None else apk_repository.get_default_apk_ids()
+        if not apk_ids:
+            return result
+
+        serial = _adb_serial(name)
+        if not serial:
+            result["errors"].append("No se pudo obtener serial ADB")
+            return result
+
+        booted = await _wait_for_boot_completed(serial)
+        if not booted:
+            result["errors"].append("Timeout esperando boot_completed")
+            return result
+
+        for apk_id in apk_ids:
+            try:
+                apk = apk_repository.get_apk(apk_id)
+                if not apk:
+                    result["skipped"] += 1
+                    continue
+                apk_path = apk_repository.get_apk_path(apk["sha256"])
+                if not apk_path.exists():
+                    result["skipped"] += 1
+                    continue
+
+                proc = await asyncio.create_subprocess_exec(
+                    "adb", "-s", serial, "install", "-r", str(apk_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                out = stdout.decode().strip()
+                err = stderr.decode().strip()
+                if proc.returncode == 0 and "Success" in out:
+                    result["installed"] += 1
+                else:
+                    result["failed"] += 1
+                    result["errors"].append(f"{apk['original_name']}: {err or out}"[:200])
+            except Exception as e:
+                result["failed"] += 1
+                result["errors"].append(str(e)[:200])
+        return result
+    except ApkRepositoryError as e:
+        result["errors"].append(str(e))
+        return result
+    except Exception as e:
+        result["errors"].append(str(e))
+        return result
 
 
 async def delete_instance_async(name: str) -> Dict[str, Any]:

@@ -13,6 +13,7 @@ interface DeviceGridProps {
   onClearSelection: () => void;
   usbOverview?: UsbNetworkOverview | null;
   onNetworkChange?: () => void;
+  onOpenFilesManager?: (instanceName: string) => void;
 }
 
 export default function DeviceGrid({
@@ -25,6 +26,7 @@ export default function DeviceGrid({
   onClearSelection,
   usbOverview,
   onNetworkChange,
+  onOpenFilesManager,
 }: DeviceGridProps) {
   const lastSelectedRef = useRef<string | null>(null);
   const [focusedInstance, setFocusedInstance] = useState<string | null>(null);
@@ -134,6 +136,7 @@ export default function DeviceGrid({
           isFocused={focusedInstance === instance.instance_name}
           onFocus={(name) => setFocusedInstance(name)}
           onReleaseFocus={() => setFocusedInstance(null)}
+          onOpenFilesManager={onOpenFilesManager}
           domRef={(el) => {
             if (el) cardRefs.current.set(instance.instance_name, el);
             else cardRefs.current.delete(instance.instance_name);

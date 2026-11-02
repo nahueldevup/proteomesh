@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Power,
@@ -21,7 +21,7 @@ import {
   Link2,
   ExternalLink,
 } from 'lucide-react';
-import type { Instance, InstanceUsbNetworkState } from '../../types';
+import type { Instance, InstanceUsbNetworkState, ApkEntry } from '../../types';
 import { api } from '../../lib/api';
 import { cn, getErrorMessage } from '../../lib/utils';
 import { IconBtn, type IconBtnVariant } from '../ui/IconBtn';
@@ -41,6 +41,7 @@ interface DeviceControlRailProps {
   onNetworkChange?: () => void;
   onChanged?: () => void;
   onRefreshInstances?: () => void;
+  onOpenFilesManager?: (instanceName: string) => void;
   className?: string;
 }
 
@@ -62,6 +63,7 @@ export function DeviceControlRail({
   onNetworkChange,
   onChanged,
   onRefreshInstances,
+  onOpenFilesManager,
   className = '',
 }: DeviceControlRailProps) {
   const name = instance.instance_name;
@@ -89,13 +91,36 @@ export function DeviceControlRail({
   const [routerOpen, setRouterOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [apkOpen, setApkOpen] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
   const [textValue, setTextValue] = useState('');
   const [urlValue, setUrlValue] = useState('');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // APKs rápidos desde el repo (botón 12)
+  const [railApks, setRailApks] = useState<ApkEntry[]>([]);
+  const [railApksLoading, setRailApksLoading] = useState(false);
+  const [railInstallingId, setRailInstallingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!apkOpen) return;
+    let cancelled = false;
+    setRailApksLoading(true);
+    api.getApks()
+      .then((data) => {
+        if (!cancelled) setRailApks(data);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(`Error al cargar APKs: ${getErrorMessage(err)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setRailApksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apkOpen]);
 
   const offerSeconds = pendingOffer?.expires_in_seconds ?? 5;
 
@@ -650,7 +675,7 @@ export function DeviceControlRail({
           onClick={handleFocusToggle}
         />
 
-        {/* 12. Instalar APK (placeholder Ticket 3) */}
+        {/* 12. Instalar APK */}
         <Popover open={apkOpen} onOpenChange={setApkOpen}>
           <PopoverTrigger asChild>
             <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
@@ -664,48 +689,63 @@ export function DeviceControlRail({
               />
             </span>
           </PopoverTrigger>
-          <PopoverContent side="right" className="w-60 p-2 font-mono text-xs">
+          <PopoverContent side="right" className="w-64 p-2 font-mono text-xs">
             <div className="mb-1.5 border-b border-border/60 pb-1 text-[10px] font-bold uppercase text-muted-foreground">
               Instalar APK
             </div>
-            <div className="space-y-1.5">
-              <div className="text-[10px] text-muted-foreground">
-                Selector de APKs disponibles. Integración planificada en Ticket 3.
+            {railApksLoading ? (
+              <div className="flex items-center gap-1.5 py-1 text-[10px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Cargando…
               </div>
-              <button
-                type="button"
-                disabled
-                className="w-full rounded-xs border border-border bg-muted/30 px-2 py-1 text-[10px] text-muted-foreground"
-              >
-                Explorar repositorio
-              </button>
-            </div>
+            ) : railApks.length === 0 ? (
+              <div className="py-1 text-[10px] text-muted-foreground">No hay APKs en el repositorio.</div>
+            ) : (
+              <div className="mb-1.5 max-h-44 overflow-y-auto space-y-1">
+                {railApks.map((apk) => (
+                  <button
+                    key={apk.id}
+                    type="button"
+                    disabled={railInstallingId !== null}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setRailInstallingId(apk.id);
+                      try {
+                        const res = await api.installApks(apk.id, [name]);
+                        const result = res[0];
+                        if (result.status === 'ok') toast.success(`APK instalado en ${name}`);
+                        else if (result.status === 'skipped') toast.info(`Instancia no lista; omitido`);
+                        else toast.error(`Error al instalar: ${result.error || 'fallo'}`);
+                        onRefreshInstances?.();
+                      } catch (err) {
+                        toast.error(`Error al instalar APK: ${getErrorMessage(err)}`);
+                      } finally {
+                        setRailInstallingId(null);
+                      }
+                    }}
+                    className="w-full rounded-xs border border-border bg-card px-2 py-1 text-left text-[10px] text-foreground hover:bg-muted disabled:opacity-40"
+                  >
+                    <div className="truncate font-medium">{apk.original_name}</div>
+                    <div className="truncate text-[9px] text-muted-foreground">{apk.package}</div>
+                  </button>
+                ))}
+              </div>
+            )}
           </PopoverContent>
         </Popover>
 
-        {/* 13. Archivos de Instancia (placeholder Ticket 3) */}
-        <Popover open={filesOpen} onOpenChange={setFilesOpen}>
-          <PopoverTrigger asChild>
-            <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-              <IconBtn
-                icon={FolderArchive}
-                label="Archivos de instancia"
-                size="sm"
-                side="right"
-                variant={filesOpen ? 'active' : 'ghost'}
-              />
-            </span>
-          </PopoverTrigger>
-          <PopoverContent side="right" className="w-60 p-2 font-mono text-xs">
-            <div className="mb-1.5 border-b border-border/60 pb-1 text-[10px] font-bold uppercase text-muted-foreground">
-              Archivos
-            </div>
-            <div className="text-[10px] text-muted-foreground">
-              Gestor de archivos preseleccionado para <strong>{name}</strong>.<br />
-              Integración planificada en Ticket 3.
-            </div>
-          </PopoverContent>
-        </Popover>
+        {/* 13. Archivos de Instancia */}
+        <IconBtn
+          icon={FolderArchive}
+          label="Archivos de instancia"
+          size="sm"
+          side="right"
+          variant="ghost"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOpenFilesManager?.(name);
+          }}
+        />
 
         {/* Separador antes de borrar */}
         <div className="my-0.5 h-px w-full bg-border/60" />

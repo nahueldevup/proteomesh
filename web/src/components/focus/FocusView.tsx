@@ -57,6 +57,7 @@ interface FocusViewProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   locationPresets?: Record<string, LocationData>;
+  onOpenFilesManager?: (instanceName: string) => void;
 }
 
 type SubTab = 'gps' | 'network' | 'health';
@@ -72,6 +73,7 @@ export default function FocusView({
   theme,
   onToggleTheme,
   locationPresets,
+  onOpenFilesManager,
 }: FocusViewProps) {
   const [activeTab, setActiveTab] = useState<SubTab>('gps');
 
@@ -484,6 +486,7 @@ export default function FocusView({
             onBack={onBack}
             onChanged={onChanged}
             onNetworkChange={fetchNetworkState}
+            onOpenFilesManager={onOpenFilesManager}
           />
         </div>
 

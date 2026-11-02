@@ -26,6 +26,7 @@ interface DeviceCardProps {
   isFocused?: boolean;
   onFocus?: (name: string) => void;
   onReleaseFocus?: () => void;
+  onOpenFilesManager?: (instanceName: string) => void;
   domRef?: React.Ref<HTMLDivElement>;
 }
 
@@ -41,6 +42,7 @@ function DeviceCard({
   isFocused = false,
   onFocus,
   onReleaseFocus,
+  onOpenFilesManager,
   domRef,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
@@ -176,6 +178,7 @@ function DeviceCard({
         usb={usb}
         onOpen={onOpen}
         onNetworkChange={onNetworkChange}
+        onOpenFilesManager={onOpenFilesManager}
       />
     </div>
   );
@@ -191,7 +194,8 @@ function areDeviceCardPropsEqual(prev: DeviceCardProps, next: DeviceCardProps): 
     prev.onNetworkChange !== next.onNetworkChange ||
     prev.isFocused !== next.isFocused ||
     prev.onFocus !== next.onFocus ||
-    prev.onReleaseFocus !== next.onReleaseFocus
+    prev.onReleaseFocus !== next.onReleaseFocus ||
+    prev.onOpenFilesManager !== next.onOpenFilesManager
   ) {
     return false;
   }
