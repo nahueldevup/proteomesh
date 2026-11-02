@@ -210,6 +210,12 @@
   }
 }
 
+@utility scrollbar-stable {
+  /* Reserva espacio para el scrollbar clásico y evita el salto de altura
+     cuando aparece el scroll horizontal en el rack. */
+  scrollbar-gutter: stable both-edges;
+}
+
 @keyframes pm-pulse {
   0% {
     transform: scale(0.6);

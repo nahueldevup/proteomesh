@@ -49,6 +49,7 @@ import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { InteractiveScreen } from './InteractiveScreen';
+import { ScrcpyLiveScreen } from '../farm/ScrcpyLiveScreen';
 import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
@@ -462,11 +463,6 @@ export default function FocusView({
 
   const identity = instance.identity || {};
 
-  // URL del streaming nativo scrcpy sin toolbars (usando el proxy same-origin de Vite)
-  const cleanEmbedUrl = streamInfo?.available && streamInfo.embed_url
-    ? streamInfo.embed_url.replace(/^https?:\/\/[^/]+/, '/ws-scrcpy')
-    : null;
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-background select-none">
       {/* ── CABECERA SUPERIOR (IDÉNTICA A LOVABLE) ─────────────────────────── */}
@@ -548,12 +544,13 @@ export default function FocusView({
               className="relative h-full overflow-hidden rounded-xs bg-black border border-border/40 select-none flex flex-col"
             >
               {instance.running ? (
-                streamMode === 'scrcpy' && cleanEmbedUrl ? (
-                  <iframe
-                    src={cleanEmbedUrl}
-                    title={`scrcpy ${instance.instance_name}`}
-                    allow="autoplay; fullscreen"
-                    className="h-full w-full border-0 bg-black select-none pointer-events-auto"
+                streamMode === 'scrcpy' ? (
+                  <ScrcpyLiveScreen
+                    key={instance.instance_name}
+                    instance={instance}
+                    isFocused={true}
+                    onReleaseFocus={() => {}}
+                    className="relative h-full w-full"
                   />
                 ) : (
                   <InteractiveScreen

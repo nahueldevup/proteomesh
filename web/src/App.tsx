@@ -18,7 +18,7 @@ import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { IconBtn } from './components/ui/IconBtn';
-import { Slider } from './components/ui/slider';
+
 import { cn } from './lib/utils';
 import {
   Sidebar,
@@ -77,9 +77,6 @@ export function App() {
   // Mosaico vs Enfocado
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [focusedName, setFocusedName] = useState<string | null>(null);
-
-  // Columnas dinámicas del mosaico (5 por defecto)
-  const [cols, setCols] = useState(5);
 
   // Selección múltiple y control de grupo
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
@@ -376,36 +373,26 @@ export function App() {
                 className="h-8 w-8 rounded-sm"
               />
 
-              {/* Slider de Columnas (min 4, max 12) */}
-              <div className="ml-auto flex items-center gap-3">
-                <div className="flex w-36 shrink-0 items-center gap-2 font-mono text-xs text-muted-foreground">
-                  <Slider
-                    min={4}
-                    max={12}
-                    step={1}
-                    value={[cols]}
-                    onValueChange={(v) => setCols(v[0] ?? 5)}
-                  />
-                  <span className="shrink-0 whitespace-nowrap">{cols} cols</span>
-                </div>
-              </div>
               </div>
             </header>
           )}
 
           {/* Cuerpo Central */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <div className="grid-bg flex-1 overflow-auto p-3.5 pb-24">
+            <div
+              className={cn(
+                'grid-bg flex-1 min-h-0 overflow-hidden p-4',
+                selectedNames.size > 0 && 'pb-14'
+              )}
+            >
               <DeviceGrid
                 instances={filteredInstances}
                 selected={selectedNames}
-                cols={cols}
                 syncMode={groupMode}
                 onToggleSelect={toggleSelect}
                 onOpen={openFocus}
                 onSelectAll={toggleSelectAll}
                 onClearSelection={clearSelection}
-                onOpenCreate={() => setIsCreateOpen(true)}
                 usbOverview={usbOverview}
                 onNetworkChange={fetchUsbOverview}
               />

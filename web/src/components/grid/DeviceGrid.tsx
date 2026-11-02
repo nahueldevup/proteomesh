@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { Smartphone, Plus } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Smartphone } from 'lucide-react';
 import type { Instance, UsbNetworkOverview } from '../../types';
 import DeviceCard, { type UsbSlice } from './DeviceCard';
 
 interface DeviceGridProps {
   instances: Instance[];
   selected: Set<string>;
-  cols: number;
   syncMode?: boolean;
   onToggleSelect: (name: string, shiftKey?: boolean) => void;
   onOpen: (name: string) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
-  onOpenCreate?: () => void;
   usbOverview?: UsbNetworkOverview | null;
   onNetworkChange?: () => void;
 }
@@ -20,33 +18,64 @@ interface DeviceGridProps {
 export default function DeviceGrid({
   instances,
   selected,
-  cols,
   syncMode = false,
   onToggleSelect,
   onOpen,
   onSelectAll,
   onClearSelection,
-  onOpenCreate,
   usbOverview,
   onNetworkChange,
 }: DeviceGridProps) {
   const lastSelectedRef = useRef<string | null>(null);
+  const [focusedInstance, setFocusedInstance] = useState<string | null>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Atajos de teclado: Ctrl+A / Cmd+A para seleccionar todo, Esc para deseleccionar
+  // Si la selección global se vacía, liberar también el foco
+  useEffect(() => {
+    if (selected.size === 0) {
+      setFocusedInstance(null);
+    }
+  }, [selected.size]);
+
+  // Llevar a vista el teléfono enfocado sin smooth scroll durante arrastres
+  useEffect(() => {
+    if (!focusedInstance) return;
+    const el = cardRefs.current.get(focusedInstance);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [focusedInstance]);
+
+  // Atajos de teclado: Ctrl+A para todo; Esc en cascada (1º libera foco, 2º limpia selección)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
+
+      // No capturar Ctrl+A cuando el canvas de scrcpy tiene el foco: en ese
+      // contexto el usuario espera seleccionar texto dentro de Android.
+      const target = e.target as HTMLElement | null;
+      const active = document.activeElement as HTMLElement | null;
+      const insideLiveScreen =
+        target?.closest?.('[data-live-screen]') != null ||
+        active?.closest?.('[data-live-screen]') != null;
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (insideLiveScreen) return;
         e.preventDefault();
         onSelectAll();
       }
       if (e.key === 'Escape' && !document.querySelector('[role="dialog"][data-state="open"]')) {
-        onClearSelection();
+        if (focusedInstance !== null) {
+          e.preventDefault();
+          setFocusedInstance(null);
+        } else {
+          onClearSelection();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onSelectAll, onClearSelection]);
+  }, [onSelectAll, onClearSelection, focusedInstance]);
 
   const usbFor = (name: string): UsbSlice => {
     const offer = usbOverview?.pending_offer?.instance === name ? usbOverview.pending_offer : null;
@@ -90,12 +119,7 @@ export default function DeviceGrid({
   }
 
   return (
-    <div
-      className="grid gap-3 transition-all duration-200"
-      style={{
-        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-      }}
-    >
+    <div className="flex h-full w-full items-center gap-4 overflow-x-auto overflow-y-hidden select-none scrollbar-stable">
       {instances.map((instance, index) => (
         <DeviceCard
           key={instance.instance_name}
@@ -107,23 +131,15 @@ export default function DeviceGrid({
           onOpen={onOpen}
           usb={usbFor(instance.instance_name)}
           onNetworkChange={onNetworkChange}
+          isFocused={focusedInstance === instance.instance_name}
+          onFocus={(name) => setFocusedInstance(name)}
+          onReleaseFocus={() => setFocusedInstance(null)}
+          domRef={(el) => {
+            if (el) cardRefs.current.set(instance.instance_name, el);
+            else cardRefs.current.delete(instance.instance_name);
+          }}
         />
       ))}
-      {onOpenCreate && (
-        <button
-          type="button"
-          onClick={onOpenCreate}
-          className="group flex h-full min-h-[220px] w-full flex-col items-center justify-center rounded-sm border border-dashed border-device-card-border bg-new-card p-2 text-muted-foreground shadow-xs transition-all hover:border-primary/60 hover:bg-accent/70 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          title="Crear nuevo CloudPhone"
-        >
-          <div className="grid h-8 w-8 place-items-center rounded-md border border-device-card-border transition-colors group-hover:border-primary/50 group-hover:bg-primary/10">
-            <Plus className="h-4 w-4" />
-          </div>
-          <span className="mt-2 font-mono text-[9px] font-semibold tracking-wider uppercase opacity-70 group-hover:opacity-100">
-            + Nuevo
-          </span>
-        </button>
-      )}
     </div>
   );
 }

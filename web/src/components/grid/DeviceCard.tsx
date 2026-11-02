@@ -1,10 +1,11 @@
-import { memo, useEffect, useState, useRef } from 'react';
-import { Router, ShieldAlert, RotateCw, Loader2, ArrowRightLeft, Bell, MapPin } from 'lucide-react';
+import { memo, useCallback, useEffect, useState, useRef } from 'react';
+import { Router, ShieldAlert, RotateCw, Loader2, ArrowRightLeft, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Instance, PendingOffer, UsbPhysicalPhone } from '../../types';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { PhoneScreen } from '../farm/PhoneScreen';
+import { ScrcpyLiveScreen } from '../farm/ScrcpyLiveScreen';
 
 export interface UsbSlice {
   isOffered: boolean;
@@ -23,6 +24,10 @@ interface DeviceCardProps {
   syncMode?: boolean;
   usb: UsbSlice;
   onNetworkChange?: () => void;
+  isFocused?: boolean;
+  onFocus?: (name: string) => void;
+  onReleaseFocus?: () => void;
+  domRef?: React.Ref<HTMLDivElement>;
 }
 
 function DeviceCard({
@@ -34,6 +39,10 @@ function DeviceCard({
   syncMode = false,
   usb,
   onNetworkChange,
+  isFocused = false,
+  onFocus,
+  onReleaseFocus,
+  domRef,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
   const [actionStatus, setActionStatus] = useState<'idle' | 'rotating' | 'claiming' | 'quarantining' | 'declining'>('idle');
@@ -42,9 +51,23 @@ function DeviceCard({
   const [offerDismissed, setOfferDismissed] = useState(false);
   const [offerCountdown, setOfferCountdown] = useState<number | null>(null);
 
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(true);
   const lastOfferExpiresAtRef = useRef<number | null>(null);
+  const domRefRef = useRef(domRef);
+  useEffect(() => {
+    domRefRef.current = domRef;
+  }, [domRef]);
+
+  const setRefs = useCallback((el: HTMLDivElement | null) => {
+    cardRef.current = el;
+    const d = domRefRef.current;
+    if (typeof d === 'function') {
+      d(el);
+    } else if (d) {
+      (d as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    }
+  }, []);
 
   // Pausar actualización periódica de pantalla cuando la tarjeta está fuera del viewport
   useEffect(() => {
@@ -267,25 +290,51 @@ function DeviceCard({
     }
   };
 
+  const nativeWidth = Number(instance.display?.width) || 720;
+  const nativeHeight = Number(instance.display?.height) || 1560;
+
   return (
     <div
-      ref={cardRef}
-      onClick={(e) => onToggleSelect(instance.instance_name, e.shiftKey)}
+      ref={setRefs}
+      onClick={(e) => {
+        onToggleSelect(instance.instance_name, e.shiftKey);
+        if (instance.running) {
+          onFocus?.(instance.instance_name);
+        }
+      }}
       onDoubleClick={() => onOpen(instance.instance_name)}
       onContextMenu={handleContextMenu}
       className={cn(
-        'group relative cursor-pointer select-none rounded-sm border border-device-card-border bg-device-card p-1 text-device-card-foreground shadow-xs transition-all dark:border-t-white/15 dark:shadow-[0_2px_8px_rgba(0,0,0,0.4)]',
-        selected ? 'border-primary ring-1 ring-primary glow-selected' : 'hover:border-foreground/40'
+        'h-full rounded-sm bg-bezel p-1 border flex items-center justify-center shrink-0 cursor-pointer select-none transition-all',
+        isFocused
+          ? 'border-primary ring-2 ring-primary glow-selected shadow-md'
+          : selected
+          ? 'border-primary ring-1 ring-primary glow-selected'
+          : 'border-border hover:border-foreground/40'
       )}
     >
-      <div className="relative aspect-[9/19.5] overflow-hidden rounded-xs bg-black [container-type:inline-size]">
+      <div
+        style={{ aspectRatio: `${nativeWidth} / ${nativeHeight}` }}
+        className="relative h-full overflow-hidden rounded-xs bg-black border border-border/40 select-none flex flex-col"
+      >
+        {/* Thumbnail estático subyacente */}
         <PhoneScreen
           instance={instance}
-          interactive={syncMode && selected}
+          interactive={syncMode && selected && !isFocused}
           compact
           tick={tick}
           onTap={handleScreenTap}
         />
+
+        {/* Live Scrcpy Stream cuando la tarjeta está enfocada (Lazy: solo 1 activa a 30 FPS) */}
+        {isFocused && instance.running && (
+          <ScrcpyLiveScreen
+            instance={instance}
+            isFocused={isFocused}
+            onReleaseFocus={() => onReleaseFocus?.()}
+            visible={isVisible}
+          />
+        )}
 
         {/* Slot index tag */}
         <span className="absolute left-1 top-1 rounded-xs bg-black/90 border border-white/20 px-1.5 py-px font-mono text-[9px] font-bold text-white shadow-xs z-20 select-none">
@@ -517,95 +566,6 @@ function DeviceCard({
           </div>
         )}
       </div>
-
-      {/* Footer inferior en 2 renglones limpios */}
-      <div className="px-1.5 pt-1.5 pb-0.5 space-y-1 font-mono text-[10px]">
-        {/* Renglón 1: Dot estado + Nombre + Puerto + Botón Router + Botón Campanita */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span
-            className={cn(
-              'h-1.5 w-1.5 shrink-0 rounded-full',
-              instance.running ? 'bg-success' : 'bg-muted-foreground/30'
-            )}
-          />
-          <span className="truncate flex-1 text-device-card-foreground font-semibold" title={instance.instance_name}>
-            {instance.instance_name}
-          </span>
-
-          <span className="shrink-0 text-device-card-muted text-[9px]">
-            :{instance.adb_port}
-          </span>
-
-          {instance.running && (
-            <div className="flex items-center gap-1 shrink-0 ml-0.5">
-              {/* Botón Router */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowRouterPopover((prev) => !prev);
-                  setShowBellPopover(false);
-                }}
-                className={cn(
-                  'h-5.5 w-5.5 flex items-center justify-center rounded-xs border transition-colors',
-                  assignedDev
-                    ? 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
-                    : 'bg-card text-muted-foreground border-border hover:text-foreground hover:bg-muted'
-                )}
-                title="Opciones de Red USB Módem (Rotar IP / Soltar)"
-              >
-                <Router className="h-3 w-3" />
-              </button>
-
-              {/* Botón Campanita */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowBellPopover((prev) => !prev);
-                  setShowRouterPopover(false);
-                  if (isOffered) {
-                    setOfferDismissed(false);
-                  }
-                }}
-                className={cn(
-                  'h-5.5 w-5.5 flex items-center justify-center rounded-xs border transition-colors relative',
-                  isOffered
-                    ? 'bg-primary text-primary-foreground border-primary animate-pulse'
-                    : isWaiting
-                    ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20'
-                    : 'bg-card text-muted-foreground/60 border-border hover:text-foreground hover:bg-muted'
-                )}
-                title={
-                  isOffered
-                    ? `¡Oferta activa de módem! Turno: ${offerCountdown ?? 5}s`
-                    : isWaiting
-                    ? `En cola FIFO (Turno #${waitingPos})`
-                    : 'Notificaciones y Turnos de Red'
-                }
-              >
-                <Bell className="h-3 w-3" />
-                {isOffered && (
-                  <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-background" />
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Renglón 2: Ubicación completa sin truncarse */}
-        {(instance.location?.custom_name || instance.location?.city) && (
-          <div className="flex items-center gap-1 text-[9px] text-device-card-muted font-sans truncate">
-            <MapPin className="h-2.5 w-2.5 text-primary shrink-0" />
-            <span
-              className="truncate text-device-card-foreground/85 font-medium"
-              title={instance.location.custom_name || instance.location.city}
-            >
-              {instance.location.custom_name || instance.location.city}
-            </span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -617,7 +577,10 @@ function areDeviceCardPropsEqual(prev: DeviceCardProps, next: DeviceCardProps): 
     prev.syncMode !== next.syncMode ||
     prev.onToggleSelect !== next.onToggleSelect ||
     prev.onOpen !== next.onOpen ||
-    prev.onNetworkChange !== next.onNetworkChange
+    prev.onNetworkChange !== next.onNetworkChange ||
+    prev.isFocused !== next.isFocused ||
+    prev.onFocus !== next.onFocus ||
+    prev.onReleaseFocus !== next.onReleaseFocus
   ) {
     return false;
   }
@@ -643,6 +606,8 @@ function areDeviceCardPropsEqual(prev: DeviceCardProps, next: DeviceCardProps): 
     pi.instance_name !== ni.instance_name ||
     pi.running !== ni.running ||
     pi.adb_port !== ni.adb_port ||
+    pi.display?.width !== ni.display?.width ||
+    pi.display?.height !== ni.display?.height ||
     pi.carrier !== ni.carrier ||
     pi.docker_status !== ni.docker_status ||
     pi.identity?.phone_number !== ni.identity?.phone_number ||
