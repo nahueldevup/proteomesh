@@ -9,6 +9,7 @@ import {
   Moon,
   Usb,
   Clock,
+  FolderArchive,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -44,9 +45,12 @@ const UsbNetworkCenter = lazy(() => import('./components/network/UsbNetworkCente
 const CustomLocationsManager = lazy(() =>
   import('./components/locations/CustomLocationsManager').then((m) => ({ default: m.CustomLocationsManager }))
 );
+const ApkFileManager = lazy(() =>
+  import('./components/files/ApkFileManager').then((m) => ({ default: m.default }))
+);
 
 type ViewMode = 'grid' | 'focus';
-type NavTab = 'instances' | 'network' | 'locations';
+type NavTab = 'instances' | 'network' | 'locations' | 'files';
 
 const NO_INSTANCES: Instance[] = [];
 
@@ -277,6 +281,14 @@ export function App() {
                       onClick={() => setActiveNav('locations')}
                     />
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      icon={FolderArchive}
+                      label="APKs y Archivos"
+                      active={activeNav === 'files'}
+                      onClick={() => setActiveNav('files')}
+                    />
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroup>
             </SidebarContent>
@@ -435,6 +447,14 @@ export function App() {
               onSelectInstance={(name) => {
                 openFocus(name);
               }}
+            />
+          )}
+
+          {/* Pestaña: Repositorio de APKs y Gestor de archivos (WEB-017) */}
+          {activeNav === 'files' && (
+            <ApkFileManager
+              instances={instances}
+              onRefreshInstances={fetchInstances}
             />
           )}
 

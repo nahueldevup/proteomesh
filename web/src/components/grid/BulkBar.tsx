@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Power,
   RotateCw,
@@ -22,8 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
 import { useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
-import { getErrorMessage } from '../../lib/utils';
-import type { LocationData } from '../../types';
+import { cn, getErrorMessage } from '../../lib/utils';
+import type { LocationData, ApkEntry } from '../../types';
 import { toast } from 'sonner';
 
 interface BulkBarProps {
@@ -53,7 +53,10 @@ export default function BulkBar({
   const [urlValue, setUrlValue] = useState('');
 
   const [apkOpen, setApkOpen] = useState(false);
-  const [apkValue, setApkValue] = useState('');
+  const [apks, setApks] = useState<ApkEntry[]>([]);
+  const [apksLoading, setApksLoading] = useState(false);
+  const [selectedApkId, setSelectedApkId] = useState<number | null>(null);
+  const [installingApk, setInstallingApk] = useState(false);
 
   const [gpsOpen, setGpsOpen] = useState(false);
   const { data: catalog = EMPTY_CATALOG } = useLocationsCatalog({ enabled: gpsOpen });
@@ -61,6 +64,25 @@ export default function BulkBar({
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    if (!apkOpen) return;
+    let cancelled = false;
+    setApksLoading(true);
+    api.getApks()
+      .then((data) => {
+        if (!cancelled) setApks(data);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(`Error al cargar APKs: ${getErrorMessage(err)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setApksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apkOpen]);
 
   const count = selectedNames.length;
   if (count === 0) return null;
@@ -150,11 +172,24 @@ export default function BulkBar({
   };
 
   const handleInstallApk = async () => {
-    if (!apkValue.trim()) return;
-    const apk = apkValue.trim();
-    setApkOpen(false);
-    setApkValue('');
-    toast.info(`Despliegue de paquete iniciado para ${count} dispositivos: ${apk}`);
+    if (selectedApkId === null) {
+      toast.error('Seleccioná un APK del repositorio');
+      return;
+    }
+    setInstallingApk(true);
+    try {
+      const results = await api.installApks(selectedApkId, selectedNames);
+      const ok = results.filter((r) => r.ok && r.status === 'ok').length;
+      const skipped = results.filter((r) => r.status === 'skipped').length;
+      const failed = results.filter((r) => !r.ok && r.status === 'failed').length;
+      toast.success(`Instalación: ${ok} ok, ${skipped} omitidas, ${failed} fallos`);
+      setApkOpen(false);
+      onRefresh();
+    } catch (err) {
+      toast.error(`Error al instalar APK: ${getErrorMessage(err)}`);
+    } finally {
+      setInstallingApk(false);
+    }
   };
 
   const handleSetGps = async (loc: LocationData) => {
@@ -333,20 +368,42 @@ export default function BulkBar({
                 variant={apkOpen ? 'active' : 'ghost'}
               />
           </PopoverTrigger>
-          <PopoverContent side="top" className="w-72 p-2">
-            <div className="mb-2 text-xs text-muted-foreground">Instalar app</div>
-            <div className="flex gap-1">
-              <input
-                type="text"
-                autoFocus
-                value={apkValue}
-                onChange={(e) => setApkValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleInstallApk()}
-                placeholder="Nombre del APK o enlace…"
-                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm"
-              />
-              <IconBtn icon={Send} label="Instalar" variant="primary" onClick={handleInstallApk} />
-            </div>
+          <PopoverContent side="top" className="w-80 p-2">
+            <div className="mb-2 text-xs font-bold text-foreground">Instalar APK del repositorio</div>
+            {apksLoading ? (
+              <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Cargando…
+              </div>
+            ) : apks.length === 0 ? (
+              <div className="py-2 text-xs text-muted-foreground">No hay APKs disponibles.</div>
+            ) : (
+              <div className="mb-2 max-h-40 overflow-y-auto space-y-1">
+                {apks.map((apk) => (
+                  <button
+                    key={apk.id}
+                    type="button"
+                    onClick={() => setSelectedApkId(apk.id)}
+                    className={cn(
+                      'w-full rounded-xs border px-2 py-1 text-left text-xs transition-colors',
+                      selectedApkId === apk.id
+                        ? 'border-primary bg-primary/20 text-foreground font-semibold'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                    )}
+                  >
+                    <div className="truncate">{apk.original_name}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">{apk.package}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <IconBtn
+              icon={installingApk ? Loader2 : Send}
+              label="Instalar en seleccionados"
+              variant="primary"
+              disabled={selectedApkId === null || apks.length === 0 || installingApk}
+              onClick={handleInstallApk}
+              className={installingApk ? 'animate-spin' : ''}
+            />
           </PopoverContent>
         </Popover>
 

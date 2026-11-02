@@ -271,3 +271,31 @@ export interface AssignedUsb {
   gateway?: string;
   carrier?: string;
 }
+
+// WEB-017: Repositorio de APKs y Gestor de archivos
+export interface ApkEntry {
+  id: number;
+  sha256: string;
+  original_name: string;
+  package: string;
+  version_name: string;
+  version_code: number;
+  size: number;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size: number;
+  mtime: number;
+}
+
+export interface InstallResult {
+  instance: string;
+  ok: boolean;
+  status: 'ok' | 'failed' | 'skipped';
+  error?: string | null;
+}

@@ -21,6 +21,9 @@ import type {
   CustomLocation,
   LocationGroup,
   CustomLocationsCatalog,
+  ApkEntry,
+  FileEntry,
+  InstallResult,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -393,6 +396,117 @@ export const api = {
     const results = await Promise.allSettled(instances.map((name) => api.setInstanceLocation(name, payload)));
     const success = results.filter((r) => r.status === 'fulfilled').length;
     return { success, failed: results.length - success };
+  },
+
+  // ── Repositorio de APKs (WEB-017) ────────────────────────────────────────
+  async getApks(): Promise<ApkEntry[]> {
+    const res = await fetch(`${API_BASE}/apks`);
+    return handleResponse<ApkEntry[]>(res);
+  },
+
+  async uploadApk(file: File, onProgress?: (percent: number) => void): Promise<ApkEntry> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/apks`);
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+      }
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText) as ApkEntry);
+        } else {
+          let detail = `HTTP ${xhr.status}`;
+          try {
+            const data = JSON.parse(xhr.responseText);
+            detail = data.detail || data.message || detail;
+          } catch {
+            // ignore
+          }
+          reject(new Error(detail));
+        }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Error de red al subir APK')));
+      xhr.send(form);
+    });
+  },
+
+  async deleteApk(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/apks/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  },
+
+  async setDefaultApks(ids: number[]): Promise<{ marked: number }> {
+    const res = await fetch(`${API_BASE}/apks/defaults`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    return handleResponse<{ marked: number }>(res);
+  },
+
+  async installApks(apkId: number, instances: string[]): Promise<InstallResult[]> {
+    const res = await fetch(`${API_BASE}/apks/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apk_id: apkId, instances }),
+    });
+    return handleResponse<InstallResult[]>(res);
+  },
+
+  // ── Gestor de archivos (WEB-017) ─────────────────────────────────────────
+  async listFiles(instance: string, path: string): Promise<FileEntry[]> {
+    const q = new URLSearchParams({ instance, path });
+    const res = await fetch(`${API_BASE}/files?${q.toString()}`);
+    return handleResponse<FileEntry[]>(res);
+  },
+
+  async uploadFile(instance: string, path: string, file: File): Promise<FileEntry> {
+    const q = new URLSearchParams({ instance, path });
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/files/upload?${q.toString()}`, {
+      method: 'POST',
+      body: form,
+    });
+    return handleResponse<FileEntry>(res);
+  },
+
+  async downloadFile(instance: string, path: string): Promise<Blob> {
+    const q = new URLSearchParams({ instance, path });
+    const res = await fetch(`${API_BASE}/files/download?${q.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  },
+
+  async deleteFile(instance: string, path: string): Promise<void> {
+    const q = new URLSearchParams({ instance, path });
+    const res = await fetch(`${API_BASE}/files?${q.toString()}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  },
+
+  async sendFile(
+    sourceInstance: string,
+    sourcePath: string,
+    targetInstance: string,
+    targetPath: string
+  ): Promise<FileEntry> {
+    const res = await fetch(`${API_BASE}/files/send-to`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_instance: sourceInstance,
+        source_path: sourcePath,
+        target_instance: targetInstance,
+        target_path: targetPath,
+      }),
+    });
+    return handleResponse<FileEntry>(res);
   },
 
 };
