@@ -108,9 +108,6 @@ def validate_phone_path(instance_name: str, path: str) -> str:
     if not matched_root:
         raise PathValidationError("Ruta fuera de las raíces permitidas")
 
-    if norm == matched_root:
-        raise PathValidationError("No se permite operar sobre la raíz en sí")
-
     # Validación real con realpath dentro del teléfono
     serial = _adb_serial_or_raise(instance_name)
     try:
@@ -132,7 +129,8 @@ def validate_phone_path(instance_name: str, path: str) -> str:
 
 def _stat_entry(serial: str, path: str) -> Tuple[str, int, int]:
     """Devuelve (tipo, tamaño, mtime) para una ruta dada."""
-    out = _adb_shell_output(serial, "stat", "-c", "%F|%s|%Y", "--", path).strip()
+    # El formato va entre comillas para proteger el '|' del shell del teléfono.
+    out = _adb_shell_output(serial, "stat", "-c", "'%F|%s|%Y'", "--", path).strip()
     type_, size, mtime = out.split("|")
     return type_, int(size), int(mtime)
 
@@ -270,9 +268,16 @@ def download_file(instance_name: str, path: str) -> bytes:
     return res.stdout
 
 
+def _is_root_path(path: str) -> bool:
+    norm = posixpath.normpath(path)
+    return any(norm == posixpath.normpath(root) for root in ALLOWED_FILE_ROOTS)
+
+
 def delete_file(instance_name: str, path: str) -> Dict[str, str]:
     """Elimina un archivo regular dentro de una ruta permitida."""
     norm = validate_phone_path(instance_name, path)
+    if _is_root_path(norm):
+        raise FileManagerError("No se permite eliminar una raíz")
     serial = _adb_serial_or_raise(instance_name)
 
     type_, _, _ = _stat_entry(serial, norm)
