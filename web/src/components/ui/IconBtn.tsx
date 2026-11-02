@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ComponentType } from 'react
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
 import { cn } from '../../lib/utils';
 
-export type IconBtnVariant = 'ghost' | 'solid' | 'primary' | 'danger' | 'success' | 'active';
+export type IconBtnVariant = 'ghost' | 'solid' | 'primary' | 'danger' | 'success' | 'active' | 'warning';
 
 const variants: Record<IconBtnVariant, string> = {
   ghost: 'text-foreground/80 hover:text-foreground hover:bg-muted',
@@ -11,6 +11,7 @@ const variants: Record<IconBtnVariant, string> = {
   danger: 'text-destructive hover:bg-destructive/15',
   success: 'text-success hover:bg-success/15',
   active: 'bg-primary/20 text-foreground ring-1 ring-primary/60 font-semibold',
+  warning: 'text-warning hover:bg-warning/15',
 };
 
 interface IconBtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {

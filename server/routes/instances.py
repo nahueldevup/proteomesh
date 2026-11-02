@@ -28,6 +28,7 @@ from server.services.manager_bridge import (
     create_instance_async,
     start_instance_async,
     stop_instance_async,
+    restart_instance_async,
     delete_instance_async,
     check_health_sync,
     launch_native_scrcpy,
@@ -119,6 +120,17 @@ async def stop_instance(name: str):
     """Detiene y elimina el contenedor Docker (los datos en /data se preservan intactos)."""
     try:
         return await stop_instance_async(name)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/restart", response_model=Dict[str, Any], summary="Reiniciar contenedor Docker de la instancia")
+async def restart_instance(name: str):
+    """Reinicia el contenedor Docker de forma asíncrona."""
+    try:
+        return await restart_instance_async(name)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:

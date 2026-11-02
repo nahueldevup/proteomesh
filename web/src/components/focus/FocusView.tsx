@@ -5,23 +5,12 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Power,
-  Volume2,
-  Volume1,
-  Triangle,
-  Circle,
-  Square,
-  Camera,
   Smartphone,
-  Type,
-  Link2,
   ExternalLink,
   MapPin,
   CheckCircle2,
-  Send,
   Loader2,
   Navigation,
-  Trash2,
   Sun,
   Moon,
   Monitor,
@@ -36,6 +25,7 @@ import {
   Pin,
   Search,
   X,
+  Camera,
 } from 'lucide-react';
 import type {
   Instance,
@@ -47,9 +37,9 @@ import type {
 import { api } from '../../lib/api';
 import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { InteractiveScreen } from './InteractiveScreen';
 import { ScrcpyLiveScreen } from '../farm/ScrcpyLiveScreen';
+import { DeviceControlRail } from '../grid/DeviceControlRail';
 import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
@@ -76,8 +66,8 @@ export default function FocusView({
   instances,
   onBack,
   onSelectInstance,
-  groupInstances = [],
-  groupMode = false,
+  groupInstances: _groupInstances = [],
+  groupMode: _groupMode = false,
   onChanged,
   theme,
   onToggleTheme,
@@ -86,11 +76,6 @@ export default function FocusView({
   const [activeTab, setActiveTab] = useState<SubTab>('gps');
 
   // Popovers state
-  const [textOpen, setTextOpen] = useState(false);
-  const [textValue, setTextValue] = useState('');
-  const [urlOpen, setUrlOpen] = useState(false);
-  const [urlValue, setUrlValue] = useState('');
-
   // Map & Custom Location state
   const [mapLat, setMapLat] = useState(-34.603722);
   const [mapLon, setMapLon] = useState(-58.381592);
@@ -152,26 +137,7 @@ export default function FocusView({
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthReport, setHealthReport] = useState<{ ok: boolean; reports: string[] } | null>(null);
 
-  // Delete instance confirmation state
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [deletingInstance, setDeletingInstance] = useState(false);
   const [streamMode, setStreamMode] = useState<'scrcpy' | 'canvas'>('scrcpy');
-
-  const handleDeleteThisInstance = async () => {
-    if (!instance) return;
-    setDeletingInstance(true);
-    try {
-      await api.deleteInstance(instance.instance_name);
-      toast.success(`CloudPhone "${instance.instance_name}" eliminado correctamente`);
-      setConfirmDeleteOpen(false);
-      onChanged?.();
-      onBack();
-    } catch (err) {
-      toast.error(`Error al eliminar: ${getErrorMessage(err)}`);
-    } finally {
-      setDeletingInstance(false);
-    }
-  };
 
   useEffect(() => {
     if (!instance) return;
@@ -239,81 +205,8 @@ export default function FocusView({
     if (nextInst) onSelectInstance(nextInst.instance_name);
   };
 
-  const grouped = groupMode && groupInstances.length > 1;
   const nativeWidth = Number(instance.display?.width) || 1080;
   const nativeHeight = Number(instance.display?.height) || 2340;
-
-  const sendKey = async (key: string, label: string) => {
-    try {
-      if (grouped) await api.groupKey(groupInstances, key);
-      else await api.sendKey(instance.instance_name, key);
-      toast.success(`Tecla ${label} enviada`);
-    } catch {
-      toast.error('Error al enviar comando');
-    }
-  };
-
-  const handleTogglePower = async () => {
-    const toastId = toast.loading(instance.running ? 'Apagando…' : 'Encendiendo…');
-    try {
-      if (instance.running) {
-        await api.stopInstance(instance.instance_name);
-        toast.success('Dispositivo apagado', { id: toastId });
-      } else {
-        await api.startInstance(instance.instance_name);
-        toast.success('Dispositivo encendido', { id: toastId });
-      }
-      onChanged();
-    } catch (e) {
-      toast.error(e instanceof Error ? getErrorMessage(e) : 'Error al cambiar estado', { id: toastId });
-    }
-  };
-
-  const handleDownload = async () => {
-    try {
-      const blob = await api.getScreenshot(instance.instance_name);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${instance.instance_name}-${Date.now()}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Captura guardada');
-    } catch {
-      toast.error('Error al capturar pantalla');
-    }
-  };
-
-  const handleSendText = async () => {
-    if (!textValue.trim()) return;
-    const txt = textValue.trim();
-    setTextOpen(false);
-    setTextValue('');
-    try {
-      if (grouped) await api.groupText(groupInstances, txt);
-      else await api.sendText(instance.instance_name, txt);
-      toast.success('Texto enviado');
-    } catch {
-      toast.error('Error al enviar texto');
-    }
-  };
-
-  const handleSendUrl = async () => {
-    if (!urlValue.trim()) return;
-    let url = urlValue.trim();
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-    setUrlOpen(false);
-    setUrlValue('');
-    try {
-      if (grouped) await api.groupLaunchUrl(groupInstances, url);
-      else await api.launchUrl(instance.instance_name, url);
-      toast.success('URL abierta');
-    } catch {
-      toast.error('Error al abrir URL');
-    }
-  };
 
   const handleLaunchNativeScrcpy = async () => {
     if (!instance) return;
@@ -523,6 +416,22 @@ export default function FocusView({
             </div>
           )}
 
+          {instance.running && (
+            <IconBtn
+              icon={Monitor}
+              label="Lanzar Scrcpy de escritorio"
+              onClick={handleLaunchNativeScrcpy}
+            />
+          )}
+
+          {streamInfo?.available && (
+            <IconBtn
+              icon={ExternalLink}
+              label="Abrir scrcpy web en pestaña"
+              onClick={() => window.open(streamInfo.embed_url, '_blank', 'noopener,noreferrer')}
+            />
+          )}
+
           {onToggleTheme && (
             <IconBtn
               icon={theme === 'dark' ? Sun : Moon}
@@ -567,150 +476,15 @@ export default function FocusView({
             </div>
           </div>
 
-          {/* Barra Única Vertical de Control (Con Popovers) */}
-          <div className="flex flex-col gap-1 rounded-sm border border-border bg-card p-1">
-            {/* Encender / Apagar */}
-            <IconBtn
-              icon={Power}
-              label={instance.running ? 'Apagar' : 'Encender'}
-              side="right"
-              onClick={handleTogglePower}
-            />
-
-            {/* Volumen */}
-            <IconBtn
-              icon={Volume2}
-              label="Subir volumen"
-              side="right"
-              disabled={!instance.running}
-              onClick={() => sendKey('volume_up', 'Volumen +')}
-            />
-            <IconBtn
-              icon={Volume1}
-              label="Bajar volumen"
-              side="right"
-              disabled={!instance.running}
-              onClick={() => sendKey('volume_down', 'Volumen -')}
-            />
-
-            {/* Navegación Android */}
-            <IconBtn
-              icon={Triangle}
-              label="Atrás"
-              side="right"
-              className="-rotate-90"
-              disabled={!instance.running}
-              onClick={() => sendKey('back', 'Atrás')}
-            />
-            <IconBtn
-              icon={Circle}
-              label="Inicio"
-              side="right"
-              disabled={!instance.running}
-              onClick={() => sendKey('home', 'Inicio')}
-            />
-            <IconBtn
-              icon={Square}
-              label="Recientes"
-              side="right"
-              disabled={!instance.running}
-              onClick={() => sendKey('recents', 'Recientes')}
-            />
-
-            {/* Captura de Pantalla */}
-            <IconBtn
-              icon={Camera}
-              label="Captura"
-              side="right"
-              disabled={!instance.running}
-              onClick={handleDownload}
-            />
-
-            {/* Escribir texto con Popover */}
-            <Popover open={textOpen} onOpenChange={setTextOpen}>
-              <PopoverTrigger asChild>
-                <IconBtn
-                    icon={Type}
-                    label="Escribir texto"
-                    side="right"
-                    variant={textOpen ? 'active' : 'ghost'}
-                    disabled={!instance.running}
-                  />
-              </PopoverTrigger>
-              <PopoverContent side="right" className="w-72 p-2">
-                <div className="mb-2 text-xs text-muted-foreground font-mono">Escribir vía ADB</div>
-                <div className="flex gap-1">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={textValue}
-                    onChange={(e) => setTextValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                    placeholder="Texto a enviar…"
-                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <IconBtn icon={Send} label="Enviar" variant="primary" onClick={handleSendText} />
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Abrir URL con Popover */}
-            <Popover open={urlOpen} onOpenChange={setUrlOpen}>
-              <PopoverTrigger asChild>
-                <IconBtn
-                    icon={Link2}
-                    label="Abrir URL"
-                    side="right"
-                    variant={urlOpen ? 'active' : 'ghost'}
-                    disabled={!instance.running}
-                  />
-              </PopoverTrigger>
-              <PopoverContent side="right" className="w-72 p-2">
-                <div className="mb-2 text-xs text-muted-foreground font-mono">Abrir enlace en Chrome</div>
-                <div className="flex gap-1">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={urlValue}
-                    onChange={(e) => setUrlValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendUrl()}
-                    placeholder="https://…"
-                    className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <IconBtn icon={Send} label="Abrir" variant="primary" onClick={handleSendUrl} />
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Lanzar Scrcpy Nativo para baja latencia extrema (Ventana externa) */}
-            <IconBtn
-              icon={Monitor}
-              label="Lanzar Scrcpy de escritorio (ventana nativa)"
-              side="right"
-              disabled={!instance.running}
-              onClick={handleLaunchNativeScrcpy}
-            />
-
-            {/* Visor scrcpy web en pestaña dedicada (opcional) */}
-            {streamInfo?.available && (
-              <IconBtn
-                icon={ExternalLink}
-                label="Abrir scrcpy web en pestaña"
-                side="right"
-                onClick={() => window.open(streamInfo.embed_url, '_blank', 'noopener,noreferrer')}
-              />
-            )}
-
-            {/* Eliminar CloudPhone */}
-            <div className="my-1 h-px bg-border/60" />
-            <IconBtn
-              icon={Trash2}
-              label="Eliminar CloudPhone"
-              variant="danger"
-              side="right"
-              onClick={() => setConfirmDeleteOpen(true)}
-            />
-          </div>
+          {/* Barra vertical unificada de control (Ticket 2) */}
+          <DeviceControlRail
+            mode="focus"
+            instance={instance}
+            networkState={networkState}
+            onBack={onBack}
+            onChanged={onChanged}
+            onNetworkChange={fetchNetworkState}
+          />
         </div>
 
         {/* Columna Derecha: Tarjeta de Metadatos + Módulos Interactivos */}
@@ -1381,14 +1155,6 @@ export default function FocusView({
         </div>
       </div>
 
-      {/* Modal de confirmación para eliminar este CloudPhone (Portal en document.body con backdrop dismiss y diseño fino) */}
-      <ConfirmDeleteModal
-        isOpen={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        onConfirm={handleDeleteThisInstance}
-        instances={instance ? [instance.instance_name] : []}
-        busy={deletingInstance}
-      />
     </div>
   );
 }

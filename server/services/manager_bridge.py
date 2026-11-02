@@ -362,7 +362,16 @@ async def stop_instance_async(name: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    return {"status": "ok", "instance": name, "message": "Instancia detenida"}
+    return {"status": "ok", "message": f"Instancia '{name}' detenida"}
+
+
+async def restart_instance_async(name: str) -> Dict[str, Any]:
+    """Detiene y vuelve a iniciar una instancia de manera asíncrona."""
+    try:
+        await stop_instance_async(name)
+    except Exception:
+        pass
+    return await start_instance_async(name)
 
 
 async def delete_instance_async(name: str) -> Dict[str, Any]:
@@ -930,6 +939,7 @@ def get_scrcpy_stream_info(name: str, player: str = "mse") -> Dict[str, Any]:
         "udid": udid,
         "player": player,
         "ws": inner_ws,
+        "captureKeyboard": "true",
     })
     available = is_ws_scrcpy_running(base)
     if not available:

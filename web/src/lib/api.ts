@@ -65,6 +65,11 @@ export const api = {
     return handleResponse<unknown>(res);
   },
 
+  async restartInstance(name: string): Promise<unknown> {
+    const res = await fetch(`${API_BASE}/instances/${name}/restart`, { method: 'POST' });
+    return handleResponse<unknown>(res);
+  },
+
   async deleteInstance(name: string): Promise<unknown> {
     const res = await fetch(`${API_BASE}/instances/${name}`, { method: 'DELETE' });
     return handleResponse<unknown>(res);
