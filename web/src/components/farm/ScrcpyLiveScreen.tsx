@@ -24,6 +24,15 @@ export function ScrcpyLiveScreen({
   const isPointerDownRef = useRef(false);
   const backTimeoutRef = useRef<number | null>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const [documentHidden, setDocumentHidden] = useState(() =>
+    typeof document !== 'undefined' ? document.hidden : false
+  );
+
+  useEffect(() => {
+    const onVisibility = () => setDocumentHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const {
     canvasRef,
@@ -41,7 +50,7 @@ export function ScrcpyLiveScreen({
     adbPort: instance.adb_port,
     width: nativeWidth,
     height: nativeHeight,
-    enabled: isFocused && instance.running && visible,
+    enabled: isFocused && instance.running && visible && !documentHidden,
   });
 
   // Al cambiar de instancia (FocusView reutiliza el componente sin key),
