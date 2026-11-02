@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { PhoneScreen } from '../farm/PhoneScreen';
 import { ScrcpyLiveScreen } from '../farm/ScrcpyLiveScreen';
+import { DeviceControlRail } from './DeviceControlRail';
 
 export interface UsbSlice {
   isOffered: boolean;
@@ -305,7 +306,7 @@ function DeviceCard({
       onDoubleClick={() => onOpen(instance.instance_name)}
       onContextMenu={handleContextMenu}
       className={cn(
-        'h-full rounded-sm bg-bezel p-1 border flex items-center justify-center shrink-0 cursor-pointer select-none transition-all',
+        'h-full rounded-sm bg-bezel p-1 border flex items-center justify-center gap-1 shrink-0 cursor-pointer select-none transition-all',
         isFocused
           ? 'border-primary ring-2 ring-primary glow-selected shadow-md'
           : selected
@@ -566,6 +567,9 @@ function DeviceCard({
           </div>
         )}
       </div>
+
+      {/* Riel vertical de control (Ticket 2): hermano de la pantalla, nunca overlay */}
+      <DeviceControlRail visible={isFocused && instance.running} />
     </div>
   );
 }
