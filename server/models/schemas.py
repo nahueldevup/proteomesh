@@ -273,6 +273,7 @@ class InstanceCreateRequest(BaseModel):
     seed: Optional[int] = Field(default=None, description="Semilla determinista")
     limits: Optional[LimitsSchema] = Field(default_factory=LimitsSchema)
     start: bool = Field(default=False, description="Arrancar inmediatamente tras crear")
+    default_apks: Optional[List[int]] = Field(default=None, description="IDs opcionales de APKs a instalar tras el primer arranque")
 
 
 class InstanceResponse(BaseModel):

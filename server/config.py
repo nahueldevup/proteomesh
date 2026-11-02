@@ -13,6 +13,30 @@ BUNDLES_DIR = REPO_ROOT / "bundles"
 DATA_CLEAN_DIR = REPO_ROOT / "data-clean"
 CUSTOM_LOCATIONS_FILE = REPO_ROOT / "custom_locations.json"
 
+# Repositorio global de APKs (WEB-017)
+APK_REPO_DIR = REPO_ROOT / "apk_repo"
+APKS_DB_PATH = INSTANCES_DIR / "apks.db"
+APK_MAX_SIZE_BYTES = 150 * 1024 * 1024  # 150 MB
+AAPT2_CANDIDATES = [
+    REPO_ROOT / ".probe" / "aapt2",
+    Path("/tmp/proteomesh_stubs/tools/aapt2"),
+]
+
+# Gestor de archivos de instancia (WEB-017)
+ALLOWED_FILE_ROOTS = [
+    "/sdcard/Download",
+    "/sdcard/DCIM",
+    "/sdcard/Pictures",
+    "/sdcard/Documents",
+]
+
+def resolve_aapt2_path() -> Path:
+    """Devuelve la primera ruta ejecutable de aapt2 disponible."""
+    for candidate in AAPT2_CANDIDATES:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    raise FileNotFoundError("aapt2 no encontrado")
+
 API_PREFIX = "/api/v1"
 API_TITLE = "ProteoMesh CloudPhone API"
 API_VERSION = "1.0.0"

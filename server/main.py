@@ -32,6 +32,7 @@ from server.routes import (
     proxies_router,
     routes_router,
     network_router,
+    apks_router,
 )
 
 app = FastAPI(
@@ -60,6 +61,7 @@ app.include_router(locations_router, prefix=API_PREFIX)
 app.include_router(proxies_router, prefix=API_PREFIX)
 app.include_router(network_router, prefix=API_PREFIX)
 app.include_router(routes_router, prefix=API_PREFIX)
+app.include_router(apks_router, prefix=API_PREFIX)
 
 
 @app.on_event("startup")
