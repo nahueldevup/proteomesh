@@ -420,11 +420,18 @@ export function useScrcpyStream({
           return;
         }
       } catch {
-        // fallthrough
+        // fallthrough: el navegador no expone isConfigSupported o rechazó prefer-hardware
       }
-      const fallback: VideoDecoderConfig = { codec, optimizeForLatency: true };
-      decoder.configure(fallback);
-      telemetryRef.current.decoderConfig = 'software/no-preference';
+      try {
+        const fallback: VideoDecoderConfig = { codec, optimizeForLatency: true };
+        decoder.configure(fallback);
+        telemetryRef.current.decoderConfig = 'software/no-preference';
+      } catch (err) {
+        console.error('[WebCodecs] Configuración fallback fallida:', err);
+        setStatusAndRef('error');
+        setError('Decoder no pudo configurarse');
+        scheduleReconnect();
+      }
     };
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
