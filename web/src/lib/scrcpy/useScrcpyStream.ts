@@ -11,6 +11,11 @@ import {
 } from './protocol';
 import { clientToVideo } from './coords';
 import { setFpsValue, computeWindowFps } from './fps';
+import {
+  FIRST_FRAME_TIMEOUT_MS,
+  MAX_FIRST_FRAME_TIMEOUT_ATTEMPTS,
+  evaluateFirstFrameTimeout,
+} from './watchdog';
 
 export type ScrcpyStatus =
   | 'idle'
@@ -130,6 +135,9 @@ export function useScrcpyStream({
   const queueHighSinceRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const firstFrameTimeoutTimerRef = useRef<number | null>(null);
+  const firstFrameTimeoutAttemptRef = useRef(0);
+  const prevAdbPortRef = useRef(adbPort);
   const telemetryRef = useRef<ScrcpyTelemetry>(telemetry);
   const sessionStartRef = useRef<number>(0);
   const debugOpenRef = useRef(debugOpen);
@@ -267,10 +275,15 @@ export function useScrcpyStream({
   );
 
   const reconnectNow = useCallback(() => {
+    if (firstFrameTimeoutTimerRef.current !== null) {
+      window.clearTimeout(firstFrameTimeoutTimerRef.current);
+      firstFrameTimeoutTimerRef.current = null;
+    }
     if (reconnectTimerRef.current) {
       window.clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+    firstFrameTimeoutAttemptRef.current = 0;
     reconnectAttemptRef.current = 0;
     setError(null);
     setRetryVersion((v) => v + 1);
@@ -291,6 +304,10 @@ export function useScrcpyStream({
     }
 
     let active = true;
+    if (prevAdbPortRef.current !== adbPort) {
+      prevAdbPortRef.current = adbPort;
+      firstFrameTimeoutAttemptRef.current = 0;
+    }
     sessionStartRef.current = Date.now();
     setHasFirstFrame(false);
     setFpsValue(adbPort, 0);
@@ -322,7 +339,15 @@ export function useScrcpyStream({
       ctxRef.current?.clearRect(0, 0, canvas.width, canvas.height);
     }
 
+    const clearFirstFrameTimer = () => {
+      if (firstFrameTimeoutTimerRef.current !== null) {
+        window.clearTimeout(firstFrameTimeoutTimerRef.current);
+        firstFrameTimeoutTimerRef.current = null;
+      }
+    };
+
     const scheduleReconnect = () => {
+      clearFirstFrameTimer();
       if (!active || reconnectTimerRef.current) return;
       if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
         setStatusAndRef('error');
@@ -339,6 +364,61 @@ export function useScrcpyStream({
         if (!active) return;
         setRetryVersion((v) => v + 1);
       }, delay);
+    };
+
+    const armFirstFrameWatchdog = () => {
+      clearFirstFrameTimer();
+      firstFrameTimeoutTimerRef.current = window.setTimeout(() => {
+        firstFrameTimeoutTimerRef.current = null;
+        if (!active || firstFrameFiredRef.current) return;
+
+        const { nextAttempt, exhausted } = evaluateFirstFrameTimeout(
+          firstFrameTimeoutAttemptRef.current,
+          MAX_FIRST_FRAME_TIMEOUT_ATTEMPTS
+        );
+        firstFrameTimeoutAttemptRef.current = nextAttempt;
+
+        if (exhausted) {
+          console.warn(
+            `[useScrcpyStream] Sin imagen tras ${nextAttempt} intentos de ${FIRST_FRAME_TIMEOUT_MS}ms en :${adbPort}. Deteniendo reintentos automáticos.`
+          );
+          setStatusAndRef('error');
+          const errMsg = 'Sin señal de video tras varios intentos';
+          setError(errMsg);
+          onErrorRef.current?.(new Error(errMsg));
+
+          const currentWs = wsRef.current;
+          if (currentWs) {
+            currentWs.onclose = null;
+            currentWs.onerror = null;
+            currentWs.onmessage = null;
+            try {
+              currentWs.close(1000, 'first-frame-timeout-max');
+            } catch {
+              // Silenciar
+            }
+            wsRef.current = null;
+          }
+          return;
+        }
+
+        console.warn(
+          `[useScrcpyStream] Sin imagen tras ${FIRST_FRAME_TIMEOUT_MS}ms (intento ${nextAttempt}/${MAX_FIRST_FRAME_TIMEOUT_ATTEMPTS} en :${adbPort}). Reconectando...`
+        );
+        const currentWs = wsRef.current;
+        if (currentWs) {
+          currentWs.onclose = null;
+          currentWs.onerror = null;
+          currentWs.onmessage = null;
+          try {
+            currentWs.close(4000, 'first-frame-timeout');
+          } catch {
+            // Silenciar
+          }
+          wsRef.current = null;
+        }
+        scheduleReconnect();
+      }, FIRST_FRAME_TIMEOUT_MS);
     };
 
     const drawPending = () => {
@@ -400,6 +480,8 @@ export function useScrcpyStream({
 
         if (!firstFrameFiredRef.current) {
           firstFrameFiredRef.current = true;
+          clearFirstFrameTimer();
+          firstFrameTimeoutAttemptRef.current = 0;
           setHasFirstFrame(true);
           setStatusAndRef('live');
           reconnectAttemptRef.current = 0;
@@ -455,6 +537,7 @@ export function useScrcpyStream({
     ws.onopen = () => {
       if (!active) return;
       setStatusAndRef('waiting-idr');
+      armFirstFrameWatchdog();
     };
 
     ws.onmessage = (event: MessageEvent) => {
@@ -550,6 +633,7 @@ export function useScrcpyStream({
 
     ws.onclose = () => {
       if (!active) return;
+      clearFirstFrameTimer();
       setStatusAndRef('reconnecting');
       scheduleReconnect();
     };
@@ -570,6 +654,7 @@ export function useScrcpyStream({
 
     return () => {
       active = false;
+      clearFirstFrameTimer();
       if (reconnectTimerRef.current) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
