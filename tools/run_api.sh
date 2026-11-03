@@ -26,4 +26,9 @@ echo "  • Redoc Docs   : http://${HOST}:${PORT}/redoc"
 echo "  • API v1       : http://${HOST}:${PORT}/api/v1"
 echo "================================================================================"
 
-exec "${HOME}/.local/bin/uv" run --python "${VENV_PYTHON}" uvicorn server.main:app --host "${HOST}" --port "${PORT}" --reload
+# Vigilar solo los directorios con código Python de la app. Sin esto, StatReload
+# (watchfiles no instalado) hace polling de todos los .py bajo la raíz, incluido
+# .venv (~1058 archivos), y consume ~33% de un core de forma constante.
+exec "${HOME}/.local/bin/uv" run --python "${VENV_PYTHON}" uvicorn server.main:app \
+    --host "${HOST}" --port "${PORT}" --reload \
+    --reload-dir server --reload-dir tools
