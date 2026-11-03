@@ -12,6 +12,7 @@ instances/*/data/**
 
 # Heavy GApps and APK bundles (> 100 MB, violates GitHub limits)
 apk/
+apk_repo/
 build_gapps/
 
 # Temporary and build artifacts
