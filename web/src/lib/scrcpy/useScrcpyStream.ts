@@ -568,8 +568,34 @@ export function useScrcpyStream({
       setHasFirstFrame(false);
       setFps(0);
 
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      // Desvincular listeners para prevenir callbacks en un componente desmontado
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+
+      if (ws.readyState === WebSocket.CONNECTING) {
+        // Si aún está en handshake, diferir el cierre al onopen para no abortar bruscamente la conexión TCP (causa de ECONNRESET en proxy Vite)
+        const abortTimeout = window.setTimeout(() => {
+          try {
+            ws.close();
+          } catch {
+            // Silenciar
+          }
+        }, 1000);
+        ws.onopen = () => {
+          window.clearTimeout(abortTimeout);
+          try {
+            ws.close(1000, 'unmounted');
+          } catch {
+            // Silenciar
+          }
+        };
+      } else if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.close(1000, 'unmounted');
+        } catch {
+          // Silenciar
+        }
       }
       wsRef.current = null;
 
