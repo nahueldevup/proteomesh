@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useEffect, useState } from 'react';
+import { Component, lazy, memo, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
   Power,
@@ -575,18 +575,20 @@ export const DeviceControlRail = memo(function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 space-y-1.5 font-mono text-xs">
-            <Suspense fallback={<RailPopoverFallback />}>
-              <UsbPopoverContent
-                assignedDev={assignedDev}
-                publicIp={publicIp}
-                actionStatus={actionStatus}
-                isBusy={isBusy}
-                running={running}
-                onRotateIp={handleRotateIp}
-                onQuarantine={handleQuarantine}
-                onClaimUsb={handleClaimUsb}
-              />
-            </Suspense>
+            <RailPopoverErrorBoundary>
+              <Suspense fallback={<RailPopoverFallback />}>
+                <UsbPopoverContent
+                  assignedDev={assignedDev}
+                  publicIp={publicIp}
+                  actionStatus={actionStatus}
+                  isBusy={isBusy}
+                  running={running}
+                  onRotateIp={handleRotateIp}
+                  onQuarantine={handleQuarantine}
+                  onClaimUsb={handleClaimUsb}
+                />
+              </Suspense>
+            </RailPopoverErrorBoundary>
           </PopoverContent>
         </Popover>
 
@@ -611,18 +613,20 @@ export const DeviceControlRail = memo(function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 space-y-1.5 font-mono text-xs">
-            <Suspense fallback={<RailPopoverFallback />}>
-              <TurnsPopoverContent
-                isOffered={isOffered}
-                isWaiting={isWaiting}
-                waitingPos={waitingPos}
-                offerSeconds={offerSeconds}
-                isBusy={isBusy}
-                onClaimUsb={handleClaimUsb}
-                onDeclineOffer={handleDeclineOffer}
-                onCancelWaiting={handleCancelWaiting}
-              />
-            </Suspense>
+            <RailPopoverErrorBoundary>
+              <Suspense fallback={<RailPopoverFallback />}>
+                <TurnsPopoverContent
+                  isOffered={isOffered}
+                  isWaiting={isWaiting}
+                  waitingPos={waitingPos}
+                  offerSeconds={offerSeconds}
+                  isBusy={isBusy}
+                  onClaimUsb={handleClaimUsb}
+                  onDeclineOffer={handleDeclineOffer}
+                  onCancelWaiting={handleCancelWaiting}
+                />
+              </Suspense>
+            </RailPopoverErrorBoundary>
           </PopoverContent>
         </Popover>
 
@@ -655,14 +659,16 @@ export const DeviceControlRail = memo(function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 font-mono text-xs">
-            <Suspense fallback={<RailPopoverFallback />}>
-              <ApkPopoverContent
-                apks={railApks}
-                loading={railApksLoading}
-                installingId={railInstallingId}
-                onInstall={handleInstallApk}
-              />
-            </Suspense>
+            <RailPopoverErrorBoundary>
+              <Suspense fallback={<RailPopoverFallback />}>
+                <ApkPopoverContent
+                  apks={railApks}
+                  loading={railApksLoading}
+                  installingId={railInstallingId}
+                  onInstall={handleInstallApk}
+                />
+              </Suspense>
+            </RailPopoverErrorBoundary>
           </PopoverContent>
         </Popover>
 
@@ -715,4 +721,49 @@ function RailPopoverFallback() {
       Cargando…
     </div>
   );
+}
+
+interface RailPopoverErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface RailPopoverErrorBoundaryState {
+  hasError: boolean;
+}
+
+class RailPopoverErrorBoundary extends Component<
+  RailPopoverErrorBoundaryProps,
+  RailPopoverErrorBoundaryState
+> {
+  state: RailPopoverErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): RailPopoverErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[RailPopoverErrorBoundary] Error cargando popover:', error);
+  }
+
+  handleRetry = () => {
+    this.setState({ hasError: false });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-2 space-y-1.5 text-center font-mono text-xs text-muted-foreground">
+          <p className="text-[10px] text-destructive">Error al cargar contenido</p>
+          <button
+            type="button"
+            onClick={this.handleRetry}
+            className="w-full rounded-xs border border-border bg-card px-2 py-1 text-[10px] font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
