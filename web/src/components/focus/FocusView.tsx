@@ -43,6 +43,7 @@ import { DeviceControlRail } from '../grid/DeviceControlRail';
 import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
+import { useFps } from '../../lib/scrcpy/useFps';
 
 const MapPicker = lazy(() => import('../MapPicker').then((m) => ({ default: m.MapPicker })));
 
@@ -61,6 +62,11 @@ interface FocusViewProps {
 }
 
 type SubTab = 'gps' | 'network' | 'health';
+
+function StreamFpsLabel() {
+  const fps = useFps();
+  return <span>{fps} FPS</span>;
+}
 
 export default function FocusView({
   instance,
@@ -399,7 +405,7 @@ export default function FocusView({
                 title="Streaming Scrcpy nativo (~20ms baja latencia a 30 FPS)"
               >
                 <Zap className="h-3 w-3" />
-                <span>30 FPS</span>
+                <StreamFpsLabel />
               </button>
               <button
                 type="button"

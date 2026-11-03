@@ -10,6 +10,7 @@ import {
   AndroidKeyCode,
 } from './protocol';
 import { clientToVideo } from './coords';
+import { setFpsValue, computeWindowFps } from './fps';
 
 export type ScrcpyStatus =
   | 'idle'
@@ -34,6 +35,7 @@ interface UseScrcpyStreamOptions {
   width?: number;
   height?: number;
   enabled?: boolean;
+  debugOpen?: boolean;
   onFirstFrame?: () => void;
   onError?: (err: Error) => void;
 }
@@ -70,6 +72,7 @@ export function useScrcpyStream({
   width = 720,
   height = 1560,
   enabled = true,
+  debugOpen = false,
   onFirstFrame,
   onError,
 }: UseScrcpyStreamOptions) {
@@ -83,7 +86,6 @@ export function useScrcpyStream({
   const [status, setStatus] = useState<ScrcpyStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [hasFirstFrame, setHasFirstFrame] = useState(false);
-  const [fps, setFps] = useState(0);
   const [retryVersion, setRetryVersion] = useState(0);
   const [telemetry, setTelemetry] = useState<ScrcpyTelemetry>({
     framesPainted: 0,
@@ -130,10 +132,17 @@ export function useScrcpyStream({
   const reconnectAttemptRef = useRef(0);
   const telemetryRef = useRef<ScrcpyTelemetry>(telemetry);
   const sessionStartRef = useRef<number>(0);
+  const debugOpenRef = useRef(debugOpen);
+  const windowFramesRef = useRef(0);
+  const windowStartRef = useRef(0);
 
   useEffect(() => {
-    telemetryRef.current = telemetry;
-  }, [telemetry]);
+    debugOpenRef.current = debugOpen;
+    // Publicar una instantánea inmediata al abrir el panel de debug.
+    if (debugOpen) {
+      setTelemetry({ ...telemetryRef.current });
+    }
+  }, [debugOpen]);
 
   const sendRaw = useCallback((buffer: ArrayBuffer) => {
     const ws = wsRef.current;
@@ -284,7 +293,9 @@ export function useScrcpyStream({
     let active = true;
     sessionStartRef.current = Date.now();
     setHasFirstFrame(false);
-    setFps(0);
+    setFpsValue(0);
+    windowFramesRef.current = 0;
+    windowStartRef.current = Date.now();
     setError(null);
     setStatusAndRef('connecting');
     bufferRef.current = null;
@@ -361,6 +372,7 @@ export function useScrcpyStream({
       ctx.drawImage(frame, 0, 0);
       frame.close();
       telemetryRef.current.framesPainted += 1;
+      windowFramesRef.current += 1;
     };
 
     const decoder = new VideoDecoder({
@@ -544,12 +556,16 @@ export function useScrcpyStream({
 
     const telemetryInterval = window.setInterval(() => {
       if (!active) return;
-      const elapsed = (Date.now() - sessionStartRef.current) / 1000 || 1;
-      telemetryRef.current.fpsPainted = Math.round(
-        telemetryRef.current.framesPainted / elapsed
-      );
-      setFps(telemetryRef.current.fpsPainted);
-      setTelemetry({ ...telemetryRef.current });
+      const now = Date.now();
+      const windowFps = computeWindowFps(windowFramesRef.current, now - windowStartRef.current);
+      windowFramesRef.current = 0;
+      windowStartRef.current = now;
+      telemetryRef.current.fpsPainted = windowFps;
+      setFpsValue(windowFps);
+      // La telemetría detallada solo se publica en state con el panel de debug abierto.
+      if (debugOpenRef.current) {
+        setTelemetry({ ...telemetryRef.current });
+      }
     }, 1000);
 
     return () => {
@@ -566,7 +582,7 @@ export function useScrcpyStream({
       pendingFrameRef.current?.close();
       pendingFrameRef.current = null;
       setHasFirstFrame(false);
-      setFps(0);
+      setFpsValue(0);
 
       // Desvincular listeners para prevenir callbacks en un componente desmontado
       ws.onmessage = null;
@@ -616,7 +632,6 @@ export function useScrcpyStream({
     error,
     isConnected: status !== 'idle' && status !== 'error',
     hasFirstFrame,
-    fps,
     telemetry,
     sendTouch,
     sendScroll,

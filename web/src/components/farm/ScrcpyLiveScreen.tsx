@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Zap } from 'lucide-react';
 import type { Instance } from '../../types';
 import { useScrcpyStream } from '../../lib/scrcpy/useScrcpyStream';
+import { useFps } from '../../lib/scrcpy/useFps';
 import { AndroidKeyCode, TouchAction } from '../../lib/scrcpy/protocol';
 
 interface ScrcpyLiveScreenProps {
@@ -34,12 +35,23 @@ export function ScrcpyLiveScreen({
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  const [debugOpen, setDebugOpen] = useState(false);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setDebugOpen((s) => !s);
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
+
   const {
     canvasRef,
     status,
     error,
     hasFirstFrame,
-    fps,
     telemetry,
     sendTouch,
     sendScroll,
@@ -51,6 +63,7 @@ export function ScrcpyLiveScreen({
     width: nativeWidth,
     height: nativeHeight,
     enabled: isFocused && instance.running && visible && !documentHidden,
+    debugOpen,
   });
 
   // Al cambiar de instancia (FocusView reutiliza el componente sin key),
@@ -281,15 +294,10 @@ export function ScrcpyLiveScreen({
       )}
 
       {/* Badge de FPS real y estado */}
-      {hasFirstFrame && (
-        <span className="absolute left-7 top-1 z-20 inline-flex items-center gap-1 rounded-xs bg-primary text-primary-foreground font-mono text-[8px] font-bold px-1.5 py-px shadow-xs animate-in fade-in duration-150">
-          <Zap className="h-2.5 w-2.5" />
-          {fps} FPS
-        </span>
-      )}
+      {hasFirstFrame && <FpsBadge />}
 
       {/* Panel de telemetría ligero (Ctrl+Shift+D) */}
-      <TelemetryOverlay telemetry={telemetry} />
+      {debugOpen && <TelemetryOverlay telemetry={telemetry} />}
     </div>
   );
 }
@@ -323,22 +331,17 @@ function blockBrowserShortcuts(e: React.KeyboardEvent<HTMLCanvasElement>) {
   }
 }
 
+function FpsBadge() {
+  const fps = useFps();
+  return (
+    <span className="absolute left-7 top-1 z-20 inline-flex items-center gap-1 rounded-xs bg-primary text-primary-foreground font-mono text-[8px] font-bold px-1.5 py-px shadow-xs animate-in fade-in duration-150">
+      <Zap className="h-2.5 w-2.5" />
+      {fps} FPS
+    </span>
+  );
+}
+
 function TelemetryOverlay({ telemetry }: { telemetry: import('../../lib/scrcpy/useScrcpyStream').ScrcpyTelemetry }) {
-  const [show, setShow] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        setShow((s) => !s);
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, []);
-
-  if (!show) return null;
-
   return (
     <div className="absolute right-1 top-6 z-30 min-w-[140px] rounded-xs border border-border bg-black/90 p-1.5 font-mono text-[9px] text-primary-foreground/90 shadow-xs pointer-events-none">
       <div className="flex justify-between gap-2">
