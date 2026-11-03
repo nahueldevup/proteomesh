@@ -366,6 +366,13 @@ async def stop_instance_async(name: str) -> Dict[str, Any]:
         err = stderr.decode().strip()
         raise RuntimeError(f"Error al detener instancia '{name}': {err}")
 
+    # Invalidar caché de thumbnail: la instancia ya no está corriendo.
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(name)
+    except Exception:
+        pass
+
     # Liberar lease de IP en el registro
     try:
         from server.services.network.lease_registry import lease_registry
@@ -462,6 +469,13 @@ async def delete_instance_async(name: str) -> Dict[str, Any]:
     """Detiene y elimina un contenedor Docker y su carpeta de configuración de forma segura."""
     inst_name = validate_instance_name(name)
     inst_dir = INSTANCES_DIR / inst_name
+
+    # Invalidar caché de thumbnail: la instancia se está eliminando.
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
 
     # Liberar lease de IP en el registro
     try:

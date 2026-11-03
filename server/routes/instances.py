@@ -44,6 +44,7 @@ from server.services.manager_bridge import (
     group_lifecycle_async,
     get_scrcpy_stream_info,
 )
+from server.services import screenshot_cache
 
 router = APIRouter(prefix="/instances", tags=["Instancias (CloudPhones)"])
 
@@ -176,11 +177,20 @@ def get_screen(
     name: str,
     format: str = Query("jpeg", description="Formato de imagen ('jpeg' o 'png')"),
     max_width: int = Query(540, description="Ancho máximo para optimizar ancho de banda"),
+    fresh: bool = Query(False, description="Si es true, salta la caché y captura ahora"),
 ):
     """Retorna un frame de pantalla del CloudPhone para visualización interactiva en navegador."""
+    fmt = format.lower()
     try:
-        img_bytes = get_instance_screenshot(name, format=format, max_width=max_width)
-        media_type = "image/jpeg" if format.lower() in ("jpeg", "jpg") else "image/png"
+        img_bytes = screenshot_cache.capture(
+            name,
+            fmt,
+            max_width,
+            fresh=fresh,
+            ttl=screenshot_cache.DEFAULT_TTL,
+            fn=lambda: get_instance_screenshot(name, format=fmt, max_width=max_width),
+        )
+        media_type = "image/jpeg" if fmt in ("jpeg", "jpg") else "image/png"
         return Response(
             content=img_bytes,
             media_type=media_type,

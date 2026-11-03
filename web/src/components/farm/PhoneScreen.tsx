@@ -18,6 +18,7 @@ interface PhoneScreenProps {
   interactive?: boolean;
   compact?: boolean;
   tick?: number;
+  fresh?: boolean;
   onTap?: (relX: number, relY: number) => void;
 }
 
@@ -26,6 +27,7 @@ export const PhoneScreen = memo(function PhoneScreen({
   interactive = false,
   compact = true,
   tick = 0,
+  fresh = false,
   onTap,
 }: PhoneScreenProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -49,7 +51,7 @@ export const PhoneScreen = memo(function PhoneScreen({
   }
 
   const icons = 16;
-  const screenUrl = api.getScreenUrl(instance.instance_name, tick);
+  const screenUrl = api.getScreenUrl(instance.instance_name, tick, fresh);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!interactive && !onTap) return;

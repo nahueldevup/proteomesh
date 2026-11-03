@@ -282,9 +282,10 @@ export const api = {
     return res.blob();
   },
 
-  getScreenUrl(name: string, timestamp?: number): string {
+  getScreenUrl(name: string, timestamp?: number, fresh?: boolean): string {
     const t = timestamp || Date.now();
-    return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}`;
+    const freshQuery = fresh ? '&fresh=1' : '';
+    return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}`;
   },
 
   async sendTap(name: string, x: number, y: number): Promise<unknown> {

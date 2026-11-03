@@ -46,6 +46,11 @@ function DeviceCard({
   domRef,
 }: DeviceCardProps) {
   const [tick, setTick] = useState(0);
+  // Intervalo de polling con jitter por tarjeta (10-15 s), calculado una sola vez.
+  const [pollMs] = useState(() => 10000 + Math.floor(Math.random() * 5001));
+  // Flag de un solo uso: salta la caché del servidor al soltar el foco.
+  const [fresh, setFresh] = useState(false);
+  const prevFocusedRef = useRef(isFocused);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(true);
@@ -81,12 +86,17 @@ function DeviceCard({
   }, []);
 
   useEffect(() => {
-    if (!instance.running || !isVisible) return;
+    // No pollear mientras la tarjeta está enfocada: el stream en vivo ya muestra
+    // la pantalla y el thumbnail subyacente es redundante.
+    if (!instance.running || !isVisible || isFocused) return;
 
     let interval: number | undefined;
     const startPolling = () => {
       if (interval !== undefined) return;
-      interval = window.setInterval(() => setTick((t) => t + 1), 4000);
+      interval = window.setInterval(() => {
+        setFresh(false);
+        setTick((t) => t + 1);
+      }, pollMs);
     };
     const stopPolling = () => {
       if (interval !== undefined) {
@@ -106,7 +116,17 @@ function DeviceCard({
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [instance.running, instance.instance_name, isVisible]);
+  }, [instance.running, instance.instance_name, isVisible, isFocused, pollMs]);
+
+  // Al soltar el foco, refresco inmediato saltando la caché del servidor.
+  useEffect(() => {
+    const wasFocused = prevFocusedRef.current;
+    prevFocusedRef.current = isFocused;
+    if (wasFocused && !isFocused) {
+      setFresh(true);
+      setTick((t) => t + 1);
+    }
+  }, [isFocused]);
 
   const handleScreenTap = async (relX: number, relY: number) => {
     if (!syncMode || !instance.running) return;
@@ -151,6 +171,7 @@ function DeviceCard({
           interactive={syncMode && selected && !isFocused}
           compact
           tick={tick}
+          fresh={fresh}
           onTap={handleScreenTap}
         />
 
