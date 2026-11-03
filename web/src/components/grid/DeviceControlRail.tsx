@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Power,
@@ -16,7 +16,6 @@ import {
   PackagePlus,
   FolderArchive,
   Trash2,
-  Loader2,
   Type,
   Link2,
   ExternalLink,
@@ -28,6 +27,22 @@ import { IconBtn, type IconBtnVariant } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import type { UsbSlice } from './DeviceCard';
+
+// Contenido de los Popovers cargado perezosamente (mismo chunk compartido).
+const UsbPopoverContent = lazy(() =>
+  import('./DeviceControlRailPopovers').then((m) => ({ default: m.UsbPopoverContent }))
+);
+const TurnsPopoverContent = lazy(() =>
+  import('./DeviceControlRailPopovers').then((m) => ({ default: m.TurnsPopoverContent }))
+);
+const ApkPopoverContent = lazy(() =>
+  import('./DeviceControlRailPopovers').then((m) => ({ default: m.ApkPopoverContent }))
+);
+
+// Precarga del chunk al hover/focus para que la primera apertura no se sienta lenta.
+const preloadRailPopovers = () => {
+  import('./DeviceControlRailPopovers');
+};
 
 export type DeviceControlRailMode = 'rack' | 'focus';
 
@@ -53,7 +68,7 @@ interface DeviceControlRailProps {
  *   Portal de Radix para evitar recorte por `overflow` del chasis.
  * - Todos los clics se detienen en la barra para no interferir con la tarjeta.
  */
-export function DeviceControlRail({
+export const DeviceControlRail = memo(function DeviceControlRail({
   instance,
   mode,
   usb,
@@ -125,6 +140,23 @@ export function DeviceControlRail({
   const offerSeconds = pendingOffer?.expires_in_seconds ?? 5;
 
   const isBusy = actionStatus !== 'idle';
+
+  // Instalación de un APK del repositorio en esta instancia.
+  const handleInstallApk = async (apk: ApkEntry) => {
+    setRailInstallingId(apk.id);
+    try {
+      const res = await api.installApks(apk.id, [name]);
+      const result = res[0];
+      if (result.status === 'ok') toast.success(`APK instalado en ${name}`);
+      else if (result.status === 'skipped') toast.info('Instancia no lista; omitido');
+      else toast.error(`Error al instalar: ${result.error || 'fallo'}`);
+      onRefreshInstances?.();
+    } catch (err) {
+      toast.error(`Error al instalar APK: ${getErrorMessage(err)}`);
+    } finally {
+      setRailInstallingId(null);
+    }
+  };
 
   // ── Acciones de ciclo de vida ──
   const handleTogglePower = async (e: React.MouseEvent) => {
@@ -522,7 +554,12 @@ export function DeviceControlRail({
         {/* 9. Red USB Módem */}
         <Popover open={routerOpen} onOpenChange={setRouterOpen}>
           <PopoverTrigger asChild>
-            <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <span
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onMouseEnter={preloadRailPopovers}
+              onFocus={preloadRailPopovers}
+            >
               <IconBtn
                 icon={Router}
                 label="Red USB Módem"
@@ -535,62 +572,30 @@ export function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 space-y-1.5 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-border/60 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              <span className="text-foreground">Red USB Módem</span>
-              {assignedDev && publicIp && (
-                <span className="rounded-xs bg-success/15 text-success px-1">{publicIp}</span>
-              )}
-            </div>
-
-            {actionStatus === 'rotating' ? (
-              <StatusRow icon={Loader2} text="ROTANDO" spin />
-            ) : actionStatus === 'claiming' ? (
-              <StatusRow icon={Loader2} text="RECLAMANDO" spin />
-            ) : actionStatus === 'quarantining' ? (
-              <StatusRow icon={Loader2} text="AISLANDO" spin />
-            ) : assignedDev ? (
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-muted-foreground truncate">
-                  {assignedDev.iface} • {assignedDev.carrier}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRotateIp}
-                  disabled={isBusy}
-                  className="w-full flex items-center gap-1.5 rounded-xs border border-border bg-card px-2 py-1 text-left text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
-                >
-                  <RotateCcw className="h-3 w-3 text-primary" />
-                  Rotar IP
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQuarantine}
-                  disabled={isBusy}
-                  className="w-full flex items-center gap-1.5 rounded-xs border border-destructive/40 bg-destructive/10 px-2 py-1 text-left text-[11px] font-bold text-destructive hover:bg-destructive/20 transition-colors"
-                >
-                  Soltar Red
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-muted-foreground">Estado: En cuarentena segura</div>
-                <button
-                  type="button"
-                  onClick={handleClaimUsb}
-                  disabled={isBusy || !running}
-                  className="w-full flex items-center gap-1.5 rounded-xs border border-primary/40 bg-primary/20 px-2 py-1 text-left text-[11px] font-bold text-foreground hover:bg-primary/30 transition-colors"
-                >
-                  Reclamar Módem USB
-                </button>
-              </div>
-            )}
+            <Suspense fallback={<RailPopoverFallback />}>
+              <UsbPopoverContent
+                assignedDev={assignedDev}
+                publicIp={publicIp}
+                actionStatus={actionStatus}
+                isBusy={isBusy}
+                running={running}
+                onRotateIp={handleRotateIp}
+                onQuarantine={handleQuarantine}
+                onClaimUsb={handleClaimUsb}
+              />
+            </Suspense>
           </PopoverContent>
         </Popover>
 
         {/* 10. Turnos y Notificaciones */}
         <Popover open={bellOpen} onOpenChange={setBellOpen}>
           <PopoverTrigger asChild>
-            <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <span
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onMouseEnter={preloadRailPopovers}
+              onFocus={preloadRailPopovers}
+            >
               <IconBtn
                 icon={Bell}
                 label="Turnos de Red USB"
@@ -603,66 +608,18 @@ export function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 space-y-1.5 font-mono text-xs">
-            <div className="border-b border-border/60 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Estado de Turno
-            </div>
-
-            {isOffered ? (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px]">
-                  <span className="font-bold text-foreground">Módem listo</span>
-                  <span className="rounded-xs bg-primary text-primary-foreground font-bold px-1 text-[9px]">
-                    {offerSeconds}s
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={handleClaimUsb}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xs bg-primary text-primary-foreground font-bold text-[10px] py-1 hover:opacity-90"
-                  >
-                    Conectar ya
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeclineOffer}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xs border border-border bg-muted/40 hover:bg-muted text-foreground text-[10px] py-1"
-                  >
-                    Ceder turno
-                  </button>
-                </div>
-              </div>
-            ) : isWaiting ? (
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-foreground font-semibold">
-                  Posición en cola: <span className="font-bold text-primary">#{waitingPos}</span>
-                </div>
-                <div className="flex items-center gap-1 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={handleClaimUsb}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xs border border-border bg-card hover:bg-muted text-foreground text-[10px] py-1"
-                  >
-                    Reclamar ya
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelWaiting}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xs border border-destructive/40 bg-destructive/10 hover:bg-destructive/20 text-destructive text-[10px] py-1"
-                  >
-                    Salir de cola
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-1 text-[10px] text-muted-foreground">
-                Sin ofertas ni esperas activas.
-              </div>
-            )}
+            <Suspense fallback={<RailPopoverFallback />}>
+              <TurnsPopoverContent
+                isOffered={isOffered}
+                isWaiting={isWaiting}
+                waitingPos={waitingPos}
+                offerSeconds={offerSeconds}
+                isBusy={isBusy}
+                onClaimUsb={handleClaimUsb}
+                onDeclineOffer={handleDeclineOffer}
+                onCancelWaiting={handleCancelWaiting}
+              />
+            </Suspense>
           </PopoverContent>
         </Popover>
 
@@ -678,7 +635,12 @@ export function DeviceControlRail({
         {/* 12. Instalar APK */}
         <Popover open={apkOpen} onOpenChange={setApkOpen}>
           <PopoverTrigger asChild>
-            <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <span
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onMouseEnter={preloadRailPopovers}
+              onFocus={preloadRailPopovers}
+            >
               <IconBtn
                 icon={PackagePlus}
                 label="Instalar APK"
@@ -690,46 +652,14 @@ export function DeviceControlRail({
             </span>
           </PopoverTrigger>
           <PopoverContent side="right" className="w-64 p-2 font-mono text-xs">
-            <div className="mb-1.5 border-b border-border/60 pb-1 text-[10px] font-bold uppercase text-muted-foreground">
-              Instalar APK
-            </div>
-            {railApksLoading ? (
-              <div className="flex items-center gap-1.5 py-1 text-[10px] text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" /> Cargando…
-              </div>
-            ) : railApks.length === 0 ? (
-              <div className="py-1 text-[10px] text-muted-foreground">No hay APKs en el repositorio.</div>
-            ) : (
-              <div className="mb-1.5 max-h-44 overflow-y-auto space-y-1">
-                {railApks.map((apk) => (
-                  <button
-                    key={apk.id}
-                    type="button"
-                    disabled={railInstallingId !== null}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      setRailInstallingId(apk.id);
-                      try {
-                        const res = await api.installApks(apk.id, [name]);
-                        const result = res[0];
-                        if (result.status === 'ok') toast.success(`APK instalado en ${name}`);
-                        else if (result.status === 'skipped') toast.info(`Instancia no lista; omitido`);
-                        else toast.error(`Error al instalar: ${result.error || 'fallo'}`);
-                        onRefreshInstances?.();
-                      } catch (err) {
-                        toast.error(`Error al instalar APK: ${getErrorMessage(err)}`);
-                      } finally {
-                        setRailInstallingId(null);
-                      }
-                    }}
-                    className="w-full rounded-xs border border-border bg-card px-2 py-1 text-left text-[10px] text-foreground hover:bg-muted disabled:opacity-40"
-                  >
-                    <div className="truncate font-medium">{apk.original_name}</div>
-                    <div className="truncate text-[9px] text-muted-foreground">{apk.package}</div>
-                  </button>
-                ))}
-              </div>
-            )}
+            <Suspense fallback={<RailPopoverFallback />}>
+              <ApkPopoverContent
+                apks={railApks}
+                loading={railApksLoading}
+                installingId={railInstallingId}
+                onInstall={handleInstallApk}
+              />
+            </Suspense>
           </PopoverContent>
         </Popover>
 
@@ -774,21 +704,12 @@ export function DeviceControlRail({
       />
     </>
   );
-}
+});
 
-function StatusRow({
-  icon: Icon,
-  text,
-  spin = false,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  text: string;
-  spin?: boolean;
-}) {
+function RailPopoverFallback() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-xs bg-card/90 text-foreground border border-primary/50 px-1.5 py-px text-[8px] font-bold font-mono">
-      <Icon className={cn('h-2.5 w-2.5 text-primary', spin && 'animate-spin')} />
-      {text}
-    </span>
+    <div className="flex h-16 items-center justify-center text-[10px] text-muted-foreground animate-pulse">
+      Cargando…
+    </div>
   );
 }

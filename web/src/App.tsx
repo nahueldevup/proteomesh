@@ -197,6 +197,10 @@ export function App() {
     setViewMode('focus');
   }, []);
 
+  const closeFocus = useCallback(() => {
+    setViewMode('grid');
+  }, []);
+
   const openFilesManager = useCallback((name?: string) => {
     setFilesPreselectedInstance(name);
     setActiveNav('files');
@@ -427,7 +431,7 @@ export function App() {
               <FocusView
                 instance={focusedInstance}
                 instances={filteredInstances}
-                onBack={() => setViewMode('grid')}
+                onBack={closeFocus}
                 onSelectInstance={openFocus}
                 groupInstances={selectedList}
                 groupMode={groupMode}

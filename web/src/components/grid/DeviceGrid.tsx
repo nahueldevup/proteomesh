@@ -108,6 +108,9 @@ export default function DeviceGrid({
     onToggleSelect(name, false);
   }, [instances, onToggleSelect]);
 
+  const handleFocus = useCallback((name: string) => setFocusedInstance(name), []);
+  const handleReleaseFocus = useCallback(() => setFocusedInstance(null), []);
+
   if (instances.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border py-24 text-center">
@@ -134,8 +137,8 @@ export default function DeviceGrid({
           usb={usbFor(instance.instance_name)}
           onNetworkChange={onNetworkChange}
           isFocused={focusedInstance === instance.instance_name}
-          onFocus={(name) => setFocusedInstance(name)}
-          onReleaseFocus={() => setFocusedInstance(null)}
+          onFocus={handleFocus}
+          onReleaseFocus={handleReleaseFocus}
           onOpenFilesManager={onOpenFilesManager}
           domRef={(el) => {
             if (el) cardRefs.current.set(instance.instance_name, el);
