@@ -25,6 +25,7 @@ import { useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
 import { cn, getErrorMessage } from '../../lib/utils';
 import type { LocationData, ApkEntry } from '../../types';
 import { toast } from 'sonner';
+import { useExclusivePopover } from '../../lib/useExclusivePopover';
 
 interface BulkBarProps {
   selectedNames: string[];
@@ -45,28 +46,28 @@ export default function BulkBar({
 }: BulkBarProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Popover state
-  const [textOpen, setTextOpen] = useState(false);
+  // Popovers exclusivos (bulk bar)
+  const textPopover = useExclusivePopover('bulk:text');
   const [textValue, setTextValue] = useState('');
 
-  const [urlOpen, setUrlOpen] = useState(false);
+  const urlPopover = useExclusivePopover('bulk:url');
   const [urlValue, setUrlValue] = useState('');
 
-  const [apkOpen, setApkOpen] = useState(false);
+  const apkPopover = useExclusivePopover('bulk:apk');
   const [apks, setApks] = useState<ApkEntry[]>([]);
   const [apksLoading, setApksLoading] = useState(false);
   const [selectedApkId, setSelectedApkId] = useState<number | null>(null);
   const [installingApk, setInstallingApk] = useState(false);
 
-  const [gpsOpen, setGpsOpen] = useState(false);
-  const { data: catalog = EMPTY_CATALOG } = useLocationsCatalog({ enabled: gpsOpen });
+  const gpsPopover = useExclusivePopover('bulk:gps');
+  const { data: catalog = EMPTY_CATALOG } = useLocationsCatalog({ enabled: gpsPopover.open });
   const customLocations = catalog.locations;
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
-    if (!apkOpen) return;
+    if (!apkPopover.open) return;
     let cancelled = false;
     setApksLoading(true);
     api.getApks()
@@ -82,7 +83,7 @@ export default function BulkBar({
     return () => {
       cancelled = true;
     };
-  }, [apkOpen]);
+  }, [apkPopover.open]);
 
   const count = selectedNames.length;
   if (count === 0) return null;
@@ -143,7 +144,7 @@ export default function BulkBar({
   const handleSendText = async () => {
     if (!textValue.trim()) return;
     const txt = textValue.trim();
-    setTextOpen(false);
+    textPopover.onOpenChange(false);
     setTextValue('');
     const toastId = toast.loading(`Escribiendo en ${count} dispositivos...`);
     try {
@@ -160,7 +161,7 @@ export default function BulkBar({
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `https://${url}`;
     }
-    setUrlOpen(false);
+    urlPopover.onOpenChange(false);
     setUrlValue('');
     const toastId = toast.loading(`Abriendo URL en ${count} dispositivos...`);
     try {
@@ -183,7 +184,7 @@ export default function BulkBar({
       const skipped = results.filter((r) => r.status === 'skipped').length;
       const failed = results.filter((r) => !r.ok && r.status === 'failed').length;
       toast.success(`Instalación: ${ok} ok, ${skipped} omitidas, ${failed} fallos`);
-      setApkOpen(false);
+      apkPopover.onOpenChange(false);
       onRefresh();
     } catch (err) {
       toast.error(`Error al instalar APK: ${getErrorMessage(err)}`);
@@ -193,7 +194,7 @@ export default function BulkBar({
   };
 
   const handleSetGps = async (loc: LocationData) => {
-    setGpsOpen(false);
+    gpsPopover.onOpenChange(false);
     const displayName = loc.custom_name || loc.city;
     const toastId = toast.loading(`Asignando GPS "${displayName}" a ${count} dispositivos...`);
     try {
@@ -305,13 +306,13 @@ export default function BulkBar({
         />
 
         {/* Escribir texto */}
-        <Popover open={textOpen} onOpenChange={setTextOpen}>
+        <Popover open={textPopover.open} onOpenChange={textPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <IconBtn
                 icon={Type}
                 label="Escribir texto en todos"
                 side="top"
-                variant={textOpen ? 'active' : 'ghost'}
+                variant={textPopover.open ? 'active' : 'ghost'}
               />
           </PopoverTrigger>
           <PopoverContent side="top" className="w-72 p-2">
@@ -332,13 +333,13 @@ export default function BulkBar({
         </Popover>
 
         {/* Abrir URL */}
-        <Popover open={urlOpen} onOpenChange={setUrlOpen}>
+        <Popover open={urlPopover.open} onOpenChange={urlPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <IconBtn
                 icon={Link2}
                 label="Abrir URL"
                 side="top"
-                variant={urlOpen ? 'active' : 'ghost'}
+                variant={urlPopover.open ? 'active' : 'ghost'}
               />
           </PopoverTrigger>
           <PopoverContent side="top" className="w-72 p-2">
@@ -359,13 +360,13 @@ export default function BulkBar({
         </Popover>
 
         {/* Instalar app */}
-        <Popover open={apkOpen} onOpenChange={setApkOpen}>
+        <Popover open={apkPopover.open} onOpenChange={apkPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <IconBtn
                 icon={PackagePlus}
                 label="Instalar app"
                 side="top"
-                variant={apkOpen ? 'active' : 'ghost'}
+                variant={apkPopover.open ? 'active' : 'ghost'}
               />
           </PopoverTrigger>
           <PopoverContent side="top" className="w-80 p-2">
@@ -410,13 +411,13 @@ export default function BulkBar({
         <Sep />
 
         {/* Cambiar GPS */}
-        <Popover open={gpsOpen} onOpenChange={setGpsOpen}>
+        <Popover open={gpsPopover.open} onOpenChange={gpsPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <IconBtn
                 icon={MapPin}
                 label="Cambiar GPS"
                 side="top"
-                variant={gpsOpen ? 'active' : 'ghost'}
+                variant={gpsPopover.open ? 'active' : 'ghost'}
               />
           </PopoverTrigger>
           <PopoverContent side="top" className="w-64 max-h-72 overflow-y-auto p-1.5 space-y-2">

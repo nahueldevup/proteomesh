@@ -26,6 +26,8 @@ import { cn, getErrorMessage } from '../../lib/utils';
 import { IconBtn, type IconBtnVariant } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
+import { useExclusivePopover } from '../../lib/useExclusivePopover';
+import { closeActivePopover } from '../../lib/popoverStore';
 import type { UsbSlice } from './DeviceCard';
 
 // Contenido de los Popovers cargado perezosamente (mismo chunk compartido).
@@ -103,11 +105,15 @@ export const DeviceControlRail = memo(function DeviceControlRail({
   const [actionStatus, setActionStatus] = useState<
     'idle' | 'rotating' | 'claiming' | 'quarantining' | 'declining'
   >('idle');
-  const [routerOpen, setRouterOpen] = useState(false);
-  const [bellOpen, setBellOpen] = useState(false);
-  const [apkOpen, setApkOpen] = useState(false);
-  const [textOpen, setTextOpen] = useState(false);
-  const [urlOpen, setUrlOpen] = useState(false);
+
+  // Popovers exclusivos indexados por modo e instancia (evita colisión entre rack y FocusView)
+  const prefix = `${mode}:${name}`;
+  const routerPopover = useExclusivePopover(`${prefix}:router`);
+  const bellPopover = useExclusivePopover(`${prefix}:bell`);
+  const apkPopover = useExclusivePopover(`${prefix}:apk`);
+  const textPopover = useExclusivePopover(`${prefix}:text`);
+  const urlPopover = useExclusivePopover(`${prefix}:url`);
+
   const [textValue, setTextValue] = useState('');
   const [urlValue, setUrlValue] = useState('');
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -119,7 +125,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
   const [railInstallingId, setRailInstallingId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!apkOpen) return;
+    if (!apkPopover.open) return;
     let cancelled = false;
     setRailApksLoading(true);
     api.getApks()
@@ -135,7 +141,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     return () => {
       cancelled = true;
     };
-  }, [apkOpen]);
+  }, [apkPopover.open]);
 
   const offerSeconds = pendingOffer?.expires_in_seconds ?? 5;
 
@@ -251,8 +257,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
       return;
     }
     setActionStatus('claiming');
-    setRouterOpen(false);
-    setBellOpen(false);
+    closeActivePopover();
     const toastId = toast.loading(`Conectando módem USB para ${name}…`);
     try {
       const res = await api.claimUsb(name);
@@ -273,8 +278,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     e?.preventDefault();
     e?.stopPropagation();
     setActionStatus('quarantining');
-    setRouterOpen(false);
-    setBellOpen(false);
+    closeActivePopover();
     const toastId = toast.loading(`Aislando ${name} y liberando módem…`);
     try {
       await api.quarantineInstance(name);
@@ -291,8 +295,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     e?.preventDefault();
     e?.stopPropagation();
     setActionStatus('rotating');
-    setRouterOpen(false);
-    setBellOpen(false);
+    closeActivePopover();
     const toastId = toast.loading(`Rotando IP en ${name} (Modo Avión)...`);
     try {
       const res = await api.rotateInstanceIp(name);
@@ -309,8 +312,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     e?.preventDefault();
     e?.stopPropagation();
     setActionStatus('declining');
-    setBellOpen(false);
-    setRouterOpen(false);
+    closeActivePopover();
     const toastId = toast.loading(`Cediendo turno para ${name}…`);
     try {
       const res = await api.declineOffer(name, true);
@@ -329,8 +331,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     e?.preventDefault();
     e?.stopPropagation();
     setActionStatus('declining');
-    setBellOpen(false);
-    setRouterOpen(false);
+    closeActivePopover();
     const toastId = toast.loading(`Cancelando espera para ${name}…`);
     try {
       await api.declineOffer(name, false);
@@ -349,7 +350,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     e?.stopPropagation();
     const txt = textValue.trim();
     if (!txt || !running) return;
-    setTextOpen(false);
+    closeActivePopover();
     setTextValue('');
     try {
       await api.sendText(name, txt);
@@ -367,7 +368,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `https://${url}`;
     }
-    setUrlOpen(false);
+    closeActivePopover();
     setUrlValue('');
     try {
       await api.launchUrl(name, url);
@@ -410,10 +411,12 @@ export const DeviceControlRail = memo(function DeviceControlRail({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          closeActivePopover();
         }}
         onDoubleClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          closeActivePopover();
         }}
       >
         {/* 1. Power */}
@@ -491,7 +494,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
         />
 
         {/* Texto y URL (conservados de FocusView, no cuentan como botones hardware) */}
-        <Popover open={textOpen} onOpenChange={setTextOpen}>
+        <Popover open={textPopover.open} onOpenChange={textPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
               <IconBtn
@@ -499,7 +502,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
                 label="Escribir texto"
                 size="sm"
                 side="right"
-                variant={textOpen ? 'active' : 'ghost'}
+                variant={textPopover.open ? 'active' : 'ghost'}
                 disabled={!running}
               />
             </span>
@@ -521,7 +524,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
           </PopoverContent>
         </Popover>
 
-        <Popover open={urlOpen} onOpenChange={setUrlOpen}>
+        <Popover open={urlPopover.open} onOpenChange={urlPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
               <IconBtn
@@ -529,7 +532,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
                 label="Abrir URL"
                 size="sm"
                 side="right"
-                variant={urlOpen ? 'active' : 'ghost'}
+                variant={urlPopover.open ? 'active' : 'ghost'}
                 disabled={!running}
               />
             </span>
@@ -552,7 +555,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
         </Popover>
 
         {/* 9. Red USB Módem */}
-        <Popover open={routerOpen} onOpenChange={setRouterOpen}>
+        <Popover open={routerPopover.open} onOpenChange={routerPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <span
               onClick={(e) => e.stopPropagation()}
@@ -588,7 +591,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
         </Popover>
 
         {/* 10. Turnos y Notificaciones */}
-        <Popover open={bellOpen} onOpenChange={setBellOpen}>
+        <Popover open={bellPopover.open} onOpenChange={bellPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <span
               onClick={(e) => e.stopPropagation()}
@@ -633,7 +636,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
         />
 
         {/* 12. Instalar APK */}
-        <Popover open={apkOpen} onOpenChange={setApkOpen}>
+        <Popover open={apkPopover.open} onOpenChange={apkPopover.onOpenChange}>
           <PopoverTrigger asChild>
             <span
               onClick={(e) => e.stopPropagation()}
@@ -646,7 +649,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
                 label="Instalar APK"
                 size="sm"
                 side="right"
-                variant={apkOpen ? 'active' : 'ghost'}
+                variant={apkPopover.open ? 'active' : 'ghost'}
                 disabled={!running}
               />
             </span>

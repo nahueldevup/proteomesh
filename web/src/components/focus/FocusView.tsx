@@ -44,6 +44,7 @@ import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
 import { useFps } from '../../lib/scrcpy/useFps';
+import { useExclusivePopover } from '../../lib/useExclusivePopover';
 
 const MapPicker = lazy(() => import('../MapPicker').then((m) => ({ default: m.MapPicker })));
 
@@ -93,9 +94,10 @@ export default function FocusView({
   // Catálogo de Ubicaciones Custom & Pins (compartido via TanStack Query)
   const { data: customCatalog = EMPTY_CATALOG } = useLocationsCatalog();
   const [selectedCustomLoc, setSelectedCustomLoc] = useState<CustomLocation | null>(null);
-  const [customSelectorOpen, setCustomSelectorOpen] = useState(false);
+  const geoPrefix = `focus-geo:${instance?.instance_name ?? 'none'}`;
+  const customSelectorPopover = useExclusivePopover(`${geoPrefix}:custom-selector`);
   const [customSearchQuery, setCustomSearchQuery] = useState('');
-  const [saveCustomPopoverOpen, setSaveCustomPopoverOpen] = useState(false);
+  const saveCustomPopover = useExclusivePopover(`${geoPrefix}:save-custom`);
   const [customNameInput, setCustomNameInput] = useState('');
   const [customGroupInput, setCustomGroupInput] = useState('');
   const [saveCustomIsPinned, setSaveCustomIsPinned] = useState(true);
@@ -276,7 +278,7 @@ export default function FocusView({
           : `Ubicación "${created.name}" guardada en Custom`
       );
       setCustomNameInput('');
-      setSaveCustomPopoverOpen(false);
+      saveCustomPopover.onOpenChange(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
       setSelectedCustomLoc(created);
     } catch (err) {
@@ -584,7 +586,7 @@ export default function FocusView({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {/* Popover: Selector de Ubicación Custom */}
-                    <Popover open={customSelectorOpen} onOpenChange={setCustomSelectorOpen}>
+                    <Popover open={customSelectorPopover.open} onOpenChange={customSelectorPopover.onOpenChange}>
                       <PopoverTrigger asChild>
                         <button
                           type="button"
@@ -600,7 +602,7 @@ export default function FocusView({
                           <span className="truncate max-w-[130px]">
                             {selectedCustomLoc ? selectedCustomLoc.name : 'Ubicación Custom'}
                           </span>
-                          <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", customSelectorOpen && "rotate-180")} />
+                          <ChevronDown className={cn("h-3 w-3 opacity-60 shrink-0 transition-transform duration-200", customSelectorPopover.open && "rotate-180")} />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent align="start" sideOffset={4} className="w-80 p-2.5 space-y-2">
@@ -665,7 +667,7 @@ export default function FocusView({
                                       setMapLat(loc.latitude);
                                       setMapLon(loc.longitude);
                                       setMapCity(loc.city);
-                                      setCustomSelectorOpen(false);
+                                      customSelectorPopover.onOpenChange(false);
                                       toast.info(`Seleccionada: ${loc.name}`);
                                     }}
                                     className="flex items-start gap-2 min-w-0 flex-1 text-left"
@@ -737,19 +739,19 @@ export default function FocusView({
                     </Popover>
 
                     {/* Popover: Guardar coordenadas actuales como Custom */}
-                    <Popover open={saveCustomPopoverOpen} onOpenChange={setSaveCustomPopoverOpen}>
+                    <Popover open={saveCustomPopover.open} onOpenChange={saveCustomPopover.onOpenChange}>
                       <PopoverTrigger asChild>
                         <button
                           type="button"
                           className={cn(
                             "flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-mono font-medium transition-colors",
-                            saveCustomPopoverOpen
+                            saveCustomPopover.open
                               ? "border-primary bg-primary/20 text-foreground font-semibold"
                               : "border-border bg-background text-foreground hover:bg-muted"
                           )}
                           title="Guardar coordenadas actuales del mapa como nueva ubicación custom"
                         >
-                          <Plus className={cn("h-3.5 w-3.5 text-primary transition-transform duration-200", saveCustomPopoverOpen && "rotate-45")} />
+                          <Plus className={cn("h-3.5 w-3.5 text-primary transition-transform duration-200", saveCustomPopover.open && "rotate-45")} />
                           <span>Guardar Custom</span>
                         </button>
                       </PopoverTrigger>
@@ -811,7 +813,7 @@ export default function FocusView({
                           <div className="flex items-center justify-end gap-1.5 pt-1">
                             <button
                               type="button"
-                              onClick={() => setSaveCustomPopoverOpen(false)}
+                              onClick={() => saveCustomPopover.onOpenChange(false)}
                               className="rounded px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
                             >
                               Cancelar
