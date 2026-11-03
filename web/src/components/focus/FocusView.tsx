@@ -63,8 +63,8 @@ interface FocusViewProps {
 
 type SubTab = 'gps' | 'network' | 'health';
 
-function StreamFpsLabel() {
-  const fps = useFps();
+function StreamFpsLabel({ adbPort }: { adbPort: number }) {
+  const fps = useFps(adbPort);
   return <span>{fps} FPS</span>;
 }
 
@@ -405,7 +405,7 @@ export default function FocusView({
                 title="Streaming Scrcpy nativo (~20ms baja latencia a 30 FPS)"
               >
                 <Zap className="h-3 w-3" />
-                <StreamFpsLabel />
+                <StreamFpsLabel adbPort={instance.adb_port} />
               </button>
               <button
                 type="button"

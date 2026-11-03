@@ -293,7 +293,7 @@ export function useScrcpyStream({
     let active = true;
     sessionStartRef.current = Date.now();
     setHasFirstFrame(false);
-    setFpsValue(0);
+    setFpsValue(adbPort, 0);
     windowFramesRef.current = 0;
     windowStartRef.current = Date.now();
     setError(null);
@@ -561,7 +561,7 @@ export function useScrcpyStream({
       windowFramesRef.current = 0;
       windowStartRef.current = now;
       telemetryRef.current.fpsPainted = windowFps;
-      setFpsValue(windowFps);
+      setFpsValue(adbPort, windowFps);
       // La telemetría detallada solo se publica en state con el panel de debug abierto.
       if (debugOpenRef.current) {
         setTelemetry({ ...telemetryRef.current });
@@ -582,7 +582,7 @@ export function useScrcpyStream({
       pendingFrameRef.current?.close();
       pendingFrameRef.current = null;
       setHasFirstFrame(false);
-      setFpsValue(0);
+      setFpsValue(adbPort, 0);
 
       // Desvincular listeners para prevenir callbacks en un componente desmontado
       ws.onmessage = null;

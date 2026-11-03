@@ -1,31 +1,47 @@
 /**
  * Store externo (sin React) para el FPS de ventana de 1 s del stream scrcpy.
  *
- * El hook publica el valor aquí; los badges (card y FocusView) se suscriben
+ * Está indexado por `adbPort` (un stream por instancia): cada tarjeta lee su
+ * propio valor, sin mezclarse con otras instancias. Los badges se suscriben
  * vía `useSyncExternalStore` para re-renderizar solo ellos, no todo el árbol.
  */
 
 type Listener = () => void;
 
-let currentFps = 0;
-const listeners = new Set<Listener>();
-
-export function setFpsValue(value: number): void {
-  const next = Math.max(0, Math.round(value));
-  if (currentFps === next) return;
-  currentFps = next;
-  for (const listener of listeners) listener();
+interface StoreEntry {
+  value: number;
+  listeners: Set<Listener>;
 }
 
-export function subscribeFps(listener: Listener): () => void {
-  listeners.add(listener);
+const stores = new Map<number, StoreEntry>();
+
+function entry(key: number): StoreEntry {
+  let e = stores.get(key);
+  if (!e) {
+    e = { value: 0, listeners: new Set() };
+    stores.set(key, e);
+  }
+  return e;
+}
+
+export function setFpsValue(key: number, value: number): void {
+  const e = entry(key);
+  const next = Math.max(0, Math.round(value));
+  if (e.value === next) return;
+  e.value = next;
+  for (const listener of e.listeners) listener();
+}
+
+export function subscribeFps(key: number, listener: Listener): () => void {
+  const e = entry(key);
+  e.listeners.add(listener);
   return () => {
-    listeners.delete(listener);
+    e.listeners.delete(listener);
   };
 }
 
-export function getFpsSnapshot(): number {
-  return currentFps;
+export function getFpsSnapshot(key: number): number {
+  return stores.get(key)?.value ?? 0;
 }
 
 /**

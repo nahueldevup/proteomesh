@@ -294,7 +294,7 @@ export function ScrcpyLiveScreen({
       )}
 
       {/* Badge de FPS real y estado */}
-      {hasFirstFrame && <FpsBadge />}
+      {hasFirstFrame && <FpsBadge adbPort={instance.adb_port} />}
 
       {/* Panel de telemetría ligero (Ctrl+Shift+D) */}
       {debugOpen && <TelemetryOverlay telemetry={telemetry} />}
@@ -331,8 +331,8 @@ function blockBrowserShortcuts(e: React.KeyboardEvent<HTMLCanvasElement>) {
   }
 }
 
-function FpsBadge() {
-  const fps = useFps();
+function FpsBadge({ adbPort }: { adbPort: number }) {
+  const fps = useFps(adbPort);
   return (
     <span className="absolute left-7 top-1 z-20 inline-flex items-center gap-1 rounded-xs bg-primary text-primary-foreground font-mono text-[8px] font-bold px-1.5 py-px shadow-xs animate-in fade-in duration-150">
       <Zap className="h-2.5 w-2.5" />
