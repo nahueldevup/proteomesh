@@ -4,6 +4,7 @@ import {
   FIRST_FRAME_TIMEOUT_MS,
   MAX_FIRST_FRAME_TIMEOUT_ATTEMPTS,
   evaluateFirstFrameTimeout,
+  shouldHandleSocketClose,
 } from '../src/lib/scrcpy/watchdog.ts';
 
 test('watchdog: constantes con valores esperados', () => {
@@ -40,3 +41,64 @@ test('watchdog: soporta maxAttempts configurable', () => {
   assert.equal(res.nextAttempt, 1);
   assert.equal(res.exhausted, true);
 });
+
+test('shouldHandleSocketClose: procesa cierre normal cuando activo, socket actual y status live/waiting-idr', () => {
+  assert.equal(
+    shouldHandleSocketClose({
+      active: true,
+      isCurrentSocket: true,
+      currentStatus: 'live',
+    }),
+    true
+  );
+  assert.equal(
+    shouldHandleSocketClose({
+      active: true,
+      isCurrentSocket: true,
+      currentStatus: 'waiting-idr',
+    }),
+    true
+  );
+  assert.equal(
+    shouldHandleSocketClose({
+      active: true,
+      isCurrentSocket: true,
+      currentStatus: 'connecting',
+    }),
+    true
+  );
+});
+
+test('shouldHandleSocketClose: ignora evento si el componente no está activo (desmontado)', () => {
+  assert.equal(
+    shouldHandleSocketClose({
+      active: false,
+      isCurrentSocket: true,
+      currentStatus: 'live',
+    }),
+    false
+  );
+});
+
+test('shouldHandleSocketClose: ignora evento si el socket no es el actual (obsoleto/reemplazado)', () => {
+  assert.equal(
+    shouldHandleSocketClose({
+      active: true,
+      isCurrentSocket: false,
+      currentStatus: 'live',
+    }),
+    false
+  );
+});
+
+test('shouldHandleSocketClose: ignora evento si el estado ya es error (evita reactivar reconexiones)', () => {
+  assert.equal(
+    shouldHandleSocketClose({
+      active: true,
+      isCurrentSocket: true,
+      currentStatus: 'error',
+    }),
+    false
+  );
+});
+

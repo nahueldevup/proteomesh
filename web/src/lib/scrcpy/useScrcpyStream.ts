@@ -15,6 +15,7 @@ import {
   FIRST_FRAME_TIMEOUT_MS,
   MAX_FIRST_FRAME_TIMEOUT_ATTEMPTS,
   evaluateFirstFrameTimeout,
+  shouldHandleSocketClose,
 } from './watchdog';
 
 export type ScrcpyStatus =
@@ -286,8 +287,9 @@ export function useScrcpyStream({
     firstFrameTimeoutAttemptRef.current = 0;
     reconnectAttemptRef.current = 0;
     setError(null);
+    setStatusAndRef('connecting');
     setRetryVersion((v) => v + 1);
-  }, []);
+  }, [setStatusAndRef]);
 
   useEffect(() => {
     if (!enabled || !adbPort || typeof window === 'undefined') {
@@ -626,13 +628,20 @@ export function useScrcpyStream({
     };
 
     ws.onerror = (e) => {
-      if (active) {
-        console.warn(`[useScrcpyStream] Error WebSocket en :${adbPort}:`, e);
-      }
+      if (!active || ws !== wsRef.current) return;
+      console.warn(`[useScrcpyStream] Error WebSocket en :${adbPort}:`, e);
     };
 
     ws.onclose = () => {
-      if (!active) return;
+      if (
+        !shouldHandleSocketClose({
+          active,
+          isCurrentSocket: ws === wsRef.current,
+          currentStatus: statusRef.current,
+        })
+      ) {
+        return;
+      }
       clearFirstFrameTimer();
       setStatusAndRef('reconnecting');
       scheduleReconnect();

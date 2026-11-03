@@ -15,6 +15,31 @@ export interface WatchdogEvaluation {
   exhausted: boolean;
 }
 
+export interface ShouldHandleSocketCloseParams {
+  active: boolean;
+  isCurrentSocket: boolean;
+  currentStatus: string;
+}
+
+/**
+ * Determina si debe procesarse el evento `onclose` de un WebSocket.
+ * Ignora el evento si:
+ * - El componente ya no está activo/montado.
+ * - El evento proviene de un socket que ya no es el actual (descartado/obsoleto).
+ * - El estado actual ya es 'error' definitivo (protege contra carreras que
+ *   sobrescribirían el error con un nuevo intento de reconexión).
+ */
+export function shouldHandleSocketClose({
+  active,
+  isCurrentSocket,
+  currentStatus,
+}: ShouldHandleSocketCloseParams): boolean {
+  if (!active) return false;
+  if (!isCurrentSocket) return false;
+  if (currentStatus === 'error') return false;
+  return true;
+}
+
 /**
  * Evalúa la expiración del temporizador de primer frame.
  * Incrementa el contador de intentos y determina si se agotaron las oportunidades.
