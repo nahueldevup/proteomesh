@@ -103,17 +103,27 @@ export default function ApkFileManager({
 
   // ── APK handlers ──
   const handleFileSelect = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.apk')) {
-      toast.error('Solo se permiten archivos .apk');
+    const ALLOWED_EXTS = ['.apk', '.apkm', '.xapk', '.apks', '.zip'];
+    const isAllowed = ALLOWED_EXTS.some((ext) => file.name.toLowerCase().endsWith(ext));
+    if (!isAllowed) {
+      toast.error('Solo se permiten archivos .apk, .apkm, .xapk, .apks o .zip');
       return;
     }
     setUploadProgress(0);
     try {
-      await api.uploadApk(file, (p) => setUploadProgress(p));
-      toast.success(`APK "${file.name}" subido`);
+      const res = await api.uploadApk(file, (p) => setUploadProgress(p));
+      if (res.warning) {
+        toast.warning(res.warning);
+      }
+      toast.success(`${res.entry_type === 'bundle' ? 'Bundle' : 'APK'} "${file.name}" subido`);
       await fetchApks();
     } catch (err) {
-      toast.error(`Error al subir APK: ${getErrorMessage(err)}`);
+      const errMsg = getErrorMessage(err);
+      if (errMsg.includes('413') || errMsg.toLowerCase().includes('límite')) {
+        toast.error('El archivo supera el límite máximo de 300 MB');
+      } else {
+        toast.error(`Error al subir archivo: ${errMsg}`);
+      }
     } finally {
       setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -305,13 +315,13 @@ export default function ApkFileManager({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".apk"
+              accept=".apk,.apkm,.xapk,.apks,.zip"
               className="hidden"
               onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
             />
             <Upload className="mx-auto h-6 w-6 text-muted-foreground" />
             <p className="mt-1 text-xs text-muted-foreground">
-              Arrastrá un APK o hacé clic para subir (máx. 150 MB)
+              Arrastrá un APK o Bundle (.apkm, .xapk, .apks, .zip) o hacé clic para subir (máx. 300 MB)
             </p>
             {uploadProgress !== null && (
               <div className="mx-auto mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-muted">
@@ -348,7 +358,39 @@ export default function ApkFileManager({
                 <tbody className="divide-y divide-border">
                   {apks.map((apk) => (
                     <tr key={apk.id} className="hover:bg-muted/40">
-                      <td className="px-3 py-2 font-medium text-foreground">{apk.original_name}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{apk.original_name}</span>
+                          {apk.entry_type === 'bundle' ? (
+                            <span className="inline-flex items-center gap-1 rounded-xs bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                              <span>Bundle</span>
+                              {apk.splits_info && (
+                                <span className="text-primary/80">({apk.splits_info.total_splits} splits)</span>
+                              )}
+                              {(() => {
+                                const primaryAbi = apk.splits_info?.splits.find((s) => s.abi)?.abi;
+                                return primaryAbi ? (
+                                  <span className="rounded-xs bg-primary/20 px-1 text-[9px] text-foreground">
+                                    {primaryAbi}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-xs bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              APK
+                            </span>
+                          )}
+                          {apk.has_obb && (
+                            <span
+                              className="inline-flex items-center rounded-xs bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+                              title="Archivos OBB adicionales ignorados"
+                            >
+                              OBB ignorado
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-2 text-muted-foreground">{apk.package}</td>
                       <td className="px-3 py-2 text-muted-foreground">
                         {apk.version_name} ({apk.version_code})

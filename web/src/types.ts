@@ -283,6 +283,17 @@ export interface ApkEntry {
   size: number;
   is_default: boolean;
   created_at: string;
+  entry_type?: 'monolithic' | 'bundle';
+  bundle_format?: string;
+  splits_info?: {
+    base_file: string;
+    total_splits: number;
+    splits: Array<{ file: string; split_id: string; abi: string | null; size: number }>;
+    has_obb?: boolean;
+    warning?: string;
+  };
+  has_obb?: boolean;
+  warning?: string;
 }
 
 export interface FileEntry {
