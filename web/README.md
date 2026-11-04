@@ -15,46 +15,65 @@ Panel web de orquestación, supervisión y control masivo de CloudPhones Android
 
 ## 🏗️ Principios Arquitectónicos y Reglas Invariables
 
-### 1. Ajuste de Bisel y Pantalla Móvil (*Aspect Ratio Invariant*)
-* **El Problema del Letterboxing:** Nunca incrustar vistas de pantallas Android dentro de cajas con alturas arbitrarias fijas (`h-52`, `h-64`) con `object-contain`. Al cambiar el ancho de las celdas del mosaico, `object-contain` genera gruesas bandas negras laterales y desalinea el marco del dispositivo.
+### 1. Chasis Height-Driven y Rack Proporcional (*Aspect Ratio Invariant*)
+* **El Problema del Letterboxing y el Scroll Vertical:** Incrustar vistas de pantallas Android dentro de cajas con alturas o anchos rígidos genera gruesas bandas negras laterales (`object-contain`) o desborda la pantalla obligando a realizar scroll vertical indeseado.
 * **Solución Implementada:**
-  - El chasis del teléfono (`bg-bezel p-1 rounded-xl`) y la pantalla interna utilizan estrictamente la relación de aspecto nativa del dispositivo (`aspect-[9/19.5]` o `aspect-[${width}/${height}]`).
-  - Tanto las capturas JPEG como el stream WebCodecs se renderizan con `object-cover`, llenando el 100% del área activa de borde a borde sin distorsión ni bandas negras.
-  - En la vista mosaico (`DeviceCard`), las tarjetas no tienen botoneras inferiores que consuman espacio vertical; la tarjeta es el teléfono mismo, permitiendo densidades de hasta 12 columnas sin saturación.
+  - **Rack Horizontal Height-Driven:** Disposición en fila con scroll horizontal fluido (`flex h-full items-center gap-4 overflow-x-auto`).
+  - **Altura atada al Viewport:** El contenedor gobierna la altura (`h-full` / `min(100vh - 180px, 840px)`). El ancho de cada tarjeta se deriva estrictamente de la relación de aspecto dinámica (`style={{ aspectRatio: `${nativeWidth} / ${nativeHeight}` }}` en `DeviceCard.tsx`, con fallback seguro a `720 / 1560`).
+  - Tanto las capturas JPEG en reposo como el canvas WebCodecs en vivo llenan el 100% del área activa de borde a borde (`object-cover`) con cero bandas negras y perfecta adaptación visual en pantallas de 1080p y 768p.
 
 ### 2. Estándar de Botones Estrictamente en Iconos (`IconBtn`)
 * Queda prohibido el uso de botones con texto verboso ("Apagar", "Encender", "Ver Detalles") en tarjetas de flota, barras de lote o docks de emulación.
-* Todas las acciones se implementan mediante `IconBtn` acompañado de micro-tooltips instantáneos (`@radix-ui/react-tooltip`) con variantes semánticas (`ghost`, `solid`, `primary`, `danger`, `success`, `active`).
+* Todas las acciones se implementan mediante `IconBtn` acompañado de micro-tooltips instantáneos (`@radix-ui/react-tooltip`) con variantes semánticas (`ghost`, `solid`, `primary`, `danger`, `success`, `active`, `warning`).
 
-### 3. Streaming Nativo scrcpy de Baja Latencia (<20ms) y Arquitectura Touch
-* **Causa de la duplicación, bandas negras y pantalla negra en iframe:**
-  - El frontend web estándar de `ws-scrcpy` inyecta una barra de herramientas lateral interna (`.control-buttons-list`) y fuerza `object-fit: contain` con fondos grises.
-  - Además, la función interna `getMaxSize()` intentaba ajustar el video al ancho estrecho del iframe (~200px), recalculando dimensiones a `160x368`. En Android 13 ReDroid, el encoder de software (`c2.android.avc.encoder`) fallaba con `BAD_INDEX (6)`, abortando `scrcpy-server` (pantalla negra).
-  - La capa táctil frontal (`canvas.touch-layer`) tenía asignado `background: #000000 !important;` en el overlay CSS, actuando como una cortina opaca negra sobre el video decodificado.
-* **Solución y Calibración:**
-  1. **Proxy same-origin en `vite.config.ts`:** `/ws-scrcpy` redirige a `http://127.0.0.1:8001` con soporte WebSocket (`ws: true`), eliminando bloqueos de CORS.
-  2. **Overlay CSS Limpio con Capa Táctil Transparente (`main.css` y `tools/run_ws_scrcpy.sh`):**
-     - `.control-buttons-list { display: none !important; width: 0 !important; }` elimina la barra interna redundante.
-     - `canvas.video-layer { width: 100% !important; height: 100% !important; object-fit: cover !important; background: #000000 !important; z-index: 0 !important; }`.
-     - `canvas.touch-layer { width: 100% !important; height: 100% !important; object-fit: cover !important; background: transparent !important; z-index: 1 !important; }` permite ver el video debajo y captura clics/gestos directamente.
-  3. **Calibración a 30 FPS y 2 Mbps (Tasa Nativa de ReDroid):**
-     - La pantalla virtual de ReDroid 13 opera a 30 FPS. Forzar 60 FPS o bitrates excesivos (8 Mbps) generaba saturación de búfer y latencia.
-     - Se configuró el perfil en `WebCodecsPlayer.ts`, `MsePlayer.ts` y `bundle.js` a **30 FPS / 2 Mbps / 720x1560**, proporcionando nitidez limpia con latencia ultra-baja (<20ms).
-  4. **Corrección de tipos de fotograma en WebCodecs:** Los P-Frames ahora se emiten como `type: 'delta'` con marcas de tiempo en microsegundos, evitando abortos del decodificador.
-  5. **Selector Dual en Cabecera:** Conmutador en tiempo real entre `⚡ 30 FPS` (scrcpy directo por WebSocket con inyección <1ms al `InputManager`) y `📷 HD` (modo captura de respaldo).
-  6. **Lanzador Nativo de Escritorio:** Botón `Monitor` en la cápsula lateral que dispara `scrcpy` en ventana nativa del sistema con aceleración por GPU.
+### 3. Cero IFrames: WebCodecs Nativo en Canvas y Streaming Lazy
+* **Erradicación Total de IFrames:**
+  - El antiguo enfoque de `iframe` para incrustar `ws-scrcpy` introducía sobrecargas de memoria, barras de herramientas internas redundantes que requerían parches frágiles de CSS y fallos de codec `BAD_INDEX (6)` por desajustes dimensionales.
+  - La arquitectura actual utiliza renderizado directo sobre `<canvas>` HTML5 mediante la API nativa de Chromium **`VideoDecoder`** (`hardwareAcceleration: 'prefer-hardware'` y `optimizeForLatency: true`).
+* **Protocolo Binario scrcpy Propio (`web/src/lib/scrcpy/protocol.ts`):**
+  - Conexión WebSocket directa a `/ws-scrcpy/?action=proxy-adb&remote=tcp:8886&udid=127.0.0.1:{adb_port}`.
+  - Negociación inicial con paquete binario de 36 bytes (`TYPE_VIDEO_SETTINGS`, 720x1560 solicitando 30 FPS y 2 Mbps nominales).
+  - Paquetes binarios serializados en el cliente:
+    * `TYPE_TOUCH` (29B): puntero, acción (Down/Move/Up), presión y coordenadas mapeadas por resolución nativa (`coords.ts`).
+    * `TYPE_SCROLL` (21B): desplazamiento vertical/horizontal con amortiguación y throttle de 25 ms.
+    * `TYPE_KEYCODE` (14B): códigos de tecla física Android (`KEYCODE_BACK`, `KEYCODE_HOME`, `KEYCODE_APP_SWITCH`, `Enter`, `Backspace`, `Tab`, `Flechas`).
+    * `TYPE_TEXT`: inyección de texto UTF-8.
+  - Clic derecho del ratón interceptado y mapeado directamente a Android Back (`KEYCODE_BACK`).
+  - Destrucción inmediata de cada cuadro tras el render (`frame.close()`), garantizando cero fugas en la VRAM de la GPU.
+* **Modelo Lazy Exclusivo (1 Stream Activo a la Vez):**
+  - **En Reposo (`PhoneScreen.tsx`):** Tarjetas sin foco interactivo (`isFocused = false`). Mantienen **0% de uso de GPU** solicitando miniaturas JPEG espaciadas (10 a 15 segundos con jitter por tarjeta). El polling se pausa fuera del viewport o con pestaña oculta. El backend (`screenshot_cache.py`) aplica una caché en memoria con TTL de 8s y candado single-flight. Al soltar foco, se solicita un cuadro inmediato con `fresh=1`.
+  - **En Foco (`ScrcpyLiveScreen.tsx`):** Solo la tarjeta enfocada (`isFocused = true`) monta el componente, conecta el WebSocket y decodifica video a 30 FPS. Al cambiar de foco o pulsar `Esc`, el stream anterior se destruye de inmediato (`ws.close()`, `decoder.close()`).
+  - **Tecla Esc en Cascada:** El primer toque de `Esc` libera el foco interactivo del celular devolviéndolo a reposo; el segundo toque limpia la selección múltiple en la grilla y oculta la `BulkBar`.
+* **Watchdog de Primer Frame y Filtrado de Sockets (`watchdog.ts`):**
+  - Temporizador de 6 segundos tras `ws.onopen`. Si no se recibe ningún fotograma clave H.264 (IDR), cierra el socket y reconecta con backoff exponencial progresivo (`[500, 1000, 2000, 4000, 8000] ms`).
+  - Límite de 3 intentos consecutivos antes de fijar estado `'error'` y mostrar botón manual de "Reintentar".
+  - Descarte de eventos `onclose`/`onerror` de sockets obsoletos (`shouldHandleSocketClose`) y cierre limpio con código 1000 tras `onopen` para evitar `ECONNRESET` en el proxy de desarrollo de Vite.
+* **Telemetría Dinámica de FPS (`fps.ts`, `useFps.ts`):**
+  - Store externo pub/sub desacoplado del ciclo de render de React e indexado por puerto ADB (`Map<adbPort, ...>`).
+  - Cálculo de FPS en tiempo real sobre una **ventana deslizante de 1 segundo** (`computeWindowFps`) contando únicamente los cuadros efectivamente pintados en canvas.
+  - Componente aislado `FpsBadge` suscrito mediante `useSyncExternalStore` que refresca el badge en vivo sin provocar re-renderizados de la tarjeta.
 
-### 4. Botonera Vertical Única con Popovers
-En la vista enfocada (`FocusView`), todos los comandos del terminal se centralizan en una única cápsula vertical adyacente al teléfono:
-* `Power`: Encendido / Apagado en caliente.
-* `Volume2` / `Volume1`: Volumen + / Volumen -.
-* `Triangle` (`-rotate-90`): Botón físico Atrás de Android.
-* `Circle`: Botón Home.
-* `Square`: Botón Apps Recientes.
-* `Camera`: Captura y descarga de pantalla en 1 clic.
-* `Type`: Inyección de texto por ADB mediante Popover (`Enter` para enviar).
-* `Link2`: Apertura de URL en el navegador de Android con Popover.
-* `ExternalLink`: Apertura del visor en ventana independiente para pruebas dedicadas.
+### 4. Barra Vertical Unificada de 14 Botones (`DeviceControlRail`)
+Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusView`), todos los comandos de hardware se centralizan en una única cápsula vertical de 28 px de ancho (`w-7`), situada como hermano lateral de la pantalla sin invadir la superficie de video:
+1. `Power`: Encendido / Apagado en caliente.
+2. `Reboot`: Reinicio del contenedor ReDroid mediante `POST /api/v1/instances/{name}/restart` (`api.restartInstance`).
+3. `Volume2`: Subir volumen (`KEYCODE_VOLUME_UP`).
+4. `Volume1`: Bajar volumen (`KEYCODE_VOLUME_DOWN`).
+5. `Triangle` (`-rotate-90`): Botón físico Atrás de Android (`KEYCODE_BACK`).
+6. `Circle`: Botón Home (`KEYCODE_HOME`).
+7. `Square`: Botón Apps Recientes (`KEYCODE_APP_SWITCH`).
+8. `Camera`: Captura y descarga de pantalla en 1 clic.
+9. `Network`: Popover de Red USB Módem (Rotar IP, Soltar módem o Reclamar turno).
+10. `Bell`: Popover de Turnos de Red con pulso reactivo ámbar en oferta activa (`variant="warning"`).
+11. `Maximize2` / `Minimize2`: Conmutación entre modo Rack y FocusView.
+12. `FileDown`: Popover selector de APKs del repositorio para instalación directa en 1 clic.
+13. `FolderArchive`: Acceso directo al gestor de archivos (`ApkFileManager`) preseleccionando la instancia.
+14. `Trash2`: Eliminación segura protegida por modal modalizado (`ConfirmDeleteModal`).
+
+* **Popovers Lazy y Exclusividad Global:**
+  - Los popovers complejos de Red USB, Turnos y APK se cargan bajo demanda en un chunk diferido (`DeviceControlRailPopovers.tsx`) con `React.lazy` + `Suspense`, precargando en hover/focus y protegidos por `RailPopoverErrorBoundary`.
+  - Store pub/sub de exclusividad (`popoverStore.ts`, `useExclusivePopover.ts`): solo puede haber un único popover abierto en toda la aplicación; cualquier clic exterior o interacción con otro botón cierra los menús previos.
+  - Renderizado flotante mediante Portal de Radix a `document.body` (`z-[9999]`), inmune a recortes por `overflow-hidden`.
 
 ### 5. Tarjeta de Metadatos y Módulos de Cabecera Unificada (GPS / Proxy / Salud)
 * **Metadatos Compactos en 2 Columnas:** La tabla de especificaciones técnicas se distribuye en una cuadrícula compacta de dos columnas (`grid grid-cols-2 py-1 text-[11px]`), reduciendo su altura de ~320px a solo ~115px y garantizando más de 200px de espacio vertical para los módulos interactivos inferiores.
@@ -131,13 +150,28 @@ En la vista enfocada (`FocusView`), todos los comandos del terminal se centraliz
 * **Líneas Telefónicas de Formosa:**
   - Generador automático de líneas telefónicas con prefijos locales de Formosa (`3704` / `3705`) + 6 dígitos aleatorios, editables manualmente y desacopladas de la operadora móvil.
 
+### 13. Repositorio Global de APKs y Gestor de Archivos (`ApkFileManager`)
+* **Módulo Dedicado de 2 Pestañas (`ApkFileManager.tsx`):**
+  - Vista completa accesible desde la barra lateral bajo Ubicaciones (`FolderArchive`), con selector de pestañas entre "Repositorio de APKs" y "Explorador de Archivos".
+* **Pestaña Repositorio de APKs:**
+  - Catálogo centralizado con subida streaming drag-and-drop (`.apk` hasta 150 MB).
+  - Inspección instantánea de metadatos extraídos con `aapt2` (`package_name`, `version_name`, `app_name`, iconos).
+  - Marcado de aplicaciones por defecto (`is_default`) para auto-instalación en arranque de nuevas instancias.
+  - Instalación directa en 1 clic en cualquier instancia activa o en lote mediante `BulkBar`.
+* **Pestaña Explorador de Archivos:**
+  - Navegación segura por el almacenamiento del CloudPhone restringida a carpetas de la whitelist (`/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`).
+  - Subida de archivos con sufijo anti-sobrescritura y escaneo multimedia inmediato.
+  - Descarga de archivos a la máquina local y borrado seguro con confirmación.
+  - Transferencia directa inter-dispositivo (`send-to`) para replicar archivos entre diferentes CloudPhones en un clic.
+
 ---
 
 ## 🛠️ Pila Tecnológica
 
 * **React 19 + TypeScript 5.8**
 * **Vite 8 + @tailwindcss/vite (Tailwind CSS v4 con variables @theme)**
-* **Radix UI Primitives:** Tooltips, Popovers, Sliders y Dialogs accesibles
+* **WebCodecs API (Chromium nativo):** Decodificación H.264 por hardware con `VideoDecoder`
+* **Radix UI Primitives:** Tooltips, Popovers, Sliders y Dialogs accesibles con Portals
 * **Leaflet 1.9:** Mapas interactivos con azulejos OSM oscurizados
 * **Lucide React:** Iconografía vectorial moderna y consistente
 * **Sonner:** Notificaciones toast ricas en tema oscuro

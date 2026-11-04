@@ -1428,11 +1428,176 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 84. FEAT(STREAM-019) — Reproductor Nativo WebCodecs en Canvas, Cero Iframes y Streaming Lazy (2026-11-01)
+
+* **Objetivo:** Eliminar la dependencia de elementos `<iframe>` externos de `ws-scrcpy` en la interfaz web, adoptando decodificación directa por hardware H.264 sobre `<canvas>` con latencia imperceptible (<20 ms), empaquetado binario nativo de entrada táctil y teclado, y modo lazy de bajo consumo.
+* **Causa raíz:**
+  - El iframe de `ws-scrcpy` introducía sobrecargas de memoria, barras de herramientas intrusivas que requerían parches CSS frágiles, imposibilidad de control fino del ciclo de vida y bloqueos por recálculo incorrecto de resolución (`BAD_INDEX (6)` en `c2.android.avc.encoder`).
+  - La ejecución simultánea de múltiples decodificadores saturaba el silicio de video y la CPU del host.
+* **Cambios principales:**
+  - **Erradicación de Iframes:** Eliminación completa de `<iframe>` tanto en `DeviceCard.tsx` (rack) como en `FocusView.tsx`.
+  - **Pipeline WebCodecs Nativo (`useScrcpyStream.ts`, `ScrcpyLiveScreen.tsx`):**
+    - Conexión WebSocket directa a `/ws-scrcpy/?action=proxy-adb&remote=tcp:8886&udid=127.0.0.1:{adb_port}`.
+    - Negociación inicial con paquete binario `TYPE_VIDEO_SETTINGS` (36B, 720x1560 solicitando 30 FPS y 2 Mbps).
+    - Extracción de SPS/PPS Annex-B H.264 para instanciar `VideoDecoder` nativo con `hardwareAcceleration: 'prefer-hardware'` y `optimizeForLatency: true`.
+    - Renderizado directo a `<canvas>` con contexto 2D (`desynchronized: true`, `alpha: false`) y liberación inmediata obligatoria de `frame.close()` en cada fotograma para evitar fugas en VRAM.
+  - **Protocolo Binario scrcpy Propio (`web/src/lib/scrcpy/protocol.ts`):**
+    - Empaquetado estricto de eventos de entrada: `TYPE_TOUCH` (29B, coordenadas absolutas y puntero), `TYPE_SCROLL` (21B, con throttle de 25 ms), `TYPE_KEYCODE` (14B, teclas físicas y navegación) y `TYPE_TEXT` (inyección UTF-8).
+    - Mapeo bidireccional y normalización de coordenadas con relación de aspecto nativa en `web/src/lib/scrcpy/coords.ts` (suite de validación `tools/test_coords.mjs`).
+  - **Streaming Lazy y Exclusividad Interactiva:**
+    - Solo la tarjeta enfocada (`isFocused === true`) monta `ScrcpyLiveScreen` y conecta el WebSocket a 30 FPS. Las tarjetas en reposo mantienen 0% GPU utilizando `PhoneScreen` con miniaturas JPEG.
+    - Cierre ordenado de WebSocket con código 1000 tras `onopen`, desvinculando listeners y con temporizador de seguridad de 1s para prevenir `ECONNRESET` en el proxy de desarrollo de Vite.
+  - **Ergonomía de Teclado y Ratón:**
+    - Máquina de estados para `Esc` en cascada: 1.º toque libera foco interactivo del celular (`focusedInstance = null`); 2.º toque limpia la selección múltiple en grilla.
+    - Clic derecho mapeado nativamente al botón Atrás de Android (`KEYCODE_BACK`) con interrupción de menú contextual (`e.preventDefault()`, `e.stopPropagation()`).
+* **Archivos afectados:**
+  - `web/src/lib/scrcpy/protocol.ts`, `web/src/lib/scrcpy/coords.ts`, `web/src/lib/scrcpy/useScrcpyStream.ts`
+  - `web/src/components/farm/ScrcpyLiveScreen.tsx`, `web/src/components/farm/PhoneScreen.tsx`
+  - `web/src/components/grid/DeviceCard.tsx`, `web/src/components/focus/FocusView.tsx`, `web/src/components/grid/DeviceGrid.tsx`
+  - `tools/test_coords.mjs`
+* **Verificación:**
+  - Prueba de coordenadas con `node tools/test_coords.mjs` (todas las transformaciones y clamping verificados).
+  - Compilación Vite y TypeScript limpia. Decodificación por hardware VCN confirmada en AMD Ryzen 7 5700G.
+* **Estado:** STREAM-019 **completado y validado el 2026-11-01**.
+
+---
+
+### 85. FEAT(UI-020) — Barra Vertical Unificada DeviceControlRail de 14 Botones (2026-11-02)
+
+* **Objetivo:** Unificar la botonera de control de hardware y acciones de CloudPhone entre la tarjeta del rack (`DeviceCard`) y la vista enfocada (`FocusView`) en un componente estándar de 14 botones, eliminando duplicación de código y desacoplando controles de la superficie de video.
+* **Causa raíz:**
+  - Las acciones de hardware estaban dispersas: `DeviceCard` carecía de accesos rápidos directos (obligando a abrir `FocusView` para reiniciar o gestionar archivos), mientras que `FocusView` mantenía una columna duplicada y pesada.
+* **Cambios principales:**
+  - **Componente Unificado `DeviceControlRail.tsx`:**
+    - Barra vertical de 28 px de ancho (`w-7`), situada como hermano lateral derecho del contenedor de pantalla sin invadir el video.
+    - 14 botones estandarizados mediante `IconBtn` con micro-tooltips instantáneos:
+      1. `Power`: Encendido / Apagado en caliente.
+      2. `Reboot`: Reinicio del contenedor ReDroid mediante nuevo endpoint `POST /api/v1/instances/{name}/restart` (`api.restartInstance`).
+      3. `Volume2`: Subir volumen (`KEYCODE_VOLUME_UP`).
+      4. `Volume1`: Bajar volumen (`KEYCODE_VOLUME_DOWN`).
+      5. `Triangle` (`-rotate-90`): Botón físico Atrás (`KEYCODE_BACK`).
+      6. `Circle`: Botón físico Inicio (`KEYCODE_HOME`).
+      7. `Square`: Botón Apps Recientes (`KEYCODE_APP_SWITCH`).
+      8. `Camera`: Captura de pantalla y descarga JPEG instantánea.
+      9. `Network`: Popover de Red USB Módem (Rotar IP en modo avión, Soltar módem o Reclamar turno).
+      10. `Bell`: Popover de Turnos de Red con pulso reactivo ámbar en oferta activa (`variant="warning"`).
+      11. `Maximize2` / `Minimize2`: Conmutación entre modo Rack y FocusView.
+      12. `FileDown`: Popover selector de APKs del repositorio para instalación en 1 clic.
+      13. `FolderArchive`: Acceso directo al gestor de archivos (`ApkFileManager`) preseleccionando la instancia.
+      14. `Trash2`: Eliminación segura de la instancia mediante modal modalizado `ConfirmDeleteModal`.
+  - **Portal Radix flotante:** Renderizado de menús desplegables y popovers vía Portal a `document.body` con capa `z-[9999]`, evitando recortes por desbordamiento (`overflow-hidden`) en los chasis.
+  - **Reubicación en FocusView:** Los selectores de visor (Web scrcpy vs. Captura HD y Lanzador de ventana nativa de escritorio) se trasladaron a la barra de cabecera de `FocusView`.
+* **Archivos afectados:**
+  - `web/src/components/grid/DeviceControlRail.tsx`, `web/src/components/ui/IconBtn.tsx`
+  - `web/src/components/grid/DeviceCard.tsx`, `web/src/components/focus/FocusView.tsx`, `web/src/App.tsx`
+  - `server/routes/instances.py`, `web/src/lib/api.ts`
+* **Verificación:**
+  - Validación visual y funcional de los 14 botones en rack y en split-screen.
+  - Build Vite de producción limpio.
+* **Estado:** UI-020 **completado y validado el 2026-11-02**.
+
+---
+
+### 86. FEAT(APP-021) — Repositorio Global de APKs y Gestor de Archivos de Instancia (2026-11-02)
+
+* **Objetivo:** Implementar un sistema integral de aprovisionamiento de software y administración de almacenamiento local para la flota de CloudPhones, con almacenamiento centralizado de APKs deduplicado y explorador seguro de archivos en `/sdcard/`.
+* **Causa raíz:**
+  - La instalación de APKs requería comandos manuales ADB por CLI en host o descargas lentas desde navegador interno.
+  - No existía mecanismo visual para transferir archivos multimedia o descargas hacia o entre CloudPhones sin recurrir a montajes de volumen externos.
+* **Cambios principales:**
+  - **Backend Repositorio de APKs (`apk_repository.py`, `routes/apks.py`):**
+    - Base de datos SQLite en `instances/apks.db` y almacenamiento físico de binarios en `apk_repo/<sha256>.apk`.
+    - Subida streaming a archivo temporal en `.tmp/` con límite configurable de 150 MB (`APK_MAX_SIZE_BYTES`), deduplicación por hash SHA-256 y limpieza automática.
+    - Validación de integridad ZIP PK y parseo de metadatos de Android con `aapt2 dump badging` (`package_name`, `version_name`, `version_code`, `app_name`, `icon`). Rechazo explícito de formatos `.apks` y `.xapk` no compatibles.
+    - Endpoints REST `/api/v1/apks`: listar, subir (`UploadFile`), eliminar, alternar instalación por defecto (`is_default`) e instalar masivamente o en instancia individual vía ADB.
+    - Manejo seguro de SQLite cerrando conexiones para evitar `ResourceWarning`.
+  - **Backend Gestor de Archivos (`file_manager.py`, `routes/files.py`):**
+    - Whitelist estricta de rutas permitidas (`ALLOWED_FILE_ROOTS`): `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`.
+    - Blindaje de seguridad con validación dual: validación léxica previa en Python (`posixpath.relpath`, rechazo de `..` o prefijos absolutos fuera de raíz) + verificación canónica en el invitado con `realpath` dentro del shell de Android.
+    - Listado robusto mediante `find -maxdepth 1 -print0` y `stat` con formato protegido entre comillas dobles para impedir que el shell interprete el delimitador `|` como tubería.
+    - Operaciones de archivo: subida multipart con sufijo anti-sobrescritura (`nombre (1).ext`) y notificación al sistema de medios (`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE`); descarga mediante streaming binario seguro; borrado con `rm -rf --` escapado con `shlex.quote`; y transferencia directa `send-to` entre dos CloudPhones.
+    - Soporte operativo para listar y subir archivos directamente en las raíces permitidas.
+  - **Hook de Auto-Instalación en Ciclo de Vida:**
+    - `create_instance_async` en `server/routes/instances.py` detecta APKs marcadas como `is_default` y lanza una tarea en segundo plano que espera `getprop sys.boot_completed == 1` para instalarlas de forma asíncrona sin bloquear la creación de la instancia.
+  - **Frontend `ApkFileManager.tsx` y Puntos de Entrada:**
+    - Vista dedicada con dos pestañas fluidas: "Repositorio de APKs" (catálogo, subida drag-and-drop, badges de versión y defaults) y "Explorador de Archivos" (selector de instancia, navegación por árbol de carpetas permitidas, previsualización, subida, descarga y send-to).
+    - Acceso desde barra lateral ("APKs y Archivos", icono `FolderArchive`), botón 12 del riel (selector rápido e instalación en la tarjeta) y botón 13 del riel (apertura directa de la pestaña de archivos con instancia preseleccionada).
+    - Conexión de instalación masiva en `BulkBar.tsx` conectada al repositorio de APKs.
+  - **Dependencias e Infraestructura:**
+    - Declaración formal de `python-multipart` en `tools/run_api.sh`.
+    - Incorporación de `apk_repo/` en `.gitignore`.
+    - Test de humo `tests/host/test_main_smoke.py` para asegurar carga de routers sin fallos en tiempo de importación.
+* **Archivos afectados:**
+  - `server/services/apk_repository.py`, `server/services/file_manager.py`
+  - `server/routes/apks.py`, `server/routes/files.py`, `server/config.py`, `server/main.py`
+  - `server/routes/instances.py`, `server/models/schemas.py`
+  - `web/src/components/files/ApkFileManager.tsx`, `web/src/components/grid/BulkBar.tsx`
+  - `web/src/App.tsx`, `web/src/types.ts`, `web/src/lib/api.ts`
+  - `tools/run_api.sh`, `.gitignore`
+  - `tests/host/test_apk_repository.py`, `tests/host/test_file_validation.py`, `tests/host/test_main_smoke.py`
+* **Verificación:**
+  - Validación en vivo contra instancia física `phone-80`: listado, subida, descarga y send-to de archivos.
+  - Suite de tests unitarios: `test_apk_repository.py` (6 tests), `test_file_validation.py` (11 tests), `test_main_smoke.py` (1 test).
+  - Build web Vite limpio y sin errores.
+* **Estado:** APP-021 **completado y validado el 2026-11-02**.
+
+---
+
+### 87. PERF(RACK-022) — Chasis Height-Driven Proporcional, Telemetría Viva y Blindaje de Video (2026-11-03)
+
+* **Objetivo:** Optimizar la ergonomía visual mediante un layout de rack horizontal gobernado por la altura del viewport (`Height-Driven`), incorporar telemetría viva de FPS en el decodificador de video, dotar al WebSocket de watchdog de sincronización de primer frame y blindar el rendimiento general de CPU y memoria.
+* **Causa raíz:**
+  - Los layouts de CSS Grid con alturas fijas o anchos rígidos generaban barras negras laterales o scroll vertical forzado en pantallas estándar (1080p y 768p).
+  - El cálculo anterior de FPS era un promedio acumulativo global que no reflejaba caídas momentáneas y forzaba re-renderizados innecesarios de toda la tarjeta.
+  - Al reiniciar el backend con `ws-scrcpy` en ejecución, la conexión WebSocket podía quedar a la espera indefinida de un cuadro IDR sin emitir video.
+  - La recarga de Uvicorn inspeccionaba más de 1.100 archivos (incluyendo el `.venv`), consumiendo más del 30% de un core en reposo.
+* **Cambios principales:**
+  - **Chasis y Rack Height-Driven Proporcional:**
+    - Sustitución de CSS Grid por rack horizontal (`flex h-full items-center gap-4 overflow-x-auto`).
+    - Altura atada al viewport (`h-full` / `min(100vh - 180px, 840px)`) y cálculo dinámico de relación de aspecto en tarjeta (`aspectRatio: ${nativeWidth} / ${nativeHeight}`, derivado de `instance.display` con fallback `720 / 1560`).
+    - Eliminación total de scroll vertical y adaptación proporcional inmediata ante cambios de resolución.
+  - **Telemetría Dinámica de FPS (`fps.ts`, `useFps.ts`):**
+    - Store pub/sub externo desacoplado de React e indexado por instancia (`Map<adbPort, ...>`).
+    - Cálculo de FPS en tiempo real sobre una **ventana deslizante de 1 segundo** (`computeWindowFps`) contando únicamente los cuadros pintados en canvas.
+    - Componente aislado `FpsBadge` suscrito vía `useSyncExternalStore` que refresca el badge sin provocar re-renderizados de la tarjeta.
+  - **Watchdog de Primer Frame y Filtrado de Sockets (`watchdog.ts`, `useScrcpyStream.ts`):**
+    - Temporizador de 6 segundos tras `ws.onopen`. Si no se decodifica ningún frame (ausencia de IDR), cierra el socket y reconecta con backoff exponencial progresivo (`[500, 1000, 2000, 4000, 8000] ms`).
+    - Límite de 3 intentos consecutivos antes de fijar estado `'error'` y mostrar botón manual de "Reintentar".
+    - Descarte de eventos `onclose`/`onerror` de sockets obsoletos (`shouldHandleSocketClose`) y prevención de carreras asíncronas.
+  - **Optimización y Exclusividad de Popovers:**
+    - Extracción de popovers complejos de Red USB, Turnos y APK a chunk diferido (`DeviceControlRailPopovers.tsx`) cargado con `React.lazy` + `Suspense` y protegido por `RailPopoverErrorBoundary`.
+    - Reducción del bundle inicial en ~3.4 kB.
+    - Store de exclusividad de popovers (`popoverStore.ts` y `useExclusivePopover.ts`): garantiza un único popover abierto a la vez en toda la aplicación, cerrando menús abiertos al interactuar con otras áreas.
+  - **Caché Backend de Miniaturas y Polling con Jitter (`screenshot_cache.py`):**
+    - Caché en memoria con TTL de 8,0 segundos y candado single-flight por instancia+formato+max_width en `/instances/{name}/screen`. Soporte de parámetro `fresh=1` para forzar refresco inmediato al soltar foco.
+    - Polling frontend de tarjetas en reposo con intervalo aleatorio de 10 a 15 segundos con jitter por tarjeta, pausado si la tarjeta está fuera del viewport (`IntersectionObserver`) o si la pestaña está oculta.
+    - Latencia de captura reducida de 308 ms a 1,4 ms (hit); uso de CPU de reposo del contenedor reducido de 6,22% a 2,31%.
+  - **Reducción de Overhead en Servidor API (`run_api.sh`):**
+    - Limitación de `--reload-dir` a `server/` y `tools/`, reduciendo los archivos vigilados de 1.106 a 32 y el uso de CPU de reposo de StatReload de ~32,8% a ~1,5% de un core.
+* **Archivos afectados:**
+  - `web/src/lib/scrcpy/fps.ts`, `web/src/lib/scrcpy/useFps.ts`, `web/src/lib/scrcpy/watchdog.ts`, `web/src/lib/scrcpy/useScrcpyStream.ts`
+  - `web/src/lib/popoverStore.ts`, `web/src/lib/useExclusivePopover.ts`
+  - `web/src/components/farm/ScrcpyLiveScreen.tsx`, `web/src/components/grid/DeviceCard.tsx`, `web/src/components/grid/DeviceGrid.tsx`
+  - `web/src/components/grid/DeviceControlRail.tsx`, `web/src/components/grid/DeviceControlRailPopovers.tsx`
+  - `web/src/components/focus/FocusView.tsx`, `web/src/components/grid/BulkBar.tsx`
+  - `server/services/screenshot_cache.py`, `server/routes/instances.py`, `tools/run_api.sh`
+  - `web/test/fps.test.ts`, `web/test/popovers.test.ts`, `web/test/watchdog.test.ts`
+  - `tests/host/test_screenshot_cache.py`
+* **Verificación:**
+  - Suite de tests web: 24 tests unitarios pasando en `node --test` (`fps`, `popovers`, `watchdog`).
+  - Suite de tests host: 140 / 141 tests pasando (1 omitido por requerir dispositivo real).
+  - Medición en reposo con `/proc/<pid>/stat` validando caída de CPU en API y contenedor.
+* **Estado:** RACK-022 **completado y validado el 2026-11-03**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
-   * Construir el backend/API que administre el ciclo de vida de los contenedores Docker (`start`, `stop`, `restart`, `clone`).
-   * Interfaz gráfica interactiva con catálogo de dispositivos (Pixel, Samsung, Motorola, Xiaomi) para generar instancias con operadora, proxy residencial e identidad personalizada en 1 clic.
+   * ✅ Completado: Plataforma de gestión completa con API FastAPI, panel React 19, catálogo de hardware determinista, streaming nativo WebCodecs lazy a 30 FPS, gestor de APKs/archivos y riel unificado de control de hardware de 14 botones.
 2. **Catálogo de Presets de Hardware Adicionales:**
    * ✅ Completado: 17 perfiles masivos oficiales incorporados (Samsung Galaxy S y A, Motorola Moto G, Xiaomi Redmi, Google Pixel).
-   * Incorporar soporte de proxies residenciales enrutados por contenedor (SOCKS5 / WireGuard per-instance).
+3. **Redes Avanzadas y Orquestación Multi-Host:**
+   * Orquestación de contenedores distribuida entre múltiples hosts físicos mediante agente ligero o clúster privado.
+   * Soporte de túneles WireGuard dedicados por contenedor para perfiles de red residenciales de alto rendimiento.
+   * Automatización de rotación de IPs celulares mediante control AT/ModemManager sobre placas multi-SIM USB.

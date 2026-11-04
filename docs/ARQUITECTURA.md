@@ -77,9 +77,11 @@ redroid-integrity-lab/
 │   ├── ar_movistar.json
 │   └── ar_personal.json
 ├── instances/                     # Directorio de instancias activas desacopladas
+│   ├── apks.db                    # Base de datos SQLite del repositorio global de APKs
 │   └── <nombre_instancia>/
 │       ├── profile.json           # Perfil congelado con identidad única
 │       └── data/                  # Volumen persistente /data clonado de data-clean
+├── apk_repo/                      # Almacenamiento físico de binarios APK por hash SHA-256
 ├── data-clean/                    # Imagen dorada sanitizada base para nuevas instancias
 ├── stubs/                         # APKs stub ultraligeros de tiendas de fabricante (~4.1 KB, con activity)
 │   ├── samsung_galaxy_store.apk   # com.sec.android.app.samsungapps (4.1 KB)
@@ -88,23 +90,33 @@ redroid-integrity-lab/
 ├── tools/
 │   ├── instance_manager.py        # Orquestador CLI del ciclo de vida de instancias
 │   ├── render.py                  # Renderizador determinista de identidades
-│   ├── run_api.sh                 # Lanzador del servidor FastAPI (puerto 8000)
-│   └── run_ws_scrcpy.sh           # Lanzador opcional de ws-scrcpy (puerto 8001)
+│   ├── run_api.sh                 # Lanzador del servidor FastAPI (puerto 8000, --reload-dir acotado)
+│   ├── run_ws_scrcpy.sh           # Lanzador de ws-scrcpy (puerto 8001)
+│   └── test_coords.mjs            # Suite de validación de coordenadas de pantalla
 ├── server/                        # API REST + streaming (FastAPI)
 │   ├── main.py                    # Composición de la app y registro de routers
-│   ├── config.py                  # Variables de entorno (WS_SCRCPY_URL, etc.)
-│   ├── models/schemas.py          # Contratos Pydantic V2 (instancias, grupo, stream)
-│   ├── routes/                    # instances, templates, carriers, locations, proxies
+│   ├── config.py                  # Variables de entorno (WS_SCRCPY_URL, APK_REPO_DIR, ALLOWED_FILE_ROOTS)
+│   ├── models/schemas.py          # Contratos Pydantic V2 (instancias, grupo, apks, files)
+│   ├── routes/                    # instances, templates, carriers, locations, proxies, apks, files
 │   └── services/
 │       ├── manager_bridge.py      # Puente CLI↔API, ADB directo y streaming
+│       ├── apk_repository.py      # Repositorio SQLite, hashing SHA-256 y metadatos AAPT2
+│       ├── file_manager.py        # Gestor de archivos /sdcard/ con whitelist dual y send-to
+│       ├── screenshot_cache.py    # Caché TTL 8s + single-flight para miniaturas de pantalla
 │       └── proxy_service.py       # Verificación de proxies y geolocalización
 ├── web/                           # Panel React 19 + TypeScript + Vite 8 + Tailwind 4
-│   └── src/
-│       ├── App.tsx                # Estado de grid/focus, selección y modo grupo
-│       ├── components/grid/       # Mosaico: DeviceGrid, DeviceCard, BulkBar
-│       ├── components/focus/      # FocusView, InteractiveScreen (fallback HD)
-│       └── lib/api.ts, types.ts   # Cliente REST tipado
-├── tests/host/                    # Suites del motor, API, grupo y proxies
+│   ├── src/
+│   │   ├── App.tsx                # Estado de rack/focus, selección, modo grupo y pestañas
+│   │   ├── components/grid/       # Rack: DeviceGrid, DeviceCard, DeviceControlRail, Popovers, BulkBar
+│   │   ├── components/farm/       # ScrcpyLiveScreen (WebCodecs canvas), PhoneScreen (JPEG reposo)
+│   │   ├── components/focus/      # FocusView (split-screen de control y diagnóstico)
+│   │   ├── components/files/      # ApkFileManager (gestión de APKs y explorador /sdcard/)
+│   │   ├── lib/scrcpy/            # protocol.ts, coords.ts, fps.ts, useFps.ts, useScrcpyStream.ts, watchdog.ts
+│   │   ├── lib/popoverStore.ts    # Store pub/sub de popovers exclusivos (1 activo en toda la UI)
+│   │   ├── lib/useExclusivePopover.ts # Hook reactivo de control de popovers
+│   │   └── lib/api.ts, types.ts   # Cliente REST tipado con contratos de flota, APKs y archivos
+│   └── test/                      # Tests unitarios frontend (fps.test.ts, popovers.test.ts, watchdog.test.ts)
+├── tests/host/                    # Suites host (manager, API, grupo, proxies, apks, files, screenshot_cache)
 ├── docker-compose.ws-scrcpy.yml   # ws-scrcpy contenedorizado (network_mode: host)
 ├── src/
 │   ├── profile_loader/            # Cargador nativo en C estático (main.c)
@@ -201,43 +213,78 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
 
 ---
 
-## 5. Plano de Control Web y Streaming de Baja Latencia
+## 5. Plano de Control Web, Streaming WebCodecs y Gestión de Archivos
 
-El panel (`web/`) y la API (`server/`) son un plano de control desacoplado del motor de instancias: **toda mutación de estado pasa por `tools/instance_manager.py`**, que sigue siendo la única fuente de verdad sobre Docker, ADB, perfiles y ciclo de vida. La API no reimplementa esa lógica; la envuelve y la expone con contratos Pydantic y respuestas uniformes por instancia.
+El panel (`web/`) y la API (`server/`) conforman un plano de control desacoplado del motor de instancias: **toda mutación de estado pasa por `tools/instance_manager.py`**, que sigue siendo la única fuente de verdad sobre Docker, ADB, perfiles y ciclo de vida. La API no reimplementa esa lógica; la envuelve y la expone con contratos Pydantic y respuestas uniformes por instancia.
 
 ### 5.1 Flujo de datos
 
 ```text
 React (5173) ──REST──► FastAPI (8000) ──subprocess──► instance_manager.py ──► Docker / ADB
      │                     │
-     │                     ├──GET /instances/{name}/screen        (JPEG, thumbnails/captura)
-     │                     ├──GET /instances/{name}/stream-info   (disponibilidad ws-scrcpy)
-     │                     └──WS  /instances/{name}/ws-stream     (JPEG ~3 FPS, legado: sin consumidor en la UI)
+     │                     ├──GET  /instances/{name}/screen  (JPEG con caché TTL 8s + single-flight)
+     │                     ├──POST /instances/{name}/restart (reinicio de contenedor ReDroid)
+     │                     ├──/api/v1/apks                   (repositorio SQLite + SHA-256 + AAPT2)
+     │                     └──/api/v1/files                  (gestor /sdcard/ con whitelist dual)
      │
-     └──iframe──► ws-scrcpy (8001) ──proxy-adb──► scrcpy server (H.264 30 FPS)
+     └──WebSocket──► ws-scrcpy (8001) ──proxy-adb──► scrcpy-server (H.264 Annex-B, 30 FPS)
+          │
+          ▼
+     VideoDecoder nativo Chromium ──► HTML5 <canvas> (latencia <20 ms, aceleración VCN)
 ```
 
-### 5.2 Jerarquía de visores y justificación
+### 5.2 Jerarquía de visores y modelo Lazy exclusivo
 
-| Nivel | Transporte | Uso | Por qué |
-|---|---|---|---|
-| **Primario** | ws-scrcpy + H.264 (WebCodecs/MSE) | Vista focus por defecto | Latencia percibida ~50–100 ms y 30 FPS reales; el pipeline JPEG medía ~550 ms y era el cuello de botella, no la entrada táctil |
-| **Fallback** | WebSocket JPEG + canvas | ws-scrcpy caído, navegador sin decodificador o modo grupo | Funciona solo con FastAPI/Docker, sin Node; mantiene la operación ante fallos del servicio externo |
-| **Mosaico** | `GET /screen` a 5 s por tarjeta | Thumbnails de `DeviceCard` | Abrir un stream H.264 por tarjeta multiplicaría CPU y ancho de banda con 7+ instancias |
-| **Captura** | `GET /screen` bajo demanda | Descarga de screenshot | No depende del stream ni de scrcpy |
+| Modo | Componente | Transporte / Render | Consumo Host | Uso y Justificación |
+|---|---|---|---|---|
+| **Enfocado (Activo)** | `ScrcpyLiveScreen` | WebSocket a `ws-scrcpy` + `VideoDecoder` nativo a `<canvas>` | Aceleración VCN por hardware, ~20% de 1 hilo | **Exclusivo (1 teléfono a la vez):** 30 FPS H.264 reales, latencia <20 ms, empaquetado binario de toques (29B), scroll (21B) y teclado (14B). |
+| **En Reposo (Idle)** | `PhoneScreen` | HTTP GET `/instances/{name}/screen` (JPEG) | **0% GPU**, ~0.1% CPU | Tarjetas no enfocadas en el rack. Polling espaciado (10–15 s con jitter), pausado fuera del viewport o con pestaña oculta. Caché backend TTL 8s + single-flight. Refresco forzado `fresh=1` al soltar foco. |
+| **Fallback HD** | `InteractiveScreen` | HTTP GET `/screen` + ADB HTTP input | Mínimo | Modo de respaldo si ws-scrcpy no está disponible o para inspección fotográfica estática de alta definición. |
+| **Captura** | `api.getScreenUrl` | HTTP GET bajo demanda | Puntual | Descarga de captura en 1 clic desde el botón 8 del riel (`Camera`). |
 
-- **Canvas en modo grupo:** el iframe de scrcpy controla un único dispositivo (un socket de video por dispositivo en el servidor scrcpy). La sincronización multi-touch hacia N instancias requiere el canvas y los endpoints `/instances/group/input/*`.
-- **Entrada:** `manager_bridge.py` prefiere `adb -s 127.0.0.1:<adb_port> shell input` (~21 ms medidos) y cae a `docker exec` (~33 ms) si el dispositivo no está conectado. El ahorro aplica a tap, swipe, teclas, texto y al fan-out de grupo.
-- **Control de grupo:** una sola llamada REST desde el frontend ejecuta `asyncio.gather` sobre las instancias y devuelve `GroupActionResponse` con `results[]`; así un fallo individual no aborta el lote y se evita la suma secuencial de latencias.
-- **Conectividad ws-scrcpy:** se valida con un GET de 0.8 s de timeout en `stream-info` para degradar rápido al canvas. La URL base se configura con `WS_SCRCPY_URL`, lo que permite apuntar a un ws-scrcpy remoto sin tocar el frontend.
-- **Configuración de ws-scrcpy:** el puerto se define en el YAML apuntado por `WS_SCRCPY_CONFIG`; la variable `PORT` es ignorada por ws-scrcpy y su puerto por defecto (8000) colisiona con FastAPI. El script y el compose generan el YAML y reconstruyen `node-pty` (npm 11 omite install scripts), evitando el fallo silencioso del módulo nativo.
-- **Orden de rutas en FastAPI:** `/instances/group/*` se declara antes de `/{name}/*`; de lo contrario `group/start` se interpretaría como una instancia llamada `group`. El router WS no aparece en OpenAPI, por eso `stream-info` es la vía documentada para descubrir el visor.
+### 5.3 Pipeline de Streaming WebCodecs y Protocolo Binario Propio
 
-### 5.3 Límites operativos
+1. **Cero IFrames:** Se erradicaron por completo los elementos `<iframe>` de streaming tanto en la grilla/rack (`DeviceCard`) como en la vista dividida (`FocusView`), eliminando fugas de memoria, barras intrusivas y colisiones de resolución (`BAD_INDEX (6)`).
+2. **Negociación y Decodificación:**
+   - La conexión WebSocket hacia `/ws-scrcpy/?action=proxy-adb&remote=tcp:8886&udid=127.0.0.1:{adb_port}` negocia el stream con un paquete binario de 36 bytes (`TYPE_VIDEO_SETTINGS`, 720x1560 a 30 FPS y 2 Mbps).
+   - El cliente extrae las unidades NAL SPS/PPS del flujo Annex-B para instanciar `VideoDecoder` con `prefer-hardware` y `optimizeForLatency: true`.
+   - El render se realiza sobre un `<canvas>` HTML5 con contexto 2D (`desynchronized: true`, `alpha: false`). Cada cuadro decodificado se destruye de inmediato mediante `frame.close()` para impedir fugas en la VRAM de la GPU.
+3. **Protocolo Binario scrcpy (`web/src/lib/scrcpy/protocol.ts`):**
+   - Paquetes binarios serializados en el cliente:
+     * `TYPE_TOUCH` (29 bytes): puntero, acción (Down/Move/Up), coordenadas absolutas calibradas al video nativo (`videoSizeRef`) y presión.
+     * `TYPE_SCROLL` (21 bytes): desplazamiento vertical/horizontal con amortiguación y throttle de 25 ms.
+     * `TYPE_KEYCODE` (14 bytes): código de tecla Android y metastate para teclado físico.
+     * `TYPE_TEXT`: inyección de cadenas UTF-8.
+   - Mapeo de coordenadas con preservación de aspecto en `coords.ts` (suite `tools/test_coords.mjs`).
+   - Clic derecho mapeado directamente a `KEYCODE_BACK` de Android con prevención de menú contextual.
+4. **Watchdog de Primer Frame y Recuperación Automática (`watchdog.ts`):**
+   - Al abrir el WebSocket (`ws.onopen`), se activa un temporizador de 6 segundos. Si no se decodifica ningún cuadro (ausencia de frame IDR tras reinicio del servidor con `ws-scrcpy` vivo), el socket se cierra y reconecta con backoff exponencial progresivo (`[500, 1000, 2000, 4000, 8000] ms`).
+   - Tras 3 intentos consecutivos fallidos, se suspende la reconexión automática, se transiciona a estado `'error'` y se expone un botón manual de "Reintentar".
+   - Descarte estricto de eventos desfasados (`shouldHandleSocketClose`) y cierre limpio con código 1000 tras `onopen` para evitar `ECONNRESET` en el proxy de desarrollo de Vite.
+5. **Telemetría Dinámica de FPS (`fps.ts`, `useFps.ts`):**
+   - Store externo pub/sub desacoplado del árbol de React, indexado por puerto ADB (`Map<adbPort, ...>`).
+   - Medición precisa sobre una **ventana deslizante de 1 segundo** calculada sobre fotogramas efectivamente pintados (`computeWindowFps`), suscripto mediante `useSyncExternalStore` en el componente `FpsBadge`.
 
-- Un solo cliente de video scrcpy por dispositivo: una ventana nativa abierta en el host puede competir con ws-scrcpy.
-- El visor nativo no aplica al control de grupo ni a la descarga de captura.
-- El render del invitado se mantiene en 30 FPS (`RENDER_FPS`), por lo que pedir más FPS al visor no mejora la fluidez real.
+### 5.4 Repositorio Global de APKs y Gestor de Archivos en `/sdcard/`
+
+1. **Repositorio Centralizado de APKs (`server/services/apk_repository.py`, `server/routes/apks.py`):**
+   - Metadatos indexados en SQLite (`instances/apks.db`) y binarios almacenados por hash SHA-256 en `apk_repo/<sha256>.apk`.
+   - Subida streaming con límite configurable de 150 MB (`APK_MAX_SIZE_BYTES`), deduplicación automática, validación de firma ZIP PK y extracción de metadatos mediante `aapt2 dump badging` (`package_name`, `version_name`, `version_code`, `app_name`, `icon`). Rechazo de contenedores `.apks`/`.xapk`.
+   - Hook de aprovisionamiento en arranque: `create_instance_async` instala asíncronamente las APKs con flag `is_default` una vez detectado `getprop sys.boot_completed == 1` sin retrasar el retorno de la API.
+2. **Gestor de Archivos de Instancia (`server/services/file_manager.py`, `server/routes/files.py`):**
+   - **Whitelist Estricta:** Solo se permite acceso a `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures` y `/sdcard/Documents`.
+   - **Validación Dual de Rutas:** Validación léxica previa en Python (`posixpath.relpath`, bloqueo de caracteres especiales y secuencias de escape `..`) complementada con resolución física canónica en el invitado (`realpath` ejecutado en el shell de Android) para prevenir escapes de sandbox o enlaces simbólicos maliciosos.
+   - **Operaciones Seguras:**
+     * Listado con `find -maxdepth 1 -print0` y `stat` formateado entre comillas dobles (evitando interpretación de `|` como pipe).
+     * Subida multipart vía ADB push con sufijo anti-sobrescritura (`foto (1).png`) y escaneo multimedia inmediato (`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE`).
+     * Descarga segura por streaming binario y borrado atómico con `rm -rf --` escapado con `shlex.quote`.
+     * Acción directa `send-to` para transferir archivos entre instancias sin pasar por el disco del host.
+
+### 5.5 Límites operativos
+
+- **Exclusividad de Video:** Solo un cliente scrcpy puede decodificar video por dispositivo. El modo lazy garantiza que el cambio de foco libere el socket anterior antes de conectar el nuevo.
+- **Techo de Fluidez:** El render del invitado ReDroid está calibrado a 30 FPS (`RENDER_FPS`), coincidiendo con la tasa negociada en el pipeline WebCodecs.
+- **Exclusividad de Menús:** La interfaz web implementa un store de popover único (`popoverStore.ts`): abrir un popover en el riel de control, en la barra inferior o en la cabecera cierra cualquier otro menú flotante abierto.
 
 ---
 
