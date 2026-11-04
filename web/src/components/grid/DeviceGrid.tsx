@@ -8,6 +8,7 @@ interface DeviceGridProps {
   selected: Set<string>;
   syncMode?: boolean;
   onToggleSelect: (name: string, shiftKey?: boolean) => void;
+  onSelectRange?: (names: string[]) => void;
   onOpen: (name: string) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
@@ -21,6 +22,7 @@ export default function DeviceGrid({
   selected,
   syncMode = false,
   onToggleSelect,
+  onSelectRange,
   onOpen,
   onSelectAll,
   onClearSelection,
@@ -32,21 +34,21 @@ export default function DeviceGrid({
   const [focusedInstance, setFocusedInstance] = useState<string | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Si la selección global se vacía, liberar también el foco
-  useEffect(() => {
-    if (selected.size === 0) {
-      setFocusedInstance(null);
-    }
-  }, [selected.size]);
+  // El foco interactivo solo es válido si la instancia existe y está corriendo
+  const activeFocused =
+    focusedInstance !== null &&
+    instances.some((i) => i.instance_name === focusedInstance && i.running)
+      ? focusedInstance
+      : null;
 
   // Llevar a vista el teléfono enfocado sin smooth scroll durante arrastres
   useEffect(() => {
-    if (!focusedInstance) return;
-    const el = cardRefs.current.get(focusedInstance);
+    if (!activeFocused) return;
+    const el = cardRefs.current.get(activeFocused);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
-  }, [focusedInstance]);
+  }, [activeFocused]);
 
   // Atajos de teclado: Ctrl+A para todo; Esc en cascada (1º libera foco, 2º limpia selección)
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function DeviceGrid({
         onSelectAll();
       }
       if (e.key === 'Escape' && !document.querySelector('[role="dialog"][data-state="open"]')) {
-        if (focusedInstance !== null) {
+        if (activeFocused !== null) {
           e.preventDefault();
           setFocusedInstance(null);
         } else {
@@ -77,7 +79,7 @@ export default function DeviceGrid({
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onSelectAll, onClearSelection, focusedInstance]);
+  }, [onSelectAll, onClearSelection, activeFocused]);
 
   const usbFor = (name: string): UsbSlice => {
     const offer = usbOverview?.pending_offer?.instance === name ? usbOverview.pending_offer : null;
@@ -92,21 +94,35 @@ export default function DeviceGrid({
   };
 
   const handleSelectWithShift = useCallback((name: string, shiftKey?: boolean) => {
-    if (shiftKey && lastSelectedRef.current) {
-      const idx1 = instances.findIndex((i) => i.instance_name === lastSelectedRef.current);
-      const idx2 = instances.findIndex((i) => i.instance_name === name);
-      if (idx1 !== -1 && idx2 !== -1) {
-        const start = Math.min(idx1, idx2);
-        const end = Math.max(idx1, idx2);
-        const range = instances.slice(start, end + 1).map((i) => i.instance_name);
-        range.forEach((n) => onToggleSelect(n, false));
-        lastSelectedRef.current = name;
-        return;
+    if (shiftKey) {
+      if (lastSelectedRef.current) {
+        const idx1 = instances.findIndex((i) => i.instance_name === lastSelectedRef.current);
+        const idx2 = instances.findIndex((i) => i.instance_name === name);
+        if (idx1 !== -1 && idx2 !== -1) {
+          const start = Math.min(idx1, idx2);
+          const end = Math.max(idx1, idx2);
+          const range = instances.slice(start, end + 1).map((i) => i.instance_name);
+          if (onSelectRange) {
+            onSelectRange(range);
+          } else {
+            range.forEach((n) => onToggleSelect(n, false));
+          }
+          lastSelectedRef.current = name;
+          return;
+        }
       }
+      lastSelectedRef.current = name;
+      onToggleSelect(name, false);
+      return;
     }
+
     lastSelectedRef.current = name;
-    onToggleSelect(name, false);
-  }, [instances, onToggleSelect]);
+
+    // Solo conmuta la selección en lote si ya estamos en modo de selección múltiple explícito
+    if (selected.size > 0) {
+      onToggleSelect(name, false);
+    }
+  }, [instances, selected.size, onToggleSelect, onSelectRange]);
 
   const handleFocus = useCallback((name: string) => setFocusedInstance(name), []);
   const handleReleaseFocus = useCallback(() => setFocusedInstance(null), []);
@@ -136,7 +152,7 @@ export default function DeviceGrid({
           onOpen={onOpen}
           usb={usbFor(instance.instance_name)}
           onNetworkChange={onNetworkChange}
-          isFocused={focusedInstance === instance.instance_name}
+          isFocused={activeFocused === instance.instance_name}
           onFocus={handleFocus}
           onReleaseFocus={handleReleaseFocus}
           onOpenFilesManager={onOpenFilesManager}

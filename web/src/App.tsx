@@ -192,6 +192,14 @@ export function App() {
     setGroupMode(false);
   }, []);
 
+  const selectRange = useCallback((names: string[]) => {
+    setSelectedNames((prev) => {
+      const next = new Set(prev);
+      names.forEach((n) => next.add(n));
+      return next;
+    });
+  }, []);
+
   const openFocus = useCallback((name: string) => {
     setFocusedName(name);
     setViewMode('focus');
@@ -404,17 +412,13 @@ export function App() {
 
           {/* Cuerpo Central */}
           {activeNav === 'instances' && viewMode === 'grid' && (
-            <div
-              className={cn(
-                'grid-bg flex-1 min-h-0 overflow-hidden p-4',
-                selectedNames.size > 0 && 'pb-14'
-              )}
-            >
+            <div className="grid-bg flex-1 min-h-0 overflow-hidden p-4">
               <DeviceGrid
                 instances={filteredInstances}
                 selected={selectedNames}
                 syncMode={groupMode}
                 onToggleSelect={toggleSelect}
+                onSelectRange={selectRange}
                 onOpen={openFocus}
                 onSelectAll={toggleSelectAll}
                 onClearSelection={clearSelection}
@@ -492,7 +496,7 @@ export function App() {
         )}
 
         {/* Barra Flotante de Acciones en Lote */}
-        {activeNav === 'instances' && viewMode === 'grid' && selectedNames.size > 0 && (
+        {activeNav === 'instances' && viewMode === 'grid' && selectedNames.size >= 2 && (
           <BulkBar
             selectedNames={selectedList}
             groupMode={groupMode}

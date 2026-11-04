@@ -86,7 +86,7 @@ export default function BulkBar({
   }, [apkPopover.open]);
 
   const count = selectedNames.length;
-  if (count === 0) return null;
+  if (count < 2) return null;
 
   const handleExecuteDelete = async () => {
     setBusy('delete');
