@@ -1,6 +1,7 @@
 """
 Configuración del Backend FastAPI de ProteoMesh
 """
+import os
 from pathlib import Path
 from typing import List
 
@@ -13,10 +14,11 @@ BUNDLES_DIR = REPO_ROOT / "bundles"
 DATA_CLEAN_DIR = REPO_ROOT / "data-clean"
 CUSTOM_LOCATIONS_FILE = REPO_ROOT / "custom_locations.json"
 
-# Repositorio global de APKs (WEB-017)
+# Repositorio global de APKs (WEB-017 / Bundles)
 APK_REPO_DIR = REPO_ROOT / "apk_repo"
 APKS_DB_PATH = INSTANCES_DIR / "apks.db"
-APK_MAX_SIZE_BYTES = 150 * 1024 * 1024  # 150 MB
+APK_MAX_SIZE_BYTES = int(os.getenv("PROTEOMESH_MAX_APK_SIZE_MB", "300")) * 1024 * 1024
+APK_MAX_UNCOMPRESSED_BYTES = APK_MAX_SIZE_BYTES * 2  # 600 MB por defecto
 AAPT2_CANDIDATES = [
     REPO_ROOT / ".probe" / "aapt2",
     Path("/tmp/proteomesh_stubs/tools/aapt2"),
