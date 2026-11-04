@@ -1,10 +1,12 @@
 """
-Endpoints REST para el Repositorio Global de APKs (WEB-017)
-===========================================================
-- Subida segura de APKs con límite de 150 MB y detección de duplicados por sha256.
+Endpoints REST para el Repositorio Global de APKs y Bundles (WEB-017 / Bundles)
+================================================================================
+- Subida segura de APKs y Bundles (.apk, .apkm, .xapk, .apks, .zip) con límite dinámico.
+- Detección de duplicados por sha256 y persistencia híbrida (archivo o carpeta de splits).
 - Listado, borrado y marcado de APKs por defecto.
 - Instalación en lote sobre instancias activas (concurrencia máxima 2).
 """
+import asyncio
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -47,13 +49,17 @@ def list_apks():
     return apk_repository.list_apks()
 
 
-@router.post("", status_code=201, response_model=Dict[str, Any], summary="Subir un APK al repositorio")
+@router.post("", status_code=201, response_model=Dict[str, Any], summary="Subir un APK o Bundle al repositorio")
 async def upload_apk(
-    file: UploadFile = File(..., description="Archivo APK a subir"),
+    file: UploadFile = File(..., description="Archivo APK o Bundle a subir (.apk, .apkm, .xapk, .apks, .zip)"),
 ):
-    """Sube un APK, valida firma ZIP y metadatos, y lo guarda nombrado por sha256."""
+    """Sube un APK o Bundle, valida firma ZIP, metadatos y seguridad, y lo guarda nombrado por sha256."""
     try:
-        result = apk_repository.upload_apk(file.filename or "unknown.apk", _chunk_reader(file))
+        result = await asyncio.to_thread(
+            apk_repository.upload_apk,
+            file.filename or "unknown.apk",
+            _chunk_reader(file),
+        )
         return result
     except ApkTooLargeError as e:
         raise HTTPException(status_code=413, detail=str(e))
