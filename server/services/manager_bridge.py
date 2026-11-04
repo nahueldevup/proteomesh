@@ -21,7 +21,11 @@ from server.config import (
     CARRIERS_DIR,
     INSTANCES_DIR,
 )
-from server.services.apk_repository import apk_repository, ApkRepositoryError
+from server.services.apk_repository import (
+    apk_repository,
+    ApkRepositoryError,
+    install_apk_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -435,24 +439,17 @@ async def _install_default_apks(
                 if not apk:
                     result["skipped"] += 1
                     continue
-                apk_path = apk_repository.get_apk_path(apk["sha256"])
-                if not apk_path.exists():
+                install_files = apk_repository.resolve_install_splits(apk["sha256"])
+                if not install_files:
                     result["skipped"] += 1
                     continue
 
-                proc = await asyncio.create_subprocess_exec(
-                    "adb", "-s", serial, "install", "-r", str(apk_path),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await proc.communicate()
-                out = stdout.decode().strip()
-                err = stderr.decode().strip()
-                if proc.returncode == 0 and "Success" in out:
+                ok, error_msg = await install_apk_files(serial, install_files)
+                if ok:
                     result["installed"] += 1
                 else:
                     result["failed"] += 1
-                    result["errors"].append(f"{apk['original_name']}: {err or out}"[:200])
+                    result["errors"].append(f"{apk['original_name']}: {error_msg}"[:200])
             except Exception as e:
                 result["failed"] += 1
                 result["errors"].append(str(e)[:200])

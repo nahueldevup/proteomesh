@@ -3,6 +3,7 @@ Tests para el repositorio global de APKs y Bundles (WEB-017 / Bundles).
 
 Usan unittest y monkeypatch para no depender de aapt2 ni de instancias reales.
 """
+import asyncio
 import io
 import sys
 import tempfile
@@ -10,7 +11,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from typing import Generator
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -20,6 +21,7 @@ from server.services.apk_repository import (
     ApkTooLargeError,
     DuplicateApkError,
     InvalidApkError,
+    install_apk_files,
 )
 from server.services.bundle_parser import BadgingResult
 
@@ -201,6 +203,102 @@ class ApkRepositoryTest(unittest.TestCase):
         # Limpiar defaults
         self.repo.set_default_apks([])
         self.assertEqual(self.repo.get_default_apk_ids(), [])
+
+    def test_resolve_install_splits_prioritizes_x86_64_over_arm(self):
+        """Filtrado ABI: selecciona x86_64 y descarta ARM (arm64-v8a, armeabi-v7a)."""
+        bundle_hash = "dummyhash123"
+        bundle_dir = self.repo_dir / bundle_hash
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+
+        # Crear base.apk
+        (bundle_dir / "base.apk").write_bytes(b"base")
+
+        # Crear split recursos/idioma (sin código nativo)
+        def _make_dummy_apk(path: Path, abi: str = None):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("AndroidManifest.xml", b"dummy")
+                if abi:
+                    zf.writestr(f"lib/{abi}/libfoo.so", b"dummy so")
+            path.write_bytes(buf.getvalue())
+
+        _make_dummy_apk(bundle_dir / "split_config.es.apk", abi=None)
+        _make_dummy_apk(bundle_dir / "split_config.xxhdpi.apk", abi=None)
+        _make_dummy_apk(bundle_dir / "split_config.x86_64.apk", abi="x86_64")
+        _make_dummy_apk(bundle_dir / "split_config.arm64_v8a.apk", abi="arm64-v8a")
+        _make_dummy_apk(bundle_dir / "split_config.armeabi_v7a.apk", abi="armeabi-v7a")
+
+        splits = self.repo.resolve_install_splits(bundle_hash)
+        split_names = [s.name for s in splits]
+
+        # base.apk debe estar primero
+        self.assertEqual(splits[0].name, "base.apk")
+        # splits no nativos deben incluirse
+        self.assertIn("split_config.es.apk", split_names)
+        self.assertIn("split_config.xxhdpi.apk", split_names)
+        # x86_64 debe seleccionarse
+        self.assertIn("split_config.x86_64.apk", split_names)
+        # ARM debe descartarse completamente
+        self.assertNotIn("split_config.arm64_v8a.apk", split_names)
+        self.assertNotIn("split_config.armeabi_v7a.apk", split_names)
+        self.assertEqual(len(splits), 4)
+
+    def test_resolve_install_splits_arm64_fallback_when_no_x86(self):
+        """Filtrado ABI: si no hay x86_64, selecciona arm64-v8a y descarta 32-bit armeabi-v7a."""
+        bundle_hash = "armonlyhash"
+        bundle_dir = self.repo_dir / bundle_hash
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        (bundle_dir / "base.apk").write_bytes(b"base")
+
+        def _make_dummy_apk(path: Path, abi: str = None):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("AndroidManifest.xml", b"dummy")
+                if abi:
+                    zf.writestr(f"lib/{abi}/libfoo.so", b"dummy so")
+            path.write_bytes(buf.getvalue())
+
+        _make_dummy_apk(bundle_dir / "split_config.es.apk", abi=None)
+        _make_dummy_apk(bundle_dir / "split_config.arm64_v8a.apk", abi="arm64-v8a")
+        _make_dummy_apk(bundle_dir / "split_config.armeabi_v7a.apk", abi="armeabi-v7a")
+
+        splits = self.repo.resolve_install_splits(bundle_hash)
+        split_names = [s.name for s in splits]
+
+        self.assertIn("split_config.arm64_v8a.apk", split_names)
+        self.assertNotIn("split_config.armeabi_v7a.apk", split_names)
+        self.assertEqual(len(splits), 3)
+
+    def test_install_apk_files_single_and_multiple(self):
+        """install_apk_files: adb install -r para 1 archivo, install-multiple -r para varios."""
+        f1 = self.repo_dir / "single.apk"
+        f1.write_bytes(b"content")
+
+        f2 = self.repo_dir / "split.apk"
+        f2.write_bytes(b"content2")
+
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"Success\n", b"")
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            # 1 archivo -> adb install -r
+            ok, msg = asyncio.run(install_apk_files("127.0.0.1:5580", [f1]))
+            self.assertTrue(ok)
+            mock_exec.assert_called_with(
+                "adb", "-s", "127.0.0.1:5580", "install", "-r", str(f1),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Varios archivos -> adb install-multiple -r
+            ok2, msg2 = asyncio.run(install_apk_files("127.0.0.1:5580", [f1, f2]))
+            self.assertTrue(ok2)
+            mock_exec.assert_called_with(
+                "adb", "-s", "127.0.0.1:5580", "install-multiple", "-r", str(f1), str(f2),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
 
 if __name__ == "__main__":

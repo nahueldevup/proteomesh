@@ -88,18 +88,18 @@ def set_default_apks(req: SetDefaultApksRequest):
     return {"status": "ok", "marked": marked}
 
 
-@router.post("/install", response_model=List[Dict[str, Any]], summary="Instalar APK en instancias")
+@router.post("/install", response_model=List[Dict[str, Any]], summary="Instalar APK o Bundle en instancias")
 async def install_apk(req: InstallApkRequest):
-    """Instala un APK en varias instancias. Las detenidas se reportan como 'skipped'."""
+    """Instala un APK o Bundle en varias instancias. Las detenidas se reportan como 'skipped'."""
     apk = apk_repository.get_apk(req.apk_id)
     if not apk:
         raise HTTPException(status_code=404, detail="APK no encontrado")
 
-    apk_path = apk_repository.get_apk_path(apk["sha256"])
-    if not apk_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo APK no encontrado en disco")
+    install_files = apk_repository.resolve_install_splits(apk["sha256"])
+    if not install_files:
+        raise HTTPException(status_code=404, detail="Archivo APK o Bundle no encontrado en disco")
 
     try:
-        return await apk_repository.install_to_instances(apk_path, req.instances, _adb_serial)
+        return await apk_repository.install_to_instances(install_files, req.instances, _adb_serial)
     except ApkRepositoryError as e:
         raise HTTPException(status_code=500, detail=str(e))

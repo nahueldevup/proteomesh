@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from server.config import (
     APK_REPO_DIR,
@@ -33,6 +33,7 @@ from server.services.bundle_parser import (
     InvalidBundleError,
     ZipBombError,
     ZipSlipSecurityError,
+    inspect_split_abi,
     parse_and_extract_bundle,
 )
 
@@ -202,6 +203,68 @@ class ApkRepository:
             return [single_apk]
 
         return []
+
+    def resolve_install_splits(self, sha256: str) -> List[Path]:
+        """
+        Resuelve la lista de archivos APK listos para instalar, aplicando filtrado de ABI:
+        - Si es monolítico: retorna [apk_repo/<sha256>.apk].
+        - Si es bundle:
+          * Siempre incluye base.apk en primer lugar.
+          * Siempre incluye splits independientes de arquitectura (recursos, densidades, idiomas).
+          * Splits nativos: selecciona una única arquitectura según prioridad:
+            1. x86_64
+            2. arm64-v8a
+            3. x86
+            4. armeabi-v7a
+            5. armeabi
+          * Regla estricta: NUNCA enviar más de una arquitectura binaria en la misma transacción.
+        """
+        bundle_dir = self.repo_dir / sha256
+        if not bundle_dir.is_dir():
+            single_apk = self.repo_dir / f"{sha256}.apk"
+            return [single_apk] if single_apk.exists() else []
+
+        all_apks = list(bundle_dir.glob("*.apk"))
+        if not all_apks:
+            return []
+
+        # Identificar base.apk
+        base_file: Optional[Path] = None
+        other_splits: List[Path] = []
+        for p in all_apks:
+            name = p.name.lower()
+            if name == "base.apk" or (name.startswith("base") and not name.startswith("split_")):
+                if base_file is None:
+                    base_file = p
+                    continue
+            other_splits.append(p)
+
+        if base_file is None and all_apks:
+            base_file = all_apks[0]
+            other_splits = all_apks[1:]
+
+        # Clasificar splits por ABI
+        ABI_PRIORITY = ["x86_64", "arm64-v8a", "x86", "armeabi-v7a", "armeabi"]
+        non_native_splits: List[Path] = []
+        native_splits_by_abi: Dict[str, List[Path]] = {abi: [] for abi in ABI_PRIORITY}
+
+        for split in other_splits:
+            abi = inspect_split_abi(split)
+            if abi and abi in native_splits_by_abi:
+                native_splits_by_abi[abi].append(split)
+            else:
+                non_native_splits.append(split)
+
+        # Seleccionar la ABI de mayor prioridad que tenga splits disponibles
+        selected_native_splits: List[Path] = []
+        for abi in ABI_PRIORITY:
+            if native_splits_by_abi[abi]:
+                selected_native_splits = native_splits_by_abi[abi]
+                break
+
+        # Lista final: base primero, luego configs no nativos, luego splits nativos seleccionados
+        final_list = [base_file] + non_native_splits + selected_native_splits
+        return final_list
 
     def get_apk_path(self, sha256: str) -> Path:
         """
@@ -424,18 +487,30 @@ class ApkRepository:
 
     async def install_to_instances(
         self,
-        apk_path: Path,
+        apk_target: Union[Path, List[Path], str],
         instance_names: List[str],
         adb_serial_func,
     ) -> List[Dict[str, Any]]:
         """
-        Instala un APK en múltiples instancias con concurrencia máxima 2.
+        Instala un APK o Bundle en múltiples instancias con concurrencia máxima 2.
 
-        `adb_serial_func(name)` debe devolver el serial ADB o None.
-        Las instancias detenidas se reportan como 'skipped'.
+        `apk_target` puede ser:
+        - Una lista de Paths a instalar (obtenida con resolve_install_splits)
+        - Un Path a un APK monolítico o directorio de bundle
+        - Una cadena sha256
         """
-        if not apk_path.exists():
-            raise ApkRepositoryError("APK no encontrado en disco")
+        if isinstance(apk_target, str):
+            files = self.resolve_install_splits(apk_target)
+        elif isinstance(apk_target, Path):
+            if apk_target.is_dir():
+                files = self.resolve_install_splits(apk_target.name)
+            else:
+                files = [apk_target]
+        else:
+            files = list(apk_target)
+
+        if not files or not all(f.exists() for f in files):
+            raise ApkRepositoryError("APK o splits no encontrados en disco")
 
         semaphore = asyncio.Semaphore(2)
 
@@ -466,30 +541,78 @@ class ApkRepository:
                         "error": "Instancia detenida o no lista",
                     }
 
-                proc = await asyncio.create_subprocess_exec(
-                    "adb", "-s", serial, "install", "-r", str(apk_path),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await proc.communicate()
-                out = stdout.decode().strip()
-                err = stderr.decode().strip()
-
-                if proc.returncode == 0 and "Success" in out:
+                ok, error_msg = await install_apk_files(serial, files)
+                if ok:
                     return {"instance": name, "ok": True, "status": "ok", "error": None}
-
-                # Resumir stderr para no saturar la respuesta
-                error_summary = err or out
-                if len(error_summary) > 500:
-                    error_summary = error_summary[:500] + "..."
                 return {
                     "instance": name,
                     "ok": False,
                     "status": "failed",
-                    "error": error_summary,
+                    "error": error_msg,
                 }
 
         return await asyncio.gather(*[install_one(n) for n in instance_names])
+
+
+async def install_apk_files(
+    serial: str,
+    files: List[Path],
+    timeout: Optional[float] = None,
+) -> Tuple[bool, str]:
+    """
+    Instala uno o múltiples APKs en una instancia mediante ADB.
+
+    - Si len(files) == 1: adb -s <serial> install -r <file>
+    - Si len(files) > 1: adb -s <serial> install-multiple -r <file1> <file2> ...
+    - Escala el timeout según el tamaño total de los archivos (mín. 60s, +15s por cada 50 MB adicionales).
+
+    Retorna (ok: bool, message: str).
+    """
+    if not files:
+        return False, "No se especificaron archivos APK para instalar"
+
+    for f in files:
+        if not f.exists():
+            return False, f"Archivo no encontrado en disco: {f.name}"
+
+    # Calcular timeout adaptativo (mín 60s, +15s por cada 50 MB adicionales al primero)
+    total_bytes = sum(f.stat().st_size for f in files)
+    extra_chunks = max(0, total_bytes - (50 * 1024 * 1024)) // (50 * 1024 * 1024)
+    computed_timeout = 60.0 + (extra_chunks * 15.0)
+    effective_timeout = timeout if timeout is not None else computed_timeout
+
+    cmd = ["adb", "-s", serial]
+    if len(files) == 1:
+        cmd.extend(["install", "-r", str(files[0])])
+    else:
+        cmd.extend(["install-multiple", "-r"] + [str(f) for f in files])
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=effective_timeout)
+        out = stdout.decode().strip()
+        err = stderr.decode().strip()
+
+        if proc.returncode == 0 and "Success" in out:
+            return True, "Success"
+
+        error_summary = err or out or f"Código de salida: {proc.returncode}"
+        if len(error_summary) > 500:
+            error_summary = error_summary[:500] + "..."
+        return False, error_summary
+
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return False, f"Timeout ({effective_timeout:.0f}s) durante la instalación de APK"
+    except Exception as exc:
+        return False, str(exc)
 
 
 apk_repository = ApkRepository()
