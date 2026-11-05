@@ -47,7 +47,13 @@ class FilePathValidationTest(unittest.TestCase):
             "server.services.file_manager._adb_shell_output",
             side_effect=self._mock_realpath(roots),
         )
+        serial_patcher = patch(
+            "server.services.file_manager._adb_serial",
+            return_value="127.0.0.1:5580",
+        )
         self.addCleanup(patcher.stop)
+        self.addCleanup(serial_patcher.stop)
+        serial_patcher.start()
         return patcher.start()
 
     def test_accepts_valid_file_inside_root(self):
@@ -130,7 +136,8 @@ class FilePathValidationTest(unittest.TestCase):
                 return "/data/data/malicious"
             return base_mock(serial, cmd, *args)
 
-        with patch("server.services.file_manager._adb_shell_output", side_effect=side_effect):
+        with patch("server.services.file_manager._adb_shell_output", side_effect=side_effect), \
+             patch("server.services.file_manager._adb_serial", return_value="127.0.0.1:5580"):
             with self.assertRaises(PathValidationError):
                 validate_phone_path("phone-80", "/sdcard/Download/link")
 

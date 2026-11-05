@@ -31,11 +31,10 @@ import sys
 
 SYS_TARGETS = {
     "com.android.settings",
-    "com.android.vending",
     "com.google.android.gms",
     "com.google.android.googlequicksearchbox",
 }
-EXCLUDE = {"org.lsposed.manager"}
+EXCLUDE = {"org.lsposed.manager", "com.aurora.store", "com.android.vending"}
 COMPONENT_TABLES = (
     "Activity Resolver Table",
     "Service Resolver Table",

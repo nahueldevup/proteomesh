@@ -294,12 +294,9 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         except Exception:
             pass
 
-    # Instalar APKs marcados como default tras el arranque (nunca falla la creación)
+    # Instalar APKs marcados como default tras el arranque en background (nunca bloquea la creación)
     if req.start:
-        try:
-            await _install_default_apks(req.name, req.default_apks)
-        except Exception as e:
-            logger.warning(f"[create_instance_async] Instalación de APKs por defecto falló para {req.name}: {e}")
+        asyncio.create_task(_install_default_apks(req.name, req.default_apks))
 
     return get_single_instance(req.name)
 
@@ -343,6 +340,11 @@ async def start_instance_async(name: str) -> Dict[str, Any]:
             await p_auth.communicate()
     except Exception:
         pass
+
+    # Si la instancia aún no fue aprovisionada con los APKs iniciales (p. ej. creada apagada),
+    # disparar el aprovisionamiento de una sola vez en segundo plano
+    if not _is_apks_provisioned(name):
+        asyncio.create_task(_install_default_apks(name))
 
     return {
         "status": "ok",
@@ -412,21 +414,62 @@ async def _wait_for_boot_completed(serial: str, timeout: float = 120.0) -> bool:
     return False
 
 
+def _is_apks_provisioned(name: str) -> bool:
+    """Verifica en meta.json si la instancia ya recibio su provision inicial de APKs."""
+    meta_path = INSTANCES_DIR / name / "meta.json"
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return bool(json.load(f).get("default_apks_provisioned", False))
+        except Exception:
+            pass
+    return False
+
+
+def _set_apks_provisioned(name: str) -> None:
+    """Marca en meta.json que la instancia ya fue aprovisionada con sus APKs iniciales."""
+    meta_path = INSTANCES_DIR / name / "meta.json"
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["default_apks_provisioned"] = True
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Error guardando default_apks_provisioned para {name}: {e}")
+
+
 async def _install_default_apks(
     name: str,
     default_apks: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
-    """Instala APKs por defecto tras el arranque. Nunca falla la creación por esto."""
+    """Instala APKs por defecto una unica vez al nacer la instancia."""
     result = {"installed": 0, "failed": 0, "skipped": 0, "errors": []}
+    if _is_apks_provisioned(name):
+        return result
+
     try:
         apk_ids = default_apks if default_apks is not None else apk_repository.get_default_apk_ids()
         if not apk_ids:
+            _set_apks_provisioned(name)
             return result
 
         serial = _adb_serial(name)
         if not serial:
             result["errors"].append("No se pudo obtener serial ADB")
             return result
+
+        # Asegurar conexión ADB
+        try:
+            p_conn = await asyncio.create_subprocess_exec(
+                "adb", "connect", serial,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await p_conn.communicate()
+        except Exception:
+            pass
 
         booted = await _wait_for_boot_completed(serial)
         if not booted:
@@ -439,6 +482,7 @@ async def _install_default_apks(
                 if not apk:
                     result["skipped"] += 1
                     continue
+
                 install_files = apk_repository.resolve_install_splits(apk["sha256"])
                 if not install_files:
                     result["skipped"] += 1
@@ -453,6 +497,9 @@ async def _install_default_apks(
             except Exception as e:
                 result["failed"] += 1
                 result["errors"].append(str(e)[:200])
+
+        # Marcar definitivamente como aprovisionado para nunca más chequear en reinicios posteriores
+        _set_apks_provisioned(name)
         return result
     except ApkRepositoryError as e:
         result["errors"].append(str(e))

@@ -43,8 +43,8 @@ case "$1" in
             echo "[!] sqlite3 no disponible en este contexto (¿docker exec?); usar adb."
             exit 1
         fi
-        SYS_TARGETS="com.android.settings com.android.vending com.google.android.gms com.google.android.googlequicksearchbox"
-        EXCLUDE="org.lsposed.manager"
+        SYS_TARGETS="com.android.settings com.google.android.gms com.google.android.googlequicksearchbox"
+        EXCLUDE="org.lsposed.manager com.aurora.store com.android.vending"
         SNAP_B="/data/local/tmp/.proteomesh_scope_before"
         SNAP_A="/data/local/tmp/.proteomesh_scope_after"
         sqlite3 -cmd ".timeout 5000" "$DB" "SELECT app_pkg_name FROM scope WHERE mid=$MID ORDER BY 1;" > "$SNAP_B" 2>/dev/null
@@ -55,7 +55,9 @@ case "$1" in
         fi
         ADDED=0
         for pkg in $(pm list packages -3 2>/dev/null | sed 's/^package://') $SYS_TARGETS; do
-            [ "$pkg" = "$EXCLUDE" ] && continue
+            case " $EXCLUDE " in
+                *" $pkg "*) continue ;;
+            esac
             # INSERT OR IGNORE + changes() en una sola conexión: atómico y a
             # prueba de locks (lspd tiene la DB abierta en WAL durante el boot;
             # un SELECT de existencia separado puede dar falso negativo y

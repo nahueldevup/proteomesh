@@ -69,7 +69,7 @@ docker run --rm \
     -v "${DATA_CLEAN}:/data" \
     -v "${NOHELLO_ZIP}:/tmp/nohello.zip:ro" \
     -v "${LSPOSED_ZIP}:/tmp/lsposed.zip:ro" \
-    alpine:3.20 sh -eu -c '
+    alpine sh -eu -c '
         set -eu
 
         # 1. Extraer el módulo NoHello fijado en modules.lock.

@@ -78,7 +78,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [selectedModel, setSelectedModel] = useState('samsung/a54x');
   const [selectedCarrier, setSelectedCarrier] = useState('ar_personal');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [startImmediately, setStartImmediately] = useState(false);
+  const [startImmediately, setStartImmediately] = useState(true);
 
   // Generador de número de Formosa (3704 / 3705 + 6 dígitos)
   const generateFormosaNumber = () => {
