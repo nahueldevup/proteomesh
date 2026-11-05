@@ -150,14 +150,15 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
 * **Líneas Telefónicas de Formosa:**
   - Generador automático de líneas telefónicas con prefijos locales de Formosa (`3704` / `3705`) + 6 dígitos aleatorios, editables manualmente y desacopladas de la operadora móvil.
 
-### 13. Repositorio Global de APKs y Gestor de Archivos (`ApkFileManager`)
+### 13. Repositorio Global de APKs, Bundles y Gestor de Archivos (`ApkFileManager`)
 * **Módulo Dedicado de 2 Pestañas (`ApkFileManager.tsx`):**
   - Vista completa accesible desde la barra lateral bajo Ubicaciones (`FolderArchive`), con selector de pestañas entre "Repositorio de APKs" y "Explorador de Archivos".
 * **Pestaña Repositorio de APKs:**
-  - Catálogo centralizado con subida streaming drag-and-drop (`.apk` hasta 150 MB).
-  - Inspección instantánea de metadatos extraídos con `aapt2` (`package_name`, `version_name`, `app_name`, iconos).
-  - Marcado de aplicaciones por defecto (`is_default`) para auto-instalación en arranque de nuevas instancias.
-  - Instalación directa en 1 clic en cualquier instancia activa o en lote mediante `BulkBar`.
+  - Catálogo centralizado con subida streaming drag-and-drop compatible con `.apk`, `.apkm`, `.xapk`, `.apks` y `.zip` (hasta 300 MB).
+  - Badges visuales de identificación: `Bundle (N splits, x86_64)` y avisos informativos sobre archivos OBB ignorados.
+  - Inspección instantánea de metadatos extraídos con `aapt2` (`package_name`, `version_name`, `app_name`, iconos) e inspección ultrarrápida de arquitecturas nativas vía `zipfile` interno.
+  - Marcado de aplicaciones por defecto (`is_default`) para aprovisionamiento inicial automático de una sola vez al nacer nuevas instancias (`default_apks_provisioned: true` en `meta.json`).
+  - Instalación directa en 1 clic en cualquier instancia activa o en lote mediante `BulkBar` (ejecutando `adb install-multiple` para bundles con filtrado estricto `x86_64`).
 * **Pestaña Explorador de Archivos:**
   - Navegación segura por el almacenamiento del CloudPhone restringida a carpetas de la whitelist (`/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`).
   - Subida de archivos con sufijo anti-sobrescritura y escaneo multimedia inmediato.

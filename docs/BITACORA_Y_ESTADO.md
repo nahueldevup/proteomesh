@@ -1591,6 +1591,54 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 88. FEAT(BUNDLE-023) — Soporte de Bundles/Split APKs, Filtrado ABI x86_64, Data-Clean Oscuro y Provisión Única (2026-11-04)
+
+* **Objetivo:** Extender el repositorio de APKs para soportar bundles modernos (`.apkm`, `.xapk`, `.apks`, `.zip`), filtrando de forma inteligente arquitecturas nativas (`x86_64`) para evitar fallos en ReDroid, sanear la base `data-clean/` purgando apps de testeo y habilitando modo oscuro de fábrica, excluir tiendas de LSPosed para descargas x86_64, y garantizar una provisión estricta de una sola vez al nacer la instancia.
+* **Causa raíz / Contexto:**
+  - Las aplicaciones modernas (ej. Facebook `com.facebook.katana`, v585) se publican como bundles multipartes. Instalar solo `base.apk` o enviar múltiples arquitecturas a `adb install-multiple` falla con `INSTALL_FAILED_NO_MATCHING_ABIS`.
+  - La base `data-clean/` contenía 9 aplicaciones de prueba históricas (Pixelscan, DevCheck, Root Checker, etc.) que contaminaban cada nueva instancia.
+  - Aurora Store y Play Store estaban dentro del scope de LSPosed (`FakeWifi`), forzando al sistema a considerarse dispositivo puramente ARM y descargando binarios incompatibles con el host AMD Ryzen.
+  - La instalación de APKs por defecto bloqueaba la creación HTTP y no se ejecutaba si la instancia se creaba apagada.
+* **Cambios principales:**
+  - **Motor de Seguridad y Parsing de Bundles (`server/services/bundle_parser.py`):**
+    - Descompresión segura en streaming con mitigación estricta de Zip-Slip (`is_relative_to`), descarte de symlinks maliciosos (`external_attr`) y protección Zip-Bomb mediante conteo de bytes reales acumulados (límite 600 MB).
+    - Detección inequívoca de `base.apk` vía `aapt2 dump badging` (sin atributo `split=`).
+    - Detección ultrarrápida de arquitecturas inspeccionando `lib/<abi>/` vía `zipfile` interno sin invocar `aapt2`.
+    - Soporte específico para paquetes Bundletool (`.apks`), procesando exclusivamente la carpeta `splits/`.
+    - Detección de archivos `.obb` con advertencia informativa sin interrumpir la extracción de splits.
+  - **Persistencia Híbrida y Migración SQLite (`server/services/apk_repository.py`):**
+    - Migración no destructiva e idempotente en `instances/apks.db`: columnas `entry_type`, `bundle_format` y `splits_info`.
+    - Almacenamiento híbrido: APKs monolíticos en `apk_repo/<sha256>.apk`, bundles en directorio `apk_repo/<sha256>/`.
+    - Orden atómico de guardado: descompresión a `.tmp/` $\rightarrow$ movimiento atómico a destino final $\rightarrow$ inserción en base de datos.
+    - Cuota dinámica de subida a 300 MB leída por variable de entorno (`PROTEOMESH_MAX_APK_SIZE_MB`).
+  - **Instalación Unificada con Filtrado ABI (`apk_repository.py` & `manager_bridge.py`):**
+    - `resolve_install_splits`: selecciona `base.apk`, todos los splits no nativos (idiomas, densidades) y prioriza `x86_64` sobre arquitecturas ARM, impidiendo mezclas conflictivas en ADB.
+    - `install_apk_files`: maneja `install -r` o `install-multiple -r` con timeout escalado dinámicamente según el tamaño acumulado.
+  - **Provisión Inicial Estricta en Background:**
+    - Se almacena la bandera `default_apks_provisioned: true` en `instances/<name>/meta.json` tras el primer aprovisionamiento exitoso.
+    - Arranques y reinicios posteriores omiten el proceso en 0.05 segundos, respetando desinstalaciones manuales del usuario.
+    - Se dispara desacoplado en segundo plano (`asyncio.create_task`) tanto al crear la instancia como al encenderla por primera vez.
+  - **Saneamiento de Imagen Madre (`data-clean/`):**
+    - Purgadas las 9 apps de testeo vía `pm uninstall` nativo.
+    - Activado modo oscuro nativo de Android 13 (`cmd uimode night yes`, `ui_night_mode = 2` en `settings_secure.xml`).
+    - Exclusión de `com.android.vending` y `com.aurora.store` en `manage-spoof sync` y en `modules_config.db`.
+  - **Frontend (`ApkFileManager.tsx`, `types.ts`, `CreateDeviceModal.tsx`):**
+    - Selector dropzone ampliado a `.apk, .apkm, .xapk, .apks, .zip` con límite de 300 MB.
+    - Badges de tabla: `Bundle (N splits, x86_64)` y aviso ámbar si incluye OBB.
+    - Modal de creación configurado con `startImmediately = true` por defecto.
+* **Archivos afectados:**
+  - `server/services/bundle_parser.py`, `server/services/apk_repository.py`, `server/services/manager_bridge.py`
+  - `server/routes/apks.py`, `server/config.py`, `build_magisk/system/bin/manage-spoof`, `tools/scope_audit.py`
+  - `tools/bootstrap_data_clean.sh`, `tests/host/test_bundle_parser.py`, `tests/host/test_apk_repository.py`
+  - `web/src/components/files/ApkFileManager.tsx`, `web/src/types.ts`, `web/src/components/CreateDeviceModal.tsx`
+* **Verificación:**
+  - 154 tests de host pasando al 100% (153 passed, 1 skipped) en pytest.
+  - Build frontend Vite limpio en 350 ms sin advertencias de TypeScript.
+  - Prueba en vivo con bundle de Facebook x86_64 (`com.facebook.katana` 95.3 MB): instalación exitosa con splits verificados en Android 13 (`phone-80`).
+* **Estado:** BUNDLE-023 **completado y validado el 2026-11-04**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

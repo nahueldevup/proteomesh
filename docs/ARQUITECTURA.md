@@ -267,10 +267,13 @@ React (5173) ──REST──► FastAPI (8000) ──subprocess──► instan
 
 ### 5.4 Repositorio Global de APKs y Gestor de Archivos en `/sdcard/`
 
-1. **Repositorio Centralizado de APKs (`server/services/apk_repository.py`, `server/routes/apks.py`):**
-   - Metadatos indexados en SQLite (`instances/apks.db`) y binarios almacenados por hash SHA-256 en `apk_repo/<sha256>.apk`.
-   - Subida streaming con límite configurable de 150 MB (`APK_MAX_SIZE_BYTES`), deduplicación automática, validación de firma ZIP PK y extracción de metadatos mediante `aapt2 dump badging` (`package_name`, `version_name`, `version_code`, `app_name`, `icon`). Rechazo de contenedores `.apks`/`.xapk`.
-   - Hook de aprovisionamiento en arranque: `create_instance_async` instala asíncronamente las APKs con flag `is_default` una vez detectado `getprop sys.boot_completed == 1` sin retrasar el retorno de la API.
+1. **Repositorio Centralizado de APKs y Bundles (`server/services/bundle_parser.py`, `server/services/apk_repository.py`, `server/routes/apks.py`):**
+   - Metadatos indexados en SQLite (`instances/apks.db`) con soporte híbrido: APKs monolíticos en `apk_repo/<sha256>.apk` y Bundles/Split APKs en directorios `apk_repo/<sha256>/`.
+   - Soporte nativo para formatos `.apk`, `.apkm`, `.xapk`, `.apks` y `.zip` de múltiples APKs con cuota configurable de 300 MB (`PROTEOMESH_MAX_APK_SIZE_MB`).
+   - **Motor de Seguridad y Descompresión Streaming (`bundle_parser.py`):** Mitigación de Zip-Slip (`is_relative_to`), descarte de symlinks maliciosos y mitigación de Zip-Bomb mediante conteo de bytes reales leídos (máximo 600 MB).
+   - **Filtrado Inteligente de Arquitectura:** Detección de código nativo por lectura directa de `lib/<abi>/` sin sobrecoste. Prioriza splits `x86_64` y descarta splits ARM conflictivos para ejecución nativa sobre ReDroid sin sobrecarga en CPU host.
+   - **Instalación Unificada (`install_apk_files`):** Despacha `adb install -r` (1 archivo) o `adb install-multiple -r` (múltiples splits) con escalado de timeout adaptativo.
+   - **Provisión Inicial Estricta en Background:** `_install_default_apks` instala las aplicaciones marcadas como `is_default` una única vez al nacer la instancia (`default_apks_provisioned: true` en `meta.json`). En reinicios o encendidos posteriores, la tarea se omite instantáneamente sin sobrecargar el inicio de sesión. Respalda desinstalaciones manuales del usuario.
 2. **Gestor de Archivos de Instancia (`server/services/file_manager.py`, `server/routes/files.py`):**
    - **Whitelist Estricta:** Solo se permite acceso a `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures` y `/sdcard/Documents`.
    - **Validación Dual de Rutas:** Validación léxica previa en Python (`posixpath.relpath`, bloqueo de caracteres especiales y secuencias de escape `..`) complementada con resolución física canónica en el invitado (`realpath` ejecutado en el shell de Android) para prevenir escapes de sandbox o enlaces simbólicos maliciosos.
