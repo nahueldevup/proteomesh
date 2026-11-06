@@ -152,18 +152,20 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
 
 ### 13. Repositorio Global de APKs, Bundles y Gestor de Archivos (`ApkFileManager`)
 * **Módulo Dedicado de 2 Pestañas (`ApkFileManager.tsx`):**
-  - Vista completa accesible desde la barra lateral bajo Ubicaciones (`FolderArchive`), con selector de pestañas entre "Repositorio de APKs" y "Explorador de Archivos".
-* **Pestaña Repositorio de APKs:**
+  - Vista completa accesible desde la barra lateral bajo Ubicaciones (`FolderArchive`), con diseño maestro-detalle replicado 1:1 de **Lovable** (`apk-hive-command-center-main`).
+  - Paleta técnica dark mode obsidiana (`oklch(0.17 0.008 255)`) con acentos cian eléctricos (`oklch(0.74 0.14 225)`), tipografía oficial **Geist** y **Geist Mono** con espaciado natural (`letter-spacing: normal`).
+* **Pestaña Repositorio de APKs (`ApkRepository.tsx`):**
   - Catálogo centralizado con subida streaming drag-and-drop compatible con `.apk`, `.apkm`, `.xapk`, `.apks` y `.zip` (hasta 300 MB).
   - Badges visuales de identificación: `Bundle (N splits, x86_64)` y avisos informativos sobre archivos OBB ignorados.
-  - Inspección instantánea de metadatos extraídos con `aapt2` (`package_name`, `version_name`, `app_name`, iconos) e inspección ultrarrápida de arquitecturas nativas vía `zipfile` interno.
-  - Marcado de aplicaciones por defecto (`is_default`) para aprovisionamiento inicial automático de una sola vez al nacer nuevas instancias (`default_apks_provisioned: true` en `meta.json`).
-  - Instalación directa en 1 clic en cualquier instancia activa o en lote mediante `BulkBar` (ejecutando `adb install-multiple` para bundles con filtrado estricto `x86_64`).
-* **Pestaña Explorador de Archivos:**
-  - Navegación segura por el almacenamiento del CloudPhone restringida a carpetas de la whitelist (`/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`).
-  - Subida de archivos con sufijo anti-sobrescritura y escaneo multimedia inmediato.
-  - Descarga de archivos a la máquina local y borrado seguro con confirmación.
-  - Transferencia directa inter-dispositivo (`send-to`) para replicar archivos entre diferentes CloudPhones en un clic.
+  - Telemetría en vivo de aplicaciones instaladas (`GET /api/v1/apks/installed`): escaneo paralelo con ADB que detecta en tiempo real qué paquetes residen en cada CloudPhone activo, marcando `ya instalada` con check verde en el panel de despliegue.
+  - Indicador de presencia en flota escalable: barra horizontal continua (`w-14`) con ratio monoespaciado (`1/2`), con ancho fijo inmutable de 131 px para evitar CLS o saltos de layout.
+  - Panel inspector lateral fijado a 380 px (`w-[380px]`) con metadatos técnicos (SHA-256, ABI, fecha), switch de autoinstalación por defecto y selector de destinos (`Faltantes`, `Todas`, `Limpiar`).
+* **Pestaña Explorador de Archivos (`FileExplorer.tsx`):**
+  - Navegación segura ampliada a `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`, `/sdcard/Movies`, `/sdcard/Music` y `/sdcard/Recordings`.
+  - Vista de Cuadrícula con **miniaturas en vivo reales** (`GET /api/v1/files/view`) cargadas por streaming con `object-cover` y fallback inteligente a icono SVG.
+  - **Visor multimodal Quick Look / Lightbox integrado:** doble clic sobre cualquier archivo abre un visor modal para inspeccionar imágenes en alta resolución, leer logs/código/json/xml en texto monoespaciado con scroll, y reproducir video o audio HTML5 sin salir del panel.
+  - **Creación remota de carpetas:** botón `+ Nueva carpeta` (`POST /api/v1/files/mkdir`) con diálogo modal interactivo validado en sandbox.
+  - Subida con sufijo anti-sobrescritura, descarga a PC, borrado con confirmación y transferencia inter-dispositivo `send-to`.
 
 ---
 

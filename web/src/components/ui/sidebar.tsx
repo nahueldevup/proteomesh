@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
@@ -62,7 +62,7 @@ export function Sidebar({
       data-state={collapsed ? 'collapsed' : 'expanded'}
       className={cn(
         'group/sidebar relative z-20 flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out',
-        collapsed ? 'w-13' : 'w-60',
+        collapsed ? 'w-12' : 'w-60',
         className
       )}
       {...props}
@@ -73,15 +73,37 @@ export function Sidebar({
 }
 
 export function SidebarHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('shrink-0 border-b border-sidebar-border p-2', className)} {...props} />;
+  const { collapsed } = useSidebar();
+  return (
+    <div
+      className={cn(
+        'shrink-0 flex flex-col gap-1',
+        collapsed ? 'pt-2 px-0 border-b-0 items-center' : 'p-2 border-b border-sidebar-border',
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function SidebarContent({ className, ...props }: HTMLAttributes<HTMLElement>) {
-  return <nav aria-label="Navegación principal" className={cn('min-h-0 flex-1 overflow-y-auto p-2', className)} {...props} />;
+  const { collapsed } = useSidebar();
+  return (
+    <nav
+      aria-label="Navegación principal"
+      className={cn(
+        'min-h-0 flex-1 overflow-y-auto flex flex-col gap-1',
+        collapsed ? 'px-0 py-0 items-center scrollbar-none' : 'p-2',
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function SidebarGroup({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <section className={cn('mb-4 last:mb-0', className)} {...props} />;
+  const { collapsed } = useSidebar();
+  return <section className={cn(collapsed ? 'mb-0 flex flex-col gap-1 w-full items-center' : 'mb-4 last:mb-0', className)} {...props} />;
 }
 
 export function SidebarGroupLabel({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
@@ -130,18 +152,18 @@ export function SidebarMenuButton({
       aria-current={active ? 'page' : undefined}
       title={collapsed ? label : undefined}
       className={cn(
-        'flex h-9 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar',
-        collapsed && 'justify-center px-0',
+        'flex h-9 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar cursor-pointer',
+        collapsed && 'grid size-8 place-items-center rounded-md p-0 mx-auto justify-center',
         variant === 'primary'
-          ? 'border border-primary/35 bg-primary/15 font-semibold text-sidebar-foreground hover:bg-primary/25'
+          ? 'border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 font-semibold'
           : active
-            ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground',
+            ? 'bg-sidebar-accent text-primary font-semibold'
+            : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
         className
       )}
       {...props}
     >
-      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+      <Icon className={cn('size-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
       {!collapsed && badge !== undefined && badge !== null && (
         <span className="shrink-0 font-mono text-[9px] text-muted-foreground">{badge}</span>
@@ -159,12 +181,22 @@ export function SidebarMenuButton({
 }
 
 export function SidebarFooter({ className, ...props }: HTMLAttributes<HTMLElement>) {
-  return <footer className={cn('shrink-0 border-t border-sidebar-border p-2', className)} {...props} />;
+  const { collapsed } = useSidebar();
+  return (
+    <footer
+      className={cn(
+        'shrink-0 mt-auto flex flex-col items-center',
+        collapsed ? 'pb-2 pt-1 border-t-0' : 'p-2 border-t border-sidebar-border',
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function SidebarTrigger({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   const { collapsed, toggle } = useSidebar();
-  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const Icon = collapsed ? PanelLeft : PanelLeftClose;
   const label = `${collapsed ? 'Expandir' : 'Contraer'} menú (Ctrl+B)`;
   return (
     <Tooltip>
@@ -175,12 +207,12 @@ export function SidebarTrigger({ className, ...props }: ButtonHTMLAttributes<HTM
           aria-expanded={!collapsed}
           onClick={toggle}
           className={cn(
-            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+            'grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
             className
           )}
           {...props}
         >
-          <Icon className="h-4 w-4" aria-hidden="true" />
+          <Icon className="size-4" aria-hidden="true" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>

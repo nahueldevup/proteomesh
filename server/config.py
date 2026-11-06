@@ -30,6 +30,9 @@ ALLOWED_FILE_ROOTS = [
     "/sdcard/DCIM",
     "/sdcard/Pictures",
     "/sdcard/Documents",
+    "/sdcard/Movies",
+    "/sdcard/Music",
+    "/sdcard/Recordings",
 ]
 
 def resolve_aapt2_path() -> Path:

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from server.services.file_manager import (
     allowed_roots,
+    create_directory,
     delete_file,
     download_file,
     list_files,
@@ -22,6 +23,12 @@ from server.services.file_manager import (
 )
 
 router = APIRouter(prefix="/files", tags=["Gestor de Archivos"])
+
+
+class CreateFolderRequest(BaseModel):
+    instance: str = Field(..., description="Nombre de la instancia")
+    path: str = Field(..., description="Directorio padre donde se creará la carpeta")
+    name: str = Field(..., min_length=1, max_length=128, description="Nombre de la nueva carpeta")
 
 
 class SendFileRequest(BaseModel):
@@ -87,6 +94,24 @@ async def post_upload(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/mkdir", response_model=Dict[str, Any], summary="Crear un nuevo directorio")
+def post_mkdir(req: CreateFolderRequest):
+    """Crea una carpeta dentro de una ruta permitida."""
+    try:
+        result = create_directory(req.instance, req.path, req.name)
+        return {
+            "name": result.name,
+            "path": result.path,
+            "type": result.type,
+            "size": result.size,
+            "mtime": result.mtime,
+        }
+    except PathValidationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except FileManagerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/download", summary="Descargar archivo de una instancia")
 def get_download(
     instance: str = Query(..., description="Nombre de la instancia"),
@@ -102,6 +127,36 @@ def get_download(
             content=data,
             media_type="application/octet-stream",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except PathValidationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except FileManagerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/view", summary="Previsualizar archivo de una instancia en el navegador")
+def get_view(
+    instance: str = Query(..., description="Nombre de la instancia"),
+    path: str = Query(..., description="Ruta completa del archivo"),
+):
+    """Devuelve el archivo inline con su tipo MIME correspondiente y cabeceras de caché."""
+    try:
+        data = download_file(instance, path)
+        import mimetypes
+        from fastapi.responses import Response
+
+        filename = path.split("/")[-1] or "file"
+        mime_type, _ = mimetypes.guess_type(filename)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        return Response(
+            content=data,
+            media_type=mime_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=3600",
+            },
         )
     except PathValidationError as e:
         raise HTTPException(status_code=403, detail=str(e))

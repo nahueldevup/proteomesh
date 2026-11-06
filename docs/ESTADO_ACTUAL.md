@@ -2,11 +2,11 @@
 
 | Campo | Valor |
 |---|---|
-| Fecha de corte | 2026-11-04 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f`; SEC-001 `89b8849`; GEO-002 `a782557`; USB-002 `f79cbfb`; WEB-014 `e70bd95`; STREAM-019 `981aa68`/`b328cd0`; UI-020 `c5dbbd7`; APP-021 `b2be2f0`/`7d2dfaf`/`42c1b9c`; RACK-022 `4956b35`; BUNDLE-023 `9481098` |
+| Fecha de corte | 2026-11-06 |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f`; SEC-001 `89b8849`; GEO-002 `a782557`; USB-002 `f79cbfb`; WEB-014 `e70bd95`; STREAM-019 `981aa68`/`b328cd0`; UI-020 `c5dbbd7`; APP-021 `b2be2f0`/`7d2dfaf`/`42c1b9c`; RACK-022 `4956b35`; BUNDLE-023 `be18f55`; UI-FILES-024 (en curso de push) |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | `feat/bundle-splits-support`; BUNDLE-023 completado (Soporte de Bundles/Split APKs .apkm/.xapk/.apks/.zip con filtrado ABI x86_64, cuota de 300MB, provisión única en frío en background, modo oscuro nativo en data-clean y tiendas excluidas de scope); tests host-side pasando (153/154 pasando, 1 skipped) y build web limpio (0 errores) |
+| Estado del repo | `main`; UI-FILES-024 completado (Replicación Lovable 1:1, tipografía Geist/Geist Mono, Obsidian Dark Theme, telemetría en tiempo real de paquetes instalados `GET /apks/installed`, barra de progreso escalable de presencia, soporte de carpetas `/sdcard/Movies`, `/sdcard/Music`, `/sdcard/Recordings`, streaming inline `GET /files/view`, miniaturas reales en cuadrícula, Quick Look multimodal y creación remota de carpetas `POST /files/mkdir`); tests host-side pasando (154/155 pasando, 1 skipped) y build web limpio (0 errores) |
 | Próximo hito | Orquestador Multi-Host / Túneles WireGuard / Perfiles de Red Proxy Avanzados y Rotación Celular 4G |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.

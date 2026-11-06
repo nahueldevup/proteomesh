@@ -273,10 +273,13 @@ React (5173) ──REST──► FastAPI (8000) ──subprocess──► instan
    - **Motor de Seguridad y Descompresión Streaming (`bundle_parser.py`):** Mitigación de Zip-Slip (`is_relative_to`), descarte de symlinks maliciosos y mitigación de Zip-Bomb mediante conteo de bytes reales leídos (máximo 600 MB).
    - **Filtrado Inteligente de Arquitectura:** Detección de código nativo por lectura directa de `lib/<abi>/` sin sobrecoste. Prioriza splits `x86_64` y descarta splits ARM conflictivos para ejecución nativa sobre ReDroid sin sobrecarga en CPU host.
    - **Instalación Unificada (`install_apk_files`):** Despacha `adb install -r` (1 archivo) o `adb install-multiple -r` (múltiples splits) con escalado de timeout adaptativo.
+   - **Telemetría de Paquetes en Tiempo Real (`GET /api/v1/apks/installed`):** Escaneo concurrente de instancias activas vía `adb shell pm list packages` con timeout de 3.0s, exponiendo en tiempo real el mapa `{ package_name: [instances...] }` para verificar aplicaciones preinstaladas en la flota.
    - **Provisión Inicial Estricta en Background:** `_install_default_apks` instala las aplicaciones marcadas como `is_default` una única vez al nacer la instancia (`default_apks_provisioned: true` en `meta.json`). En reinicios o encendidos posteriores, la tarea se omite instantáneamente sin sobrecargar el inicio de sesión. Respalda desinstalaciones manuales del usuario.
 2. **Gestor de Archivos de Instancia (`server/services/file_manager.py`, `server/routes/files.py`):**
-   - **Whitelist Estricta:** Solo se permite acceso a `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures` y `/sdcard/Documents`.
+   - **Whitelist Ampliada:** Acceso protegido a `/sdcard/Download`, `/sdcard/DCIM`, `/sdcard/Pictures`, `/sdcard/Documents`, `/sdcard/Movies`, `/sdcard/Music` y `/sdcard/Recordings`.
    - **Validación Dual de Rutas:** Validación léxica previa en Python (`posixpath.relpath`, bloqueo de caracteres especiales y secuencias de escape `..`) complementada con resolución física canónica en el invitado (`realpath` ejecutado en el shell de Android) para prevenir escapes de sandbox o enlaces simbólicos maliciosos.
+   - **Streaming Inline y Miniaturas (`GET /api/v1/files/view`):** Despacho binario directo con tipo MIME autodetectado (`image/*`, `video/*`, `audio/*`, `text/*`) y cabeceras `Cache-Control: private, max-age=3600` para alimentar la vista cuadrícula con miniaturas en vivo.
+   - **Creación Segura de Carpetas (`POST /api/v1/files/mkdir`):** Validación estricta de nombres y creación con `mkdir -p --` restringida a los directorios permitidos.
    - **Operaciones Seguras:**
      * Listado con `find -maxdepth 1 -print0` y `stat` formateado entre comillas dobles (evitando interpretación de `|` como pipe).
      * Subida multipart vía ADB push con sufijo anti-sobrescritura (`foto (1).png`) y escaneo multimedia inmediato (`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE`).

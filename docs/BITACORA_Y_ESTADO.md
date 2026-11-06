@@ -1639,6 +1639,44 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 89. FEAT(UI-FILES-024) — Replicación de Diseño Lovable en APKs & Archivos, Telemetría en Vivo de Paquetes y Quick Look Multimodal (2026-11-06)
+
+* **Objetivo:** Replicar fielmente al 100% el diseño de referencia de Lovable.dev (`apk-hive-command-center-main`) para los módulos de repositorio de APKs y gestor de archivos, incorporar telemetría de instalación de paquetes en tiempo real desde los contenedores ReDroid, implementar barra de progreso escalable sin desplazamiento de layout, ampliar las carpetas permitidas a multimedia de Android (`Movies`, `Music`, `Recordings`), activar streaming inline de archivos con miniaturas reales en vista cuadrícula, visor multimodal Quick Look (fotos, código/logs/json, audio, video) y creación remota de carpetas vía ADB.
+* **Causa raíz / Contexto:**
+  - El diseño inicial del módulo "APKs y Archivos" presentaba discrepancias visuales con el estándar de Lovable: tipografías estiradas (`letter-spacing: -0.01em` global afectando fuentes monoespaciadas), anchos asimétricos que empujaban el switch `Default` o truncaban versiones semánticas (`585.0.0....`), e indicadores de presencia de tipo "telefonitos" individuales no escalables para flotas grandes.
+  - La tabla y el panel lateral no consultaban a los dispositivos reales qué aplicaciones tenían instaladas, mostrando erróneamente `0/2` e ignorando paquetes existentes como Facebook (`com.facebook.katana`) o DevCheck.
+  - En el gestor de archivos, las imágenes en vista cuadrícula mostraban un gradiente abstracto sin cargar la miniatura real, la whitelist de rutas excluía carpetas comunes de Android (`Movies`, `Music`), las fechas usaban formato local desordenado y no existía visor previo ni capacidad de crear carpetas.
+* **Cambios principales:**
+  - **Replicación 1:1 de Diseño y Tokens Lovable (`index.css`, `sidebar.tsx`, `ApkRepository.tsx`):**
+    - Paleta canónica de modo oscuro obsidiana (`--background: oklch(0.17 0.008 255)`, `--surface: oklch(0.195 0.009 255)`, `--card: oklch(0.205 0.009 255)`, `--sidebar: oklch(0.15 0.008 255)`) con acentos cian eléctricos (`oklch(0.74 0.14 225)`).
+    - Eliminado el borde lateral azul artificial de selección (`shadow-[inset_2px_0_0_var(--primary)]`) y corregido el borde duplicado del inspector lateral para asegurar exactamente 380 px (`w-[380px]`).
+    - Tipografía oficial Geist y Geist Mono con espaciado natural (`letter-spacing: normal`). Riel lateral en 48 px (`w-12`) con separación uniforme `gap-1` e icono `Plug` para red.
+    - Calibración matemática exacta de la tabla de paquetes con proporciones fluidas (`APLICACIÓN`, `VERSIÓN 139px`, `TIPO 167px`, `TAMAÑO 94px`, `INSTALADA 131px`, `DEFAULT 104px`), eliminando scrollbars horizontales y truncamientos indebidos.
+  - **Telemetría de Paquetes en Tiempo Real (`server/routes/apks.py`, `api.ts`, `ApkRepository.tsx`):**
+    - Nuevo endpoint `GET /api/v1/apks/installed` que escanea en paralelo vía `adb shell pm list packages` con timeout de 3.0s y devuelve un mapa `{ package_name: [instance, ...] }`.
+    - Detección automática en vivo de apps instaladas (`Facebook`, `DevCheck`), reflejándose como `ya instalada` con check verde en las tarjetas de dispositivo del panel inspector.
+    - Sustitución de los recuadros de teléfonos por una **barra de progreso continua escalable** (`w-14` / 56 px + texto `1/2` en celda fija de 131 px), uniforme e invariable ante flotas de N dispositivos.
+  - **Gestor de Archivos Ampliado y Streaming Inline (`server/config.py`, `server/routes/files.py`, `FileExplorer.tsx`):**
+    - Ampliada la whitelist `ALLOWED_FILE_ROOTS` a `/sdcard/Movies`, `/sdcard/Music` y `/sdcard/Recordings`, permitiendo gestionar grabaciones de pantalla (`screenrecord`) y audios.
+    - Endpoint `GET /api/v1/files/view?instance={name}&path={path}`: streaming inline directo vía `adb exec-out cat` con detección automática de tipo MIME y cabeceras `Cache-Control: private, max-age=3600`.
+    - Miniaturas reales en vivo en la vista cuadrícula (`<img loading="lazy" object-cover />`) con fallback elegante a icono SVG si no es imagen o falla la carga.
+    - Visor multimodal Quick Look / Lightbox integrado: previsualización de imágenes a pantalla completa, visor de código/texto/logs (`.txt`, `.json`, `.xml`, `.log`, `.vcf`, `.md`) en contenedor monoespaciado con scroll y reproductores HTML5 para audio y video.
+    - Endpoint `POST /api/v1/files/mkdir` y diálogo modal interactivo con tecla `Enter` para crear carpetas de forma segura dentro del almacenamiento permitido.
+    - Homologación de fechas al formato ISO `YYYY-MM-DD HH:mm` y ruta breadcrumb en `text-sm font-mono`.
+* **Archivos afectados:**
+  - `server/config.py`, `server/routes/apks.py`, `server/routes/files.py`, `server/services/file_manager.py`
+  - `tests/host/test_api_server.py`, `tests/host/test_file_validation.py`
+  - `web/index.html`, `web/src/index.css`, `web/src/App.tsx`, `web/src/lib/api.ts`
+  - `web/src/components/ui/sidebar.tsx`, `web/src/components/files/ApkFileManager.tsx`
+  - `web/src/components/files/ApkRepository.tsx`, `web/src/components/files/FileExplorer.tsx`
+* **Verificación:**
+  - Suite de 154 tests de host pasando al 100% (154 passed, 1 skipped) en pytest.
+  - Compilación de Vite limpia en 414 ms con cero advertencias de TypeScript.
+  - Auditoría visual con navegador headless en 1365×691 px confirmando alineación exacta de columnas, carga de miniaturas JPEG en cuadrícula y funcionamiento del visor multimodal.
+* **Estado:** UI-FILES-024 **completado y validado el 2026-11-06**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

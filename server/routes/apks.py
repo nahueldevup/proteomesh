@@ -49,6 +49,48 @@ def list_apks():
     return apk_repository.list_apks()
 
 
+@router.get("/installed", response_model=Dict[str, List[str]], summary="Mapa de paquetes instalados por instancia")
+async def get_installed_packages():
+    """
+    Retorna un diccionario { package_name: [instance_name, ...] }
+    consultando en paralelo las instancias activas vía adb shell pm list packages.
+    """
+    from server.services.manager_bridge import get_instances_list
+    instances = get_instances_list()
+    running_instances = [i.instance_name for i in instances if i.running]
+    if not running_instances:
+        return {}
+
+    async def get_packages_for_instance(name: str):
+        serial = _adb_serial(name)
+        if not serial:
+            return name, set()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "adb", "-s", serial, "shell", "pm", "list", "packages",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            if proc.returncode == 0:
+                pkgs = {line.replace("package:", "").strip() for line in stdout.decode().splitlines() if line.strip()}
+                return name, pkgs
+        except Exception:
+            pass
+        return name, set()
+
+    results = await asyncio.gather(*[get_packages_for_instance(n) for n in running_instances])
+
+    pkg_map: Dict[str, List[str]] = {}
+    for name, pkgs in results:
+        for pkg in pkgs:
+            if pkg not in pkg_map:
+                pkg_map[pkg] = []
+            pkg_map[pkg].append(name)
+
+    return pkg_map
+
+
 @router.post("", status_code=201, response_model=Dict[str, Any], summary="Subir un APK o Bundle al repositorio")
 async def upload_apk(
     file: UploadFile = File(..., description="Archivo APK o Bundle a subir (.apk, .apkm, .xapk, .apks, .zip)"),

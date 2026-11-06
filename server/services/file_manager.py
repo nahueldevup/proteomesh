@@ -290,6 +290,36 @@ def delete_file(instance_name: str, path: str) -> Dict[str, str]:
     return {"status": "ok", "path": norm}
 
 
+def create_directory(instance_name: str, path: str, folder_name: str) -> FileEntry:
+    """Crea un directorio dentro de una ruta permitida."""
+    norm = validate_phone_path(instance_name, path)
+    clean_name = folder_name.strip()
+    if not clean_name or "/" in clean_name or "\\" in clean_name or "\x00" in clean_name or clean_name in (".", ".."):
+        raise FileManagerError("Nombre de carpeta inválido")
+
+    target_path = posixpath.join(norm, clean_name)
+    validate_phone_path(instance_name, target_path)
+    serial = _adb_serial_or_raise(instance_name)
+
+    # Comprobar si ya existe
+    res_check = _adb_shell(serial, "[", "-e", target_path, "]", check=False)
+    if res_check.returncode == 0:
+        raise FileManagerError(f"La carpeta '{clean_name}' ya existe")
+
+    res = _adb_shell(serial, "mkdir", "-p", "--", target_path, check=False)
+    if res.returncode != 0:
+        raise FileManagerError(f"No se pudo crear la carpeta: {res.stderr.strip()}")
+
+    type_, size, mtime = _stat_entry(serial, target_path)
+    return FileEntry(
+        name=clean_name,
+        path=target_path,
+        type="directory",
+        size=size,
+        mtime=mtime,
+    )
+
+
 def send_file(
     source_instance: str,
     source_path: str,

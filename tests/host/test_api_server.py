@@ -141,6 +141,11 @@ class ApiServerTest(unittest.TestCase):
         # Restaurar a Buenos Aires
         self.client.post(f"/api/v1/locations/instances/{target}", json={"location": "ba"})
 
+    def test_get_installed_apks(self):
+        res = self.client.get("/api/v1/apks/installed")
+        self.assertEqual(res.status_code, 200)
+        self.assertIsInstance(res.json(), dict)
+
 
 if __name__ == "__main__":
     unittest.main()

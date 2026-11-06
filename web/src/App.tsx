@@ -8,6 +8,7 @@ import {
   Sun,
   Moon,
   Usb,
+  Plug,
   Clock,
   FolderArchive,
 } from 'lucide-react';
@@ -228,7 +229,7 @@ export function App() {
                   <SidebarTrigger className="h-7 w-7 rounded-sm hover:bg-sidebar-accent" />
                 </div>
               </div>
-              <div className="mt-2">
+              <div className="group-data-[state=collapsed]/sidebar:mt-0 mt-1">
                 <SidebarMenuButton
                   icon={Plus}
                   label="Crear CloudPhone"
@@ -239,6 +240,7 @@ export function App() {
                   }}
                 />
               </div>
+              <div className="my-1 h-px w-6 bg-border mx-auto group-data-[state=expanded]/sidebar:w-full" />
             </SidebarHeader>
 
             <SidebarContent>
@@ -270,7 +272,7 @@ export function App() {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      icon={Usb}
+                      icon={Plug}
                       label="Centro de Red"
                       active={activeNav === 'network'}
                       badge={
@@ -315,14 +317,14 @@ export function App() {
             </SidebarContent>
 
             <SidebarFooter>
-              <div className="flex items-center justify-between px-1 group-data-[state=collapsed]/sidebar:justify-center">
+              <div className="flex items-center justify-center group-data-[state=expanded]/sidebar:justify-between px-1">
                 <button
                   type="button"
                   onClick={toggleTheme}
                   aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-                  className="flex items-center gap-2 rounded-sm p-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors group-data-[state=collapsed]/sidebar:justify-center"
+                  className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer group-data-[state=expanded]/sidebar:flex group-data-[state=expanded]/sidebar:w-full group-data-[state=expanded]/sidebar:h-9 group-data-[state=expanded]/sidebar:px-2 group-data-[state=expanded]/sidebar:gap-2 group-data-[state=expanded]/sidebar:text-xs"
                 >
-                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {theme === 'dark' ? <Sun className="size-4 shrink-0" /> : <Moon className="size-4 shrink-0" />}
                   <span className="group-data-[state=collapsed]/sidebar:hidden">
                     {theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
                   </span>

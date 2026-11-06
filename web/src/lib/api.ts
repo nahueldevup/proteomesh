@@ -405,6 +405,11 @@ export const api = {
     return handleResponse<ApkEntry[]>(res);
   },
 
+  async getInstalledApks(): Promise<Record<string, string[]>> {
+    const res = await fetch(`${API_BASE}/apks/installed`);
+    return handleResponse<Record<string, string[]>>(res);
+  },
+
   async uploadApk(file: File, onProgress?: (percent: number) => void): Promise<ApkEntry> {
     return new Promise((resolve, reject) => {
       const form = new FormData();
@@ -476,6 +481,20 @@ export const api = {
       body: form,
     });
     return handleResponse<FileEntry>(res);
+  },
+
+  async createFolder(instance: string, path: string, name: string): Promise<FileEntry> {
+    const res = await fetch(`${API_BASE}/files/mkdir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instance, path, name }),
+    });
+    return handleResponse<FileEntry>(res);
+  },
+
+  getFileViewUrl(instance: string, path: string): string {
+    const q = new URLSearchParams({ instance, path });
+    return `${API_BASE}/files/view?${q.toString()}`;
   },
 
   async downloadFile(instance: string, path: string): Promise<Blob> {
