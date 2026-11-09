@@ -337,12 +337,17 @@
   animation: tap-ripple 0.4s ease-out forwards;
 }
 
-/* ── Leaflet overrides para tema y control de z-index ── */
+/* ── Leaflet overrides para tema y control de z-index (Lovable Dark Tech) ── */
 .leaflet-container {
   background: var(--color-background) !important;
   font-family: inherit !important;
-  z-index: 1 !important;
+  z-index: 0 !important;
   isolation: isolate !important;
+}
+
+.leaflet-dragging .leaflet-container,
+.leaflet-container.leaflet-dragging {
+  cursor: grabbing !important;
 }
 
 .leaflet-pane {
@@ -354,29 +359,364 @@
   z-index: 20 !important;
 }
 
-.dark .leaflet-tile-pane,
-[data-theme="dark"] .leaflet-tile-pane {
+.pm-map .leaflet-tile-pane {
+  transition: filter 320ms ease;
+}
+
+.pm-map[data-map-theme="light"] .leaflet-tile-pane {
+  filter: saturate(1.15) contrast(1.02) brightness(1.02);
+}
+
+.pm-map[data-map-theme="dark"] .leaflet-tile-pane {
   filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
 }
 
-.leaflet-tile-pane {
-  filter: saturate(1.1) contrast(1.05);
+.leaflet-control-zoom {
+  border: 1px solid var(--color-border) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-pop) !important;
 }
 
 .leaflet-control-zoom a {
-  background: var(--color-card) !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 28px !important;
+  background: var(--color-popover) !important;
   color: var(--color-foreground) !important;
   border-color: var(--color-border) !important;
-  border-radius: 4px !important;
+  border-radius: 0 !important;
+  font-family: var(--font-mono) !important;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--color-accent) !important;
+  color: var(--color-primary) !important;
 }
 
 .leaflet-control-attribution {
-  background: rgba(15, 20, 25, 0.75) !important;
+  background: color-mix(in oklab, var(--color-popover) 80%, transparent) !important;
   color: var(--color-muted-foreground) !important;
+  font-family: var(--font-mono) !important;
   font-size: 9px !important;
+  border-radius: 4px 0 0 0;
 }
 
-.proteomesh-marker {
+.leaflet-control-attribution a {
+  color: var(--color-muted-foreground) !important;
+}
+
+.proteomesh-marker,
+.proteomesh-pin-marker {
   background: none !important;
   border: none !important;
+}
+
+/* Marcador arrastrable (posición en edición) */
+.pm-draft {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  cursor: grab;
+}
+
+.pm-draft__ring {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+  animation: pm-pulse 2s ease-out infinite;
+}
+
+.pm-draft__ring--late {
+  width: 20px;
+  height: 20px;
+  animation-delay: 0.3s;
+}
+
+.pm-draft__core {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  border: 2.5px solid var(--color-background);
+  box-shadow: 0 0 0 1px var(--color-primary), 0 0 14px color-mix(in oklab, var(--color-primary) 70%, transparent);
+}
+
+/* Pines de ubicaciones guardadas */
+.pm-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -100%);
+  cursor: pointer;
+  filter: drop-shadow(0 3px 6px oklch(0 0 0 / 0.35));
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: 50% 100%;
+}
+
+.pm-pin__chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px 3px 5px;
+  border-radius: 5px;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  border: 1px solid color-mix(in oklab, var(--pin) 75%, var(--color-border));
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.pm-pin__icon {
+  display: grid;
+  place-items: center;
+  color: var(--pin);
+}
+
+.pm-pin[data-default="true"] .pm-pin__icon {
+  color: var(--color-warning);
+}
+
+.pm-pin[data-default="true"] .pm-pin__icon svg {
+  fill: currentColor;
+}
+
+.pm-pin__label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pm-pin__flag {
+  display: grid;
+  place-items: center;
+  color: var(--color-primary);
+}
+
+.pm-pin__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-pin__count[data-online="true"] {
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.pm-pin__stem {
+  width: 2px;
+  height: 7px;
+  background: var(--pin);
+}
+
+.pm-pin__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--pin);
+  border: 2px solid var(--color-popover);
+  box-shadow: 0 0 6px var(--pin);
+}
+
+.pm-pin:hover,
+.pm-pin[data-hover="true"] {
+  transform: translate(-50%, -100%) scale(1.06);
+}
+
+.pm-pin:hover .pm-pin__chip,
+.pm-pin[data-hover="true"] .pm-pin__chip {
+  border-color: var(--pin);
+}
+
+.pm-pin[data-selected="true"] {
+  transform: translate(-50%, -100%) scale(1.1);
+  z-index: 2;
+}
+
+.pm-pin[data-selected="true"] .pm-pin__chip {
+  background: color-mix(in oklab, var(--color-primary) 16%, var(--color-popover));
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary), 0 0 18px -4px var(--color-primary);
+}
+
+.pm-pin[data-selected="true"] .pm-pin__dot {
+  animation: pm-pin-beat 1.6s ease-in-out infinite;
+}
+
+@keyframes pm-pin-beat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--pin) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Tooltip de teléfonos asignados */
+.leaflet-tooltip.pm-tooltip {
+  padding: 0;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  white-space: normal;
+}
+
+.leaflet-tooltip-top.pm-tooltip::before {
+  border-top-color: var(--color-border);
+}
+
+.pm-tt {
+  width: 232px;
+  padding: 9px 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.pm-tt__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pm-tt__swatch {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.pm-tt__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pm-tt__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.pm-tt__badge svg {
+  fill: currentColor;
+}
+
+.pm-tt__meta {
+  margin-top: 2px;
+  color: var(--color-muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-tt__coords {
+  margin-top: 1px;
+  color: var(--color-muted-foreground);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-tt__section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted-foreground);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pm-tt__section > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pm-tt__list {
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+}
+
+.pm-tt__list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pm-tt__status {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--color-muted-foreground);
+  opacity: 0.6;
+}
+
+.pm-tt__status[data-online="true"] {
+  background: var(--color-success);
+  opacity: 1;
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.pm-tt__phone {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-tt__state {
+  color: var(--color-muted-foreground);
+  font-size: 9.5px;
+}
+
+.pm-tt__more,
+.pm-tt__empty {
+  margin-top: 5px;
+  color: var(--color-muted-foreground);
+  font-size: 10px;
 }
