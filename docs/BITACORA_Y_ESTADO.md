@@ -1757,6 +1757,34 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 92. FEAT(UI-TOOLTIP-031) — Sistema Interceptor Global de Tooltips Estilizados y Blindaje Anti-Colisión (2026-11-10)
+
+* **Objetivo:** Unificar y estilizar la totalidad de los tooltips de la aplicación mediante un interceptor global por delegación de eventos en el root (`GlobalTooltip.tsx`), suprimiendo los rectángulos negros nativos de HTML (`title="..."`) en todas las secciones, garantizando el aislamiento automático frente a triggers explícitos de Radix UI y eliminando colisiones o dobles tooltips en el sidebar colapsado.
+* **Causa raíz / Contexto:**
+  - Diversos módulos históricos y tablas utilizaban atributos HTML `title="..."` estándar, provocando que los navegadores pintaran rectángulos negros opacos desalineados con el diseño obsidiana/cian de Lovable Dark Tech.
+  - La envolvente de `SidebarMenuButton` declaraba simultáneamente `title={collapsed ? label : undefined}` y un `<Tooltip><TooltipContent side="right">` de Radix UI, produciendo un doble tooltip (uno cortado hacia la izquierda y otro a la derecha).
+* **Cambios principales:**
+  - **Componente `GlobalTooltip.tsx` (`web/src/components/ui/GlobalTooltip.tsx`):**
+    - Escucha global pasiva de eventos `pointerover`, `pointerout`, `pointerdown`, `scroll` y `Escape`.
+    - Detección de elementos con `title` o `data-tooltip`: captura del texto y supresión inmediata del atributo `title` nativo mediante `data-original-title`, restaurándolo ordenadamente al salir.
+    - Renderizado flotante estilizado vía `createPortal` a `document.body` con micro-borde `border-border`, fondo `bg-popover/95`, desenfoque `backdrop-blur`, sombra profunda `shadow-xl` y tipografía monospace `text-[11px]`.
+    - **Clamping horizontal anti-corte:** cálculo geométrico dinámico que asegura un margen de seguridad mínimo de 8 px respecto a ambos bordes de la ventana para que el texto nunca quede fuera de la pantalla.
+    - **Exclusión automática de Radix y Leaflet:** omisión preventiva si el elemento contiene o es hijo de `[data-radix-tooltip-trigger]` o paneles de Leaflet, protegiendo los componentes con tooltips nativos dedicados.
+  - **Limpieza de Atributo Redundante en `SidebarMenuButton` (`web/src/components/ui/sidebar.tsx`):**
+    - Remoción de `title={collapsed ? label : undefined}` para otorgar exclusividad total al `<TooltipContent side="right">` de Radix UI.
+  - **Montaje en `App.tsx`:**
+    - Inyección de `<GlobalTooltip />` en el nivel superior inmediatamente junto a `<Toaster />`, cubriendo el 100% de la interfaz sin necesidad de refactorizar manualmente 50+ archivos.
+* **Archivos afectados:**
+  - `web/src/App.tsx`
+  - `web/src/components/ui/GlobalTooltip.tsx`
+  - `web/src/components/ui/sidebar.tsx`
+* **Verificación:**
+  - Compilación Vite en 421 ms sin advertencias ni errores.
+  - Suite de tests de host pasando al 100%.
+* **Estado:** UI-TOOLTIP-031 **completado y validado el 2026-11-10**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

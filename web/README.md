@@ -151,8 +151,11 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
     - Filtro de búsqueda rápida y switch `Solo activas`.
     - Selector interactivo de retención TTL (`24h`, `7d`, `30d`, `permanent`) vía `PUT /api/v1/network/ip-ledger/ttl`.
     - Purga asistida de registros expirados protegida por diálogo `AlertDialog`.
-* **Componente Global Reutilizable `TooltipSimple` (`tooltip.tsx`):**
-  - Helper de alto orden basado en Radix UI (`TooltipPrimitive.Portal`) con retardo de 150 ms, erradicando los rectángulos negros nativos de HTML y unificando los tooltips flotantes en todo el sistema.
+* **Sistema Global de Tooltips Estilizados (`GlobalTooltip.tsx` y `TooltipSimple`):**
+  - **Interceptor pasivo por delegación (`GlobalTooltip.tsx`):** Escucha en el root de la app cualquier elemento con `title="..."` o `data-tooltip="..."`, suprimiendo los rectángulos negros nativos de HTML y mostrando un tooltip flotante portalizado (`z-[9999]`) con estilo Lovable Dark Tech (`bg-popover/95`, micro-borde, shadow-xl y tipografía monospace).
+  - **Clamping horizontal:** Cálculos automáticos de posición con margen de seguridad de 8 px para evitar cortes de texto contra los bordes de la pantalla.
+  - **Exclusión automática de Radix:** Detecta triggers explícitos de Radix UI (`TooltipContent`) para no duplicar tooltips en botones con posicionamiento propio (ej. `side="right"` en la barra lateral).
+  - Helper de alto orden `TooltipSimple` disponible para envolver manualmente elementos en componentes que requieran comportamiento específico.
 
 ### 12. Estabilidad de Creación y Humanización de Operadoras
 * **Inmunidad a Errores de Hooks en `CreateDeviceModal.tsx`:**
