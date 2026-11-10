@@ -4,7 +4,6 @@ Puente de servicios Python nativos hacia el motor ProteoMesh
 import os
 import sys
 import json
-import fcntl
 import shutil
 import shlex
 import asyncio

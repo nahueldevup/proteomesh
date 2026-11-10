@@ -6,7 +6,6 @@ el registro atómico de leases (IpLeaseRegistry) y extensibilidad para USB-Mobil
 import time
 import json
 import os
-import fcntl
 import asyncio
 import logging
 import subprocess
