@@ -123,15 +123,20 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
   - Botón de alternancia con iconos dinámicos `Sun` y `Moon` disponible en el header superior, barra lateral y cabecera de vista enfocada.
   - Persistencia automática de la preferencia en `localStorage('pm-theme')`.
 
-### 10. Gestor de Ubicaciones Personalizadas, Grupos y Pines GPS
+### 10. Gestor de Ubicaciones Personalizadas, Grupos y Pines GPS (Lovable Dark Tech)
 * **Gestor Visual Dedicado (`CustomLocationsManager.tsx`):**
-  - Módulo accesible desde la barra lateral (`MapPin`) para administrar ubicaciones geográficas personalizadas.
-  - Agrupación por etiquetas de colores (`LocationGroup`) y fijación de accesos rápidos con chincheta (`is_pinned`).
-  - Asignación de ubicación predeterminada del sistema (⭐ `default_location`, ej. Formosa-Capital) que se hereda en instancias nuevas y en los mapas.
-  - Presets oficiales fijados y sincronizados dinámicamente con la barra de accesos rápidos de `FocusView` y `BulkBar`.
-* **Mapa Leaflet con Pines Interactivos (`MapPicker.tsx`):**
-  - Renderizado dinámico de marcadores interactivos con etiquetas flotantes para cada ubicación fijada.
-  - Selección de coordenadas y ciudad con clic directo sobre cualquier pin del mapa o botón de la barra rápida.
+  - Módulo accesible desde la barra lateral (`MapPin`) para administrar ubicaciones geográficas personalizadas, replicado bajo la especificación oficial de Lovable Dark Tech.
+  - **Chasis 100% Viewport-Fit:** Cabecera fija de 55 px (`h-[55px]`), mapa Hero a altura completa (`relative flex-1 min-h-0 min-w-0 w-full h-full overflow-hidden`) y panel inspector lateral derecho fijado estrictamente en 380 px (`w-[380px]`) sin borde izquierdo duplicado (erradicación del bug de 379 px).
+  - Agrupación por etiquetas de colores (`LocationGroup`) y fijación de accesos rápidos (`is_pinned`).
+  - Asignación de ubicación predeterminada del sistema (`default_location`) destacada con estrella SVG y sincronización con nuevas instancias y mapas.
+  - **Popovers mutuamente excluyentes:** Menús de "Grupos" y "Accesos Rápidos" aislados para que la apertura de uno cierre automáticamente al otro.
+  - **Atajos de teclado en buscador:** `/` para enfocar, `Escape` para limpiar o cancelar, y `Enter` para elegir la primera coincidencia.
+* **Mapa Leaflet con Pines Vectoriales y Radios de Referencia (`MapPicker.tsx`):**
+  - **Pines Vectoriales SVG nítidos:** Marcadores con borde del color de su grupo, badge distintivo y contador tabular de CloudPhones asignados físicamente.
+  - **Tooltips oscuros (`pm-tooltip` / `pm-tt`):** Resumen técnico con swatch de grupo, coordenadas, ciudad y lista en tiempo real de terminales físicos con punto LED verde si están online.
+  - **Radio de Referencia Visual (`radius_km` y `show_radius`):** Círculos concéntricos vectoriales interactivos con color temático que delimitan la zona de influencia de cada ubicación. Sincronización en vivo del círculo del marcador activo al arrastrarlo por el mapa en modo creación.
+  - **Control Global de Radios:** Botón toggle en la barra de herramientas y en el mapa flotante (`CircleDot`) para encender o apagar todos los círculos del mapa con un solo clic.
+  - **Tema reactivo claro/oscuro:** Inversión de azulejos en modo oscuro obsidiana y colores saturados naturales en modo claro con invalidación reactiva de tamaño (`map.invalidateSize()`). Cero emojis Unicode.
 
 ### 11. Red Móvil USB: Cola de Espera y Ventana de Gracia (5s)
 * **Gestión de Demanda Excedente de Módems:**

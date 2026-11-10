@@ -1677,6 +1677,50 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 90. FEAT(UI-LOCATIONS-025) — Rediseño de Mapas y Ubicaciones Estilo Lovable Dark Tech y Radio de Referencia Visual (2026-11-09)
+
+* **Objetivo:** Integrar el rediseño visual de alta densidad para el módulo de "Mapas y Ubicaciones" proveniente de la especificación oficial de Lovable Dark Tech (`pinpoint-location-atlas-main`), erradicar desbordes verticales y bugs de box-sizing en el panel inspector, habilitar pines e indicadores SVG vectoriales sin emojis, incorporar el sistema de círculos de Radio de Referencia visual interactivo con controles individuales y conmutador global, y asegurar reactividad plena de tema claro/oscuro en Leaflet.
+* **Causa raíz / Contexto:**
+  - El diseño previo del gestor de ubicaciones utilizaba tablas con paginación que consumían el 60% de la pantalla, relegando el mapa interactivo a una pequeña caja de 220 px y forzando scrollbar vertical en toda la página.
+  - La presencia de `border-r` en la sección central junto a `border-l` en el panel lateral derecho (`w-[380px]`) provocaba una resta de 1 px por `box-sizing: border-box`, computando a 379 px y generando saltos visuales en la cabecera del inspector.
+  - Los pines del mapa incluían caracteres emoji Unicode (`⭐`, `📍`), incompatibles con la estética técnica sobria del sistema.
+  - No existía una representación visual de la zona de influencia o radio de cobertura de las ubicaciones personalizadas ni control para encender o apagar de forma masiva los radios en pantalla.
+* **Cambios principales:**
+  - **Chasis 100% Viewport-Fit y Erradicación del Bug de 379 px (`CustomLocationsManager.tsx`, `index.css`):**
+    - Cabecera fija de 55 px (`h-[55px]`) con indicador LED verde de instancias en vivo.
+    - Mapa Hero a pantalla completa ocupando el 100% del área central (`relative flex-1 min-h-0 min-w-0 w-full h-full overflow-hidden`).
+    - Borde divisor vertical asignado exclusivamente a `<section className="border-r border-border">` y `<aside className="w-[380px]">` sin `border-l`, garantizando 380 px matemáticos exactos.
+    - Contención de scroll: raíz con `overflow-hidden`; scroll vertical exclusivo en listas de CloudPhones y formularios internos (`overflow-y-auto`).
+  - **Pines Vectoriales Nítidos y Tooltips Técnicos (`MapPicker.tsx`):**
+    - Sustitución de emojis por SVG inline (`ICON_MAP_PIN`, `ICON_STAR`, `ICON_PIN`, `ICON_PHONE`).
+    - Chips de pin con borde reactivo al color del grupo, badge de predeterminada y contador tabular de CloudPhones asignados.
+    - Tooltip oscuro de alta densidad (`pm-tooltip` / `pm-tt`) con swatch de grupo, metadatos, coordenadas decimales y lista en vivo de terminales físicos con punto LED verde si están online.
+  - **Aislamiento de Stacking Context y Tema Reactivo Claro/Oscuro:**
+    - Contenedor de Leaflet aislado con `isolation: isolate` y `z-0` en `.leaflet-container`. Portales Radix UI configurados en `document.body` con `z-[9999]`.
+    - Detección reactiva de tema con `useDocumentTheme()` (`useSyncExternalStore` + `MutationObserver`). Filtros CSS automáticos (`saturate(1.15)` en claro, inversión obsidiana en oscuro) e invalidación de tamaño (`map.invalidateSize()`) al conmutar tema sin perder coordenadas ni zoom.
+  - **Radio de Referencia Visual (Influencia y Cobertura):**
+    - **Backend (`schemas.py`, `custom_location_service.py`):** incorporación de `radius_km` (float, default 1.0) y `show_radius` (bool, default True) en esquemas Pydantic y en la persistencia JSON.
+    - **Frontend (`MapPicker.tsx`, `CustomLocationsManager.tsx`, `api.ts`):**
+      * Círculos SVG interactivos (`L.circle`) renderizados en capa dedicada por debajo de los marcadores con color temático del grupo y relleno sutil (`fillOpacity: 0.10`).
+      * Marcador activo en modo creación con círculo que se sincroniza en vivo al arrastrar el pin (`marker.on('drag')`) y al ajustar los kilómetros.
+      * Tarjetas con `Switch` interactivo y selectores personalizados de km (con presets de `0.5`, `1`, `2`, `5`, `10`, `25` km) tanto en el formulario de creación como en el inspector de ubicación y en el nuevo modal de edición completa (`Edit2`).
+      * Botón global de radios (toolbar y control flotante en mapa con icono `CircleDot`) para alternar la visualización de todos los radios del mapa en 1 clic.
+  - **Ergonomía de Popovers y Atajos de Teclado:**
+    - Popovers de "Grupos" y "Accesos Rápidos" configurados como mutuamente excluyentes (abrir uno cierra automáticamente el otro).
+    - Atajos de teclado: `/` para enfocar el buscador desde cualquier parte, `Escape` para limpiar búsqueda/desenfocar o cancelar creación, y `Enter` para seleccionar el primer resultado filtrado.
+* **Archivos afectados:**
+  - `server/models/schemas.py`, `server/services/custom_location_service.py`
+  - `tests/host/test_location.py`
+  - `web/src/types.ts`, `web/src/lib/api.ts`, `web/src/index.css`
+  - `web/src/components/MapPicker.tsx`, `web/src/components/locations/CustomLocationsManager.tsx`
+* **Verificación:**
+  - Suite de 155 tests de host pasando (153 passed, 2 skipped) en pytest en 4.57s.
+  - Compilación de producción Vite en 399 ms sin advertencias ni errores de TypeScript.
+  - Cero emojis Unicode verificados mediante escaneo regex de rangos suplementarios y símbolos.
+* **Estado:** UI-LOCATIONS-025 **completado y validado el 2026-11-09**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
