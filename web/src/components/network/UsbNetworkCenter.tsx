@@ -9,7 +9,6 @@ import {
   Trash2,
   Signal,
   Loader2,
-  RefreshCw,
   ArrowRightLeft,
   Search,
   ChevronDown,
@@ -68,7 +67,7 @@ const ttlLabel = (ttl: string) => TTL_OPTIONS.find((o) => o.value === ttl)?.labe
 
 export default function UsbNetworkCenter({ instances, overview, onRefresh, onSelectInstance }: UsbNetworkCenterProps) {
   const queryClient = useQueryClient();
-  const { data: ledger, isFetching: loading } = useIpLedger();
+  const { data: ledger } = useIpLedger();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -255,7 +254,6 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
   const waitingQueue = data?.waiting_queue || [];
   const summary = data?.summary || { total_usb: 0, free_usb: 0, assigned_usb: 0, waiting_count: 0, ttl: '7d' };
   const pendingOffer = data?.pending_offer ?? null;
-  const onlineCount = instances.filter((p) => p.running).length;
 
   const sel = devices.find((d) => d.serial === selectedSerial) ?? devices[0] ?? null;
 
@@ -270,8 +268,8 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background overflow-hidden font-sans">
       {/* ── CABECERA CANÓNICA 55px ─────────────────────────────────── */}
       <header className="flex h-[55px] items-center gap-4 border-b border-border px-4 py-2.5 shrink-0 bg-background select-none">
-        <h1 className="flex items-center gap-2 font-mono text-base font-semibold text-foreground whitespace-nowrap">
-          <Router className="size-4 text-primary" /> Centro de Red USB
+        <h1 className="font-mono text-base font-semibold text-foreground whitespace-nowrap">
+          Centro de Red USB
         </h1>
 
         <div className="flex rounded-md border border-border bg-surface p-0.5 text-sm">
@@ -308,22 +306,6 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
               {ledgerEntries.length}
             </span>
           </button>
-        </div>
-
-        <div className="ml-auto flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => refresh()}
-            disabled={loading}
-            title="Actualizar estado de red e historial"
-            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground hover:bg-surface-2 disabled:opacity-60 cursor-pointer"
-          >
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-            Actualizar
-          </button>
-          <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
-            <span className="size-1.5 rounded-full bg-success" /> {onlineCount}/{instances.length} online
-          </div>
         </div>
       </header>
 
@@ -431,8 +413,8 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
               {/* Cola FIFO horizontal */}
               <div className="shrink-0 border-t border-border bg-surface">
                 <div className="flex items-center justify-between px-4 pt-2.5 pb-2 select-none">
-                  <h3 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    <Clock className="size-3.5 text-primary" /> Cola FIFO
+                  <h3 className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Cola FIFO
                     <span className="font-mono normal-case tracking-normal">({waitingQueue.length})</span>
                   </h3>
                   <span className="font-mono text-[11px] text-muted-foreground">
