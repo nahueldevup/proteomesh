@@ -115,6 +115,15 @@ export const api = {
     return handleResponse<CustomLocation>(res);
   },
 
+  async updateCustomLocation(id: string, payload: Partial<CustomLocation>): Promise<CustomLocation> {
+    const res = await fetch(`${API_BASE}/locations/custom/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<CustomLocation>(res);
+  },
+
   async deleteCustomLocation(id: string): Promise<{ ok: boolean; deleted: string }> {
     const res = await fetch(`${API_BASE}/locations/custom/${id}`, {
       method: 'DELETE',

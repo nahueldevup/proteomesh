@@ -332,6 +332,8 @@ class CustomLocationService:
                     "accuracy": float(data.get("accuracy", 4.2)),
                     "timezone": data.get("timezone", "America/Argentina/Buenos_Aires") or "America/Argentina/Buenos_Aires",
                     "is_pinned": bool(data.get("is_pinned", False)),
+                    "radius_km": round(float(data.get("radius_km", 1.0)), 2) if data.get("radius_km") is not None else 1.0,
+                    "show_radius": bool(data.get("show_radius", True)) if data.get("show_radius") is not None else True,
                     "created_at": now
                 }
 
@@ -378,6 +380,10 @@ class CustomLocationService:
                         loc["group_id"] = None
                 if "is_pinned" in data and data["is_pinned"] is not None:
                     loc["is_pinned"] = bool(data["is_pinned"])
+                if "radius_km" in data and data["radius_km"] is not None:
+                    loc["radius_km"] = round(float(data["radius_km"]), 2)
+                if "show_radius" in data and data["show_radius"] is not None:
+                    loc["show_radius"] = bool(data["show_radius"])
 
                 self._write_data_unlocked(catalog)
                 return loc

@@ -261,13 +261,19 @@ class CustomLocationApiTest(unittest.TestCase):
             loc_id = loc_data["id"]
             self.assertEqual(loc_data["name"], "Sede Test API")
             self.assertEqual(loc_data["group_id"], grp_id)
+            self.assertEqual(loc_data.get("radius_km"), 1.0)
+            self.assertTrue(loc_data.get("show_radius"))
 
             # 4. Actualizar la custom location y toggle pin
             upd_res = self.client.put(f"/api/v1/locations/custom/{loc_id}", json={
-                "name": "Sede Test API Modificada"
+                "name": "Sede Test API Modificada",
+                "radius_km": 3.5,
+                "show_radius": False
             })
             self.assertEqual(upd_res.status_code, 200)
             self.assertEqual(upd_res.json()["name"], "Sede Test API Modificada")
+            self.assertEqual(upd_res.json()["radius_km"], 3.5)
+            self.assertFalse(upd_res.json()["show_radius"])
 
             # Probar toggle pin de custom
             pin_res = self.client.post("/api/v1/locations/toggle-pin", json={

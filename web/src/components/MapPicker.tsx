@@ -94,6 +94,10 @@ export interface MapPinItem {
   isPinned?: boolean;
   color?: string;
   groupName?: string;
+  /** Radio de referencia en kilómetros. */
+  radius_km?: number;
+  /** Control individual para mostrar u ocultar el radio en el mapa (default: true). */
+  show_radius?: boolean;
   /** Teléfonos asignados físicamente a esta ubicación (se listan en el tooltip). */
   phones?: MapPinPhone[];
 }
@@ -137,6 +141,12 @@ interface MapPickerProps {
   selectedMarkerId?: string | null;
   /** Si se define, el clic en un pin llama a este callback en lugar de mover el marcador activo. */
   onMarkerClick?: (id: string) => void;
+  /** Control global para mostrar u ocultar todos los radios de referencia (default: true). */
+  showAllRadii?: boolean;
+  /** Radio en kilómetros para el marcador activo en modo creación (default: 1.0). */
+  activeRadiusKm?: number;
+  /** Muestra u oculta el radio del marcador activo en vivo (default: true). */
+  activeShowRadius?: boolean;
   /** Capas superpuestas (controles flotantes) renderizadas sobre el mapa. */
   children?: React.ReactNode;
 }
@@ -185,6 +195,7 @@ const buildTooltipHtml = (m: MapPinItem) => {
     )
     .join('');
   const rest = phones.length - MAX_TOOLTIP_PHONES;
+  const radiusInfo = m.radius_km ? ` · Radio ${m.radius_km} km${m.show_radius === false ? ' (oculto)' : ''}` : '';
   return `
     <div class="pm-tt">
       <div class="pm-tt__head">
@@ -192,7 +203,7 @@ const buildTooltipHtml = (m: MapPinItem) => {
         <span class="pm-tt__name">${escapeHtml(m.name)}</span>
         ${m.isDefault ? `<span class="pm-tt__badge">${svg(ICON_STAR, 9)}Predeterminada</span>` : ''}
       </div>
-      <div class="pm-tt__meta">${escapeHtml(m.city || 'Sin ciudad')}${m.groupName ? ` · ${escapeHtml(m.groupName)}` : ''}</div>
+      <div class="pm-tt__meta">${escapeHtml(m.city || 'Sin ciudad')}${m.groupName ? ` · ${escapeHtml(m.groupName)}` : ''}${radiusInfo}</div>
       <div class="pm-tt__coords">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)}</div>
       <div class="pm-tt__section">
         <span>${svg(ICON_PHONE, 10)} Teléfonos asignados</span>
@@ -229,6 +240,9 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
     initialZoom = 12,
     selectedMarkerId = null,
     onMarkerClick,
+    showAllRadii = true,
+    activeRadiusKm = 1.0,
+    activeShowRadius = true,
     children,
   },
   ref
@@ -237,6 +251,8 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const pinnedMarkersLayerRef = useRef<L.LayerGroup | null>(null);
+  const radiiLayerRef = useRef<L.LayerGroup | null>(null);
+  const activeCircleRef = useRef<L.Circle | null>(null);
   const pinMarkersByIdRef = useRef<Map<string, L.Marker>>(new Map());
   const cursorReadoutRef = useRef<HTMLSpanElement>(null);
   const isInitializedRef = useRef(false);
@@ -328,6 +344,11 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
       maxZoom: 19,
     }).addTo(map);
 
+    // Capa de círculos de referencia (debajo de los pines)
+    const radiiLayer = L.layerGroup().addTo(map);
+    radiiLayerRef.current = radiiLayer;
+
+    // Capa de pines configurados
     const pinnedLayer = L.layerGroup().addTo(map);
     pinnedMarkersLayerRef.current = pinnedLayer;
 
@@ -337,13 +358,27 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
       zIndexOffset: 1000,
     });
 
+    // Mover el círculo activo en vivo mientras se arrastra el marcador
+    marker.on('drag', () => {
+      const pos = marker.getLatLng();
+      if (activeCircleRef.current) {
+        activeCircleRef.current.setLatLng(pos);
+      }
+    });
+
     marker.on('dragend', () => {
       const pos = marker.getLatLng();
+      if (activeCircleRef.current) {
+        activeCircleRef.current.setLatLng(pos);
+      }
       handleMapClick(pos.lat, pos.lng);
     });
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       marker.setLatLng(e.latlng);
+      if (activeCircleRef.current) {
+        activeCircleRef.current.setLatLng(e.latlng);
+      }
       handleMapClick(e.latlng.lat, e.latlng.lng);
     });
 
@@ -372,6 +407,10 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
       mapRef.current = null;
       markerRef.current = null;
       pinnedMarkersLayerRef.current = null;
+      radiiLayerRef.current = null;
+      if (activeCircleRef.current) {
+        activeCircleRef.current = null;
+      }
       pinMarkersByIdRef.current.clear();
       isInitializedRef.current = false;
     };
@@ -388,6 +427,73 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
       map.removeLayer(marker);
     }
   }, [showActiveMarker]);
+
+  // Renderizar círculos de radio de referencia para ubicaciones guardadas
+  useEffect(() => {
+    const layer = radiiLayerRef.current;
+    if (!mapRef.current || !layer) return;
+    layer.clearLayers();
+
+    // Si el botón global está apagado, no se muestra ningún radio
+    if (!showAllRadii) return;
+
+    markers.forEach((m) => {
+      // Si la ubicación tiene su interruptor individual apagado, no se muestra
+      const show = m.show_radius ?? true;
+      if (!show) return;
+      if (!isValidCoord(m.lat, m.lon)) return;
+
+      const km = m.radius_km && m.radius_km > 0 ? m.radius_km : 1.0;
+      const color = safeColor(m.color, '#06b6d4');
+
+      L.circle([m.lat, m.lon], {
+        radius: km * 1000,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.10,
+        weight: 1.5,
+        dashArray: '4, 4',
+        interactive: false,
+      }).addTo(layer);
+    });
+  }, [markers, showAllRadii]);
+
+  // Renderizar y sincronizar el círculo en vivo del marcador activo en creación
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const shouldShow =
+      showAllRadii && showActiveMarker && activeShowRadius && isValidCoord(latitude, longitude);
+
+    if (!shouldShow) {
+      if (activeCircleRef.current && map.hasLayer(activeCircleRef.current)) {
+        map.removeLayer(activeCircleRef.current);
+      }
+      return;
+    }
+
+    const km = activeRadiusKm && activeRadiusKm > 0 ? activeRadiusKm : 1.0;
+    const radiusMeters = km * 1000;
+
+    if (!activeCircleRef.current) {
+      activeCircleRef.current = L.circle([latitude, longitude], {
+        radius: radiusMeters,
+        color: '#06b6d4',
+        fillColor: '#06b6d4',
+        fillOpacity: 0.14,
+        weight: 1.5,
+        dashArray: '4, 4',
+        interactive: false,
+      }).addTo(map);
+    } else {
+      activeCircleRef.current.setLatLng([latitude, longitude]);
+      activeCircleRef.current.setRadius(radiusMeters);
+      if (!map.hasLayer(activeCircleRef.current)) {
+        activeCircleRef.current.addTo(map);
+      }
+    }
+  }, [latitude, longitude, showAllRadii, showActiveMarker, activeShowRadius, activeRadiusKm]);
 
   // Renderizar pines configurados con tooltip de teléfonos asignados
   useEffect(() => {
@@ -443,6 +549,9 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
     const currentPos = markerRef.current.getLatLng();
     if (Math.abs(currentPos.lat - latitude) > 0.0001 || Math.abs(currentPos.lng - longitude) > 0.0001) {
       markerRef.current.setLatLng([latitude, longitude]);
+      if (activeCircleRef.current) {
+        activeCircleRef.current.setLatLng([latitude, longitude]);
+      }
       mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), {
         animate: true,
         duration: 0.5,
@@ -454,6 +563,9 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
     onChange(preset.lat, preset.lon, preset.label);
     if (markerRef.current && mapRef.current) {
       markerRef.current.setLatLng([preset.lat, preset.lon]);
+      if (activeCircleRef.current) {
+        activeCircleRef.current.setLatLng([preset.lat, preset.lon]);
+      }
       mapRef.current.setView([preset.lat, preset.lon], 12, { animate: true });
     }
   };

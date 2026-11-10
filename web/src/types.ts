@@ -29,6 +29,8 @@ export interface CustomLocation {
   accuracy?: number;
   timezone?: string;
   is_pinned?: boolean;
+  radius_km?: number;
+  show_radius?: boolean;
   created_at?: string;
 }
 

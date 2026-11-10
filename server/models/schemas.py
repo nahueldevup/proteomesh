@@ -84,6 +84,8 @@ class CustomLocationSchema(BaseModel):
     accuracy: float = Field(default=4.2, description="Precisión GPS simulada en metros")
     timezone: str = Field(default="America/Argentina/Buenos_Aires", description="Huso horario IANA")
     is_pinned: bool = Field(default=False, description="Fijado como acceso rápido en barra GPS de instancias")
+    radius_km: float = Field(default=1.0, ge=0.01, le=500.0, description="Radio de influencia en kilómetros")
+    show_radius: bool = Field(default=True, description="Mostrar u ocultar el radio visual en el mapa")
     created_at: Optional[str] = None
 
 
@@ -97,6 +99,8 @@ class CustomLocationCreate(BaseModel):
     accuracy: Optional[float] = 4.2
     timezone: Optional[str] = "America/Argentina/Buenos_Aires"
     is_pinned: Optional[bool] = False
+    radius_km: Optional[float] = Field(default=1.0, ge=0.01, le=500.0)
+    show_radius: Optional[bool] = Field(default=True)
 
 
 class CustomLocationUpdate(BaseModel):
@@ -109,6 +113,8 @@ class CustomLocationUpdate(BaseModel):
     accuracy: Optional[float] = None
     timezone: Optional[str] = None
     is_pinned: Optional[bool] = None
+    radius_km: Optional[float] = Field(default=None, ge=0.01, le=500.0)
+    show_radius: Optional[bool] = None
 
 
 class PinToggleRequest(BaseModel):

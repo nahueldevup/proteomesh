@@ -17,6 +17,7 @@ import {
   Pin,
   Star,
   Check,
+  CircleDot,
   Copy,
   Crosshair,
   LocateFixed,
@@ -139,7 +140,23 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const [locAltitude, setLocAltitude] = useState(25);
   const [locIsPinned, setLocIsPinned] = useState(false);
   const [locSetAsDefault, setLocSetAsDefault] = useState(false);
+  const [locShowRadius, setLocShowRadius] = useState(true);
+  const [locRadiusKm, setLocRadiusKm] = useState(1.0);
   const [savingLoc, setSavingLoc] = useState(false);
+  const [showAllRadii, setShowAllRadii] = useState(true);
+
+  // Estados para editar ubicación completa
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingLoc, setEditingLoc] = useState<CustomLocation | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editGroupId, setEditGroupId] = useState('');
+  const [editTimezone, setEditTimezone] = useState(DEFAULT_TZ);
+  const [editAltitude, setEditAltitude] = useState(25);
+  const [editRadiusKm, setEditRadiusKm] = useState(1.0);
+  const [editShowRadius, setEditShowRadius] = useState(true);
+  const [savingEditLoc, setSavingEditLoc] = useState(false);
+  const [editGroupSelectOpen, setEditGroupSelectOpen] = useState(false);
   const [formGroupSelectOpen, setFormGroupSelectOpen] = useState(false);
 
   // Teletransporte
@@ -234,6 +251,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         groupName: grp?.name,
         isDefault: defaultLoc?.id === loc.id,
         isPinned: !!loc.is_pinned,
+        radius_km: loc.radius_km ?? 1.0,
+        show_radius: loc.show_radius ?? true,
         phones: (phonesByLocation.get(loc.id) ?? []).map((p) => ({ name: p.instance_name, online: p.running })),
       };
     });
@@ -246,6 +265,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         city: defaultLoc.city,
         color: '#f59e0b',
         isDefault: true,
+        radius_km: 1.0,
+        show_radius: true,
         phones: instances
           .filter((i) => i.location && sameCoords(i.location.latitude, i.location.longitude, defaultLoc.latitude, defaultLoc.longitude))
           .map((p) => ({ name: p.instance_name, online: p.running })),
@@ -359,6 +380,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setMapLat(Number(center.lat.toFixed(6)));
       setMapLon(Number(center.lon.toFixed(6)));
     }
+    setLocShowRadius(true);
+    setLocRadiusKm(1.0);
     setSelectedId(null);
     resetTeleport();
     setCreating(true);
@@ -367,6 +390,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const cancelCreate = () => {
     setCreating(false);
     setFormGroupSelectOpen(false);
+    setLocShowRadius(true);
+    setLocRadiusKm(1.0);
   };
 
   const centerOnDefault = () => {
@@ -511,6 +536,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         altitude: Number(locAltitude) || 25,
         timezone: locTimezone,
         is_pinned: locIsPinned,
+        radius_km: Number(locRadiusKm) || 1.0,
+        show_radius: locShowRadius,
       });
 
       if (locSetAsDefault) {
@@ -527,6 +554,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       setLocName('');
       setLocIsPinned(false);
       setLocSetAsDefault(false);
+      setLocShowRadius(true);
+      setLocRadiusKm(1.0);
       await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
       setCreating(false);
       setSelectedId(created.id);
@@ -535,6 +564,80 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
       toast.error(`Error al guardar: ${getErrorMessage(err)}`);
     } finally {
       setSavingLoc(false);
+    }
+  };
+
+  // Actualizar radio y visibilidad de una ubicación existente
+  const handleUpdateLocationRadius = async (locId: string, showRadius: boolean, radiusKm: number) => {
+    try {
+      const sanitizedKm = Math.max(0.05, Math.min(500, Number(radiusKm) || 1.0));
+      const updated = await api.updateCustomLocation(locId, {
+        show_radius: showRadius,
+        radius_km: sanitizedKm,
+      });
+      queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          locations: prev.locations.map((l) => (l.id === locId ? { ...l, ...updated } : l)),
+        };
+      });
+      toast.success(
+        showRadius
+          ? `Radio visual fijado en ${sanitizedKm} km`
+          : `Radio visual desactivado para "${updated.name}"`
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
+    } catch (err) {
+      toast.error(`Error al actualizar radio: ${getErrorMessage(err)}`);
+    }
+  };
+
+  const openEditLocModal = (loc: CustomLocation) => {
+    setEditingLoc(loc);
+    setEditName(loc.name);
+    setEditCity(loc.city);
+    setEditGroupId(loc.group_id || '');
+    setEditTimezone(loc.timezone || DEFAULT_TZ);
+    setEditAltitude(loc.altitude ?? 25);
+    setEditRadiusKm(loc.radius_km ?? 1.0);
+    setEditShowRadius(loc.show_radius ?? true);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEditLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLoc) return;
+    if (!editName.trim()) {
+      toast.error('Ingresá un nombre para la ubicación');
+      return;
+    }
+    setSavingEditLoc(true);
+    try {
+      const updated = await api.updateCustomLocation(editingLoc.id, {
+        name: editName.trim(),
+        city: editCity.trim() || undefined,
+        group_id: editGroupId || undefined,
+        timezone: editTimezone,
+        altitude: Number(editAltitude) || 25,
+        radius_km: Math.max(0.05, Math.min(500, Number(editRadiusKm) || 1.0)),
+        show_radius: editShowRadius,
+      });
+      queryClient.setQueryData<CustomLocationsCatalog>(queryKeys.locationsCatalog, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          locations: prev.locations.map((l) => (l.id === editingLoc.id ? { ...l, ...updated } : l)),
+        };
+      });
+      toast.success(`Ubicación "${updated.name}" actualizada`);
+      setEditModalOpen(false);
+      setEditingLoc(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.locationsCatalog });
+    } catch (err) {
+      toast.error(`Error al editar ubicación: ${getErrorMessage(err)}`);
+    } finally {
+      setSavingEditLoc(false);
     }
   };
 
@@ -1030,6 +1133,25 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
               </PopoverContent>
             </Popover>
 
+            {/* Botón global mostrar/ocultar radios */}
+            <button
+              type="button"
+              onClick={() => setShowAllRadii((v) => !v)}
+              className={cn(
+                toolbarBtnClass,
+                showAllRadii
+                  ? 'border-primary/50 bg-primary/10 text-foreground font-semibold'
+                  : 'border-border bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+              )}
+              title={showAllRadii ? 'Ocultar todos los radios de referencia en el mapa' : 'Mostrar radios de referencia en el mapa'}
+            >
+              <CircleDot className={cn('size-3.5 shrink-0', showAllRadii ? 'text-primary' : 'text-muted-foreground')} />
+              <span className="hidden @4xl:inline">Radios</span>
+              <span className={cn('text-[10px] font-mono', showAllRadii ? 'text-primary' : 'text-muted-foreground/70')}>
+                {showAllRadii ? 'ON' : 'OFF'}
+              </span>
+            </button>
+
             {/* Botón principal */}
             <button
               type="button"
@@ -1062,6 +1184,9 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                 showInfoOverlay={false}
                 showActiveMarker={creating}
                 showCursorReadout
+                showAllRadii={showAllRadii}
+                activeRadiusKm={locRadiusKm}
+                activeShowRadius={locShowRadius}
                 markers={markers}
                 selectedMarkerId={selectedId}
                 onMarkerClick={handleMarkerClick}
@@ -1149,6 +1274,17 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                       <Star className="size-3.5 fill-current" />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRadii((v) => !v)}
+                    title={showAllRadii ? 'Ocultar radios de referencia' : 'Mostrar radios de referencia'}
+                    className={cn(
+                      'grid size-[30px] cursor-pointer place-items-center border-t border-border transition-colors',
+                      showAllRadii ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
+                  >
+                    <CircleDot className="size-3.5" />
+                  </button>
                 </div>
 
                 {/* Banner de modo creación */}
@@ -1401,6 +1537,64 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                     </div>
                     <Switch checked={locIsPinned} onCheckedChange={setLocIsPinned} />
                   </label>
+
+                  <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <CircleDot className={cn('size-4 shrink-0', locShowRadius ? 'text-primary' : 'text-muted-foreground')} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">Radio de referencia</div>
+                        <div className="text-xs text-muted-foreground">
+                          {locShowRadius
+                            ? `Círculo visual de cobertura en el mapa (${locRadiusKm} km)`
+                            : 'Círculo visual desactivado'}
+                        </div>
+                      </div>
+                      <Switch checked={locShowRadius} onCheckedChange={setLocShowRadius} />
+                    </div>
+
+                    {locShowRadius && (
+                      <div className="pt-2 border-t border-border/60 space-y-2 animate-in fade-in-0 duration-150">
+                        <div className="flex items-center justify-between">
+                          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground" htmlFor="loc-radius-input">
+                            Alcance del radio
+                          </label>
+                          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+                            {locRadiusKm} km
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="loc-radius-input"
+                            type="number"
+                            min={0.1}
+                            max={500}
+                            step={0.1}
+                            value={locRadiusKm}
+                            onChange={(e) => setLocRadiusKm(Math.max(0.1, Number(e.target.value) || 1.0))}
+                            className={cn(fieldClass, 'font-mono text-xs tabular-nums')}
+                          />
+                          <span className="font-mono text-xs text-muted-foreground shrink-0">km</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {[0.5, 1, 2, 5, 10, 25].map((presetKm) => (
+                            <button
+                              key={presetKm}
+                              type="button"
+                              onClick={() => setLocRadiusKm(presetKm)}
+                              className={cn(
+                                'rounded border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer',
+                                locRadiusKm === presetKm
+                                  ? 'border-primary/50 bg-primary/20 text-primary font-semibold'
+                                  : 'border-border bg-background text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+                              )}
+                            >
+                              {presetKm} km
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1439,7 +1633,15 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                       {selGroup ? selGroup.name : <span className="text-muted-foreground">Sin grupo</span>}
                     </p>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditLocModal(sel)}
+                      title="Editar ubicación completa"
+                      className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Edit2 className="size-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setLocToDelete(sel)}
@@ -1520,6 +1722,82 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
                     </div>
                     <Switch checked={!!sel.is_pinned} onCheckedChange={(v) => handleTogglePin('custom', sel.id, v)} />
                   </label>
+
+                  <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <CircleDot className={cn('size-4 shrink-0', (sel.show_radius ?? true) ? 'text-primary' : 'text-muted-foreground')} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">Radio de referencia</div>
+                        <div className="text-xs text-muted-foreground">
+                          {(sel.show_radius ?? true)
+                            ? `Zona de influencia visual (${sel.radius_km ?? 1} km) activa en mapa`
+                            : 'Zona de influencia visual desactivada'}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={sel.show_radius ?? true}
+                        onCheckedChange={(val) =>
+                          handleUpdateLocationRadius(sel.id, val, sel.radius_km ?? 1.0)
+                        }
+                      />
+                    </div>
+
+                    {(sel.show_radius ?? true) && (
+                      <div className="pt-2 border-t border-border/60 space-y-2 animate-in fade-in-0 duration-150">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Alcance del radio
+                          </span>
+                          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+                            {sel.radius_km ?? 1} km
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0.1}
+                            max={500}
+                            step={0.1}
+                            defaultValue={sel.radius_km ?? 1}
+                            key={`${sel.id}-${sel.radius_km}`}
+                            onBlur={(e) => {
+                              const val = Math.max(0.1, Number(e.target.value) || 1.0);
+                              if (val !== (sel.radius_km ?? 1)) {
+                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, val);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = Math.max(0.1, Number((e.target as HTMLInputElement).value) || 1.0);
+                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, val);
+                              }
+                            }}
+                            className={cn(fieldClass, 'font-mono text-xs tabular-nums')}
+                          />
+                          <span className="font-mono text-xs text-muted-foreground shrink-0">km</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {[0.5, 1, 2, 5, 10, 25].map((presetKm) => (
+                            <button
+                              key={presetKm}
+                              type="button"
+                              onClick={() =>
+                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, presetKm)
+                              }
+                              className={cn(
+                                'rounded border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer',
+                                (sel.radius_km ?? 1) === presetKm
+                                  ? 'border-primary/50 bg-primary/20 text-primary font-semibold'
+                                  : 'border-border bg-background text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+                              )}
+                            >
+                              {presetKm} km
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1883,6 +2161,220 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* DIÁLOGO EDITAR UBICACIÓN */}
+      <Dialog
+        open={editModalOpen}
+        onOpenChange={(o) => {
+          setEditModalOpen(o);
+          if (!o) setEditingLoc(null);
+        }}
+      >
+        <DialogContent className="max-w-md gap-0 p-0">
+          <DialogHeader className="border-b border-border p-4 pr-10">
+            <DialogTitle className="flex items-center gap-2 font-mono text-sm">
+              <Edit2 className="size-4 text-primary" />
+              Editar ubicación
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Modificá el nombre, grupo, ciudad o el radio de influencia visual en el mapa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveEditLocation} className="space-y-3 p-4">
+            <div>
+              <label className={fieldLabelClass} htmlFor="edit-name">
+                Nombre de la ubicación *
+              </label>
+              <input
+                id="edit-name"
+                type="text"
+                required
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className={fieldLabelClass}>Grupo</span>
+                <Popover open={editGroupSelectOpen} onOpenChange={setEditGroupSelectOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(fieldClass, 'flex cursor-pointer items-center justify-between gap-1.5 hover:bg-muted/40')}
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {editGroupId ? (
+                          <>
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: groupsMap.get(editGroupId)?.color || '#10b981' }}
+                            />
+                            <span className="truncate font-medium">{groupsMap.get(editGroupId)?.name}</span>
+                          </>
+                        ) : (
+                          <span className="font-mono text-[11px] text-muted-foreground">Sin grupo</span>
+                        )}
+                      </span>
+                      <ChevronDown className={cn('size-3 shrink-0 opacity-60 transition-transform', editGroupSelectOpen && 'rotate-180')} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" sideOffset={4} className="w-56 space-y-0.5 p-1 font-mono">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditGroupId('');
+                        setEditGroupSelectOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs transition-colors',
+                        editGroupId === '' ? 'bg-primary/15 font-semibold text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      Sin grupo
+                    </button>
+                    <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                      {catalog.groups.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => {
+                            setEditGroupId(g.id);
+                            setEditGroupSelectOpen(false);
+                          }}
+                          className={cn(
+                            'flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-left text-xs transition-colors',
+                            editGroupId === g.id ? 'bg-primary/15 font-semibold text-foreground' : 'text-foreground hover:bg-muted'
+                          )}
+                        >
+                          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: g.color || '#10b981' }} />
+                          <span className="flex-1 truncate">{g.name}</span>
+                          {editGroupId === g.id && <Check className="size-3 text-primary" />}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div>
+                <label className={fieldLabelClass} htmlFor="edit-city">
+                  Ciudad / referencia
+                </label>
+                <input
+                  id="edit-city"
+                  type="text"
+                  value={editCity}
+                  onChange={(e) => setEditCity(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[1fr_96px] gap-2">
+              <div>
+                <label className={fieldLabelClass} htmlFor="edit-tz">
+                  Zona horaria
+                </label>
+                <input
+                  id="edit-tz"
+                  type="text"
+                  value={editTimezone}
+                  onChange={(e) => setEditTimezone(e.target.value)}
+                  className={cn(fieldClass, 'font-mono text-[11px]')}
+                />
+              </div>
+              <div>
+                <label className={fieldLabelClass} htmlFor="edit-alt">
+                  Altitud (m)
+                </label>
+                <input
+                  id="edit-alt"
+                  type="number"
+                  value={editAltitude}
+                  onChange={(e) => setEditAltitude(Number(e.target.value))}
+                  className={cn(fieldClass, 'font-mono text-[11px] tabular-nums')}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
+              <div className="flex items-center gap-3">
+                <CircleDot className={cn('size-4 shrink-0', editShowRadius ? 'text-primary' : 'text-muted-foreground')} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">Radio de referencia</div>
+                  <div className="text-xs text-muted-foreground">
+                    {editShowRadius ? `Visible en el mapa (${editRadiusKm} km)` : 'Oculto en el mapa'}
+                  </div>
+                </div>
+                <Switch checked={editShowRadius} onCheckedChange={setEditShowRadius} />
+              </div>
+
+              {editShowRadius && (
+                <div className="pt-2 border-t border-border/60 space-y-2 animate-in fade-in-0 duration-150">
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground" htmlFor="edit-radius-input">
+                      Alcance del radio (km)
+                    </label>
+                    <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+                      {editRadiusKm} km
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit-radius-input"
+                      type="number"
+                      min={0.1}
+                      max={500}
+                      step={0.1}
+                      value={editRadiusKm}
+                      onChange={(e) => setEditRadiusKm(Math.max(0.1, Number(e.target.value) || 1.0))}
+                      className={cn(fieldClass, 'font-mono text-xs tabular-nums')}
+                    />
+                    <span className="font-mono text-xs text-muted-foreground shrink-0">km</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {[0.5, 1, 2, 5, 10, 25].map((presetKm) => (
+                      <button
+                        key={presetKm}
+                        type="button"
+                        onClick={() => setEditRadiusKm(presetKm)}
+                        className={cn(
+                          'rounded border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer',
+                          editRadiusKm === presetKm
+                            ? 'border-primary/50 bg-primary/20 text-primary font-semibold'
+                            : 'border-border bg-background text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+                        )}
+                      >
+                        {presetKm} km
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="h-8 cursor-pointer rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={savingEditLoc || !editName.trim()}
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {savingEditLoc && <Loader2 className="size-3.5 animate-spin" />}
+                Guardar cambios
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
       {/* CONFIRMAR ELIMINACIÓN DE GRUPO */}
       <AlertDialog open={!!groupToDelete} onOpenChange={(o) => !o && setGroupToDelete(null)}>
         <AlertDialogContent>
