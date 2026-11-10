@@ -150,7 +150,6 @@ export function SidebarMenuButton({
       type="button"
       aria-label={label}
       aria-current={active ? 'page' : undefined}
-      title={collapsed ? label : undefined}
       className={cn(
         'flex h-9 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar cursor-pointer',
         collapsed && 'grid size-8 place-items-center rounded-md p-0 mx-auto justify-center',

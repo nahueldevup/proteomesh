@@ -58,8 +58,14 @@ export function GlobalTooltip(): React.ReactPortal | null {
       // Si ya está activo en este elemento, no reiniciar
       if (trigger === activeElRef.current) return;
 
-      // Si el elemento pertenece al DOM interno de Leaflet (que ya tiene sus propios tooltips .pm-tt), ignorar
-      if (trigger.closest('.leaflet-pane, .leaflet-control-container')) return;
+      // Si el elemento ya utiliza un Tooltip explícito de Radix UI o pertenece a Leaflet, ignorar
+      if (
+        trigger.hasAttribute('data-radix-tooltip-trigger') ||
+        trigger.closest('[data-radix-tooltip-trigger]') ||
+        trigger.closest('.leaflet-pane, .leaflet-control-container')
+      ) {
+        return;
+      }
 
       let text = trigger.getAttribute('data-tooltip');
       const titleAttr = trigger.getAttribute('title');
@@ -93,8 +99,12 @@ export function GlobalTooltip(): React.ReactPortal | null {
         const placement: 'top' | 'bottom' = rect.top >= 36 ? 'top' : 'bottom';
         const y = placement === 'top' ? rect.top - 6 : rect.bottom + 6;
 
-        // Limitar x entre 16px y el ancho de ventana - 16px
-        const safeX = Math.max(16, Math.min(window.innerWidth - 16, centerX));
+        // Estimar ancho para clampear y evitar desbordes por los bordes laterales
+        const estimatedWidth = Math.min(384, text!.length * 7.5 + 24);
+        const halfWidth = estimatedWidth / 2;
+        const minX = halfWidth + 8;
+        const maxX = Math.max(minX, window.innerWidth - halfWidth - 8);
+        const safeX = Math.max(minX, Math.min(maxX, centerX));
 
         setState({
           visible: true,
