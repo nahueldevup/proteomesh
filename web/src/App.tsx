@@ -204,6 +204,7 @@ export function App() {
   const openFocus = useCallback((name: string) => {
     setFocusedName(name);
     setViewMode('focus');
+    setActiveNav('instances');
   }, []);
 
   const closeFocus = useCallback(() => {
