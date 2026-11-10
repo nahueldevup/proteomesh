@@ -30,6 +30,7 @@ class DbPersistenceTest(unittest.TestCase):
         first_run = run_migrations(self.db_path)
         self.assertIn(1, first_run)
         self.assertIn(2, first_run)
+        self.assertIn(3, first_run)
 
         # Segunda corrida no debe reaplicar nada
         second_run = run_migrations(self.db_path)
@@ -38,7 +39,7 @@ class DbPersistenceTest(unittest.TestCase):
         with get_connection(self.db_path) as conn:
             cur = conn.execute("SELECT version FROM _schema_version ORDER BY version ASC")
             versions = [r[0] for r in cur.fetchall()]
-            self.assertEqual(versions, [1, 2])
+            self.assertEqual(versions, [1, 2, 3])
 
     def test_json_bootstrap_and_service(self):
         """Verifica la migración automática de datos desde un archivo JSON legacy."""
@@ -189,6 +190,54 @@ class DbPersistenceTest(unittest.TestCase):
         deleted = store.delete("phone-alpha", delete_disk=True)
         self.assertTrue(deleted)
         self.assertIsNone(store.get("phone-alpha"))
+
+    def test_usb_store_crud(self):
+        """Verifica la persistencia de asignaciones USB en SQLite y disco."""
+        from server.db.instance_store import InstanceStore
+        from server.db.usb_store import UsbStore
+
+        init_db(self.db_path)
+        inst_dir = Path(self.temp_dir.name) / "instances"
+        inst_store = InstanceStore(db_path=self.db_path, instances_dir=inst_dir)
+        usb = UsbStore(db_path=self.db_path, instances_dir=inst_dir)
+
+        # Crear instancia previa para satisfacer la clave foránea
+        inst_store.save_instance("phone-usb", {"instance_name": "phone-usb", "adb_port": 5585})
+
+        assign_data = {
+            "instance": "phone-usb",
+            "iface": "usb0",
+            "serial": "R58M123456",
+            "model": "SM-A035M",
+            "carrier": "Personal AR",
+            "gateway": "192.168.42.1",
+            "subnet": "192.168.42.0/24",
+            "container_ip": "192.168.42.15",
+            "public_ip": "181.45.10.20",
+        }
+
+        # 1. Guardar asignación
+        usb.save("phone-usb", assign_data)
+
+        # Verificar en SQLite
+        saved = usb.get("phone-usb")
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved["iface"], "usb0")
+        self.assertEqual(saved["public_ip"], "181.45.10.20")
+
+        # Verificar búsqueda por iface
+        by_iface = usb.get_by_iface("usb0")
+        self.assertIsNotNone(by_iface)
+        self.assertEqual(by_iface["instance"], "phone-usb")
+
+        # Verificar en disco
+        disk_data = json.loads((inst_dir / "phone-usb" / "usb_tether.json").read_text(encoding="utf-8"))
+        self.assertEqual(disk_data["serial"], "R58M123456")
+
+        # 2. Eliminar asignación
+        self.assertTrue(usb.remove("phone-usb"))
+        self.assertIsNone(usb.get("phone-usb"))
+        self.assertFalse((inst_dir / "phone-usb" / "usb_tether.json").exists())
 
 
 if __name__ == "__main__":

@@ -220,3 +220,10 @@ def init_db(db_path: Optional[Path] = None) -> None:
         store.sync_from_disk()
     except Exception as e:
         logger.warning(f"Error sincronizando instancias de disco a SQLite: {e}")
+
+    try:
+        from server.db.usb_store import UsbStore
+        usb = UsbStore(db_path=db_path)
+        usb.sync_from_disk()
+    except Exception as e:
+        logger.warning(f"Error sincronizando usb_assignments de disco a SQLite: {e}")

@@ -288,16 +288,11 @@ async def _run_usb_action(action: str, name: str, iface: Optional[str] = None) -
 
 @router.get("/instances/{name}/usb", summary="Estado del enganche USB-Mobile")
 def usb_instance_status(name: str):
-    state_file = INSTANCES_DIR / name / "usb_tether.json"
-    if not (INSTANCES_DIR / name / "meta.json").exists():
+    from server.db.instance_store import instance_store
+    from server.db.usb_store import usb_store
+    if not instance_store.get(name):
         raise HTTPException(status_code=404, detail="Instancia no encontrada.")
-    state = None
-    if state_file.exists():
-        try:
-            import json
-            state = json.loads(state_file.read_text(encoding="utf-8"))
-        except Exception:
-            state = None
+    state = usb_store.get(name)
     return {"instance": name, "attached": state is not None, "state": state}
 
 

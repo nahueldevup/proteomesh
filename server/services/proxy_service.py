@@ -249,8 +249,7 @@ class ProxyService:
 
     def _detach_usb_if_attached(self, instance_name: str) -> None:
         """Si la instancia estaba enganchada a un módem USB, lo desmonta antes de una ruta SOCKS."""
-        state = INSTANCES_DIR / instance_name / "usb_tether.json"
-        if not state.exists():
+        if not self._is_usb_attached(instance_name):
             return
         try:
             subprocess.run(
@@ -425,6 +424,10 @@ class ProxyService:
         self._set_network_state(instance_name, "direct")
         return {"status": "ok", "instance": instance_name, "state": "direct"}
 
+    def _is_usb_attached(self, instance_name: str) -> bool:
+        from server.db.usb_store import usb_store
+        return usb_store.get(instance_name) is not None
+
     async def get_proxy_status(self, instance_name: str) -> Dict[str, Any]:
         """Estado consolidado: ruta, lease, túnel, cuarentena y última IP/latencia."""
         _, meta_path = self._get_instance_paths(instance_name)
@@ -468,7 +471,7 @@ class ProxyService:
             "lease": active_lease,
             "tunnel_active": tunnel_alive,
             "quarantined": quarantined,
-            "usb_attached": (INSTANCES_DIR / instance_name / "usb_tether.json").exists(),
+            "usb_attached": self._is_usb_attached(instance_name),
             "state": state,
             "exit_ip": exit_ip,
             "latency_ms": latency_ms,

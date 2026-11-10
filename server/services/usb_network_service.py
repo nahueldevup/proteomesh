@@ -178,27 +178,16 @@ class UsbNetworkService:
             return False
 
     def _get_active_assignment(self, instance_name: str) -> Optional[Dict[str, Any]]:
-        state_file = INSTANCES_DIR / instance_name / "usb_tether.json"
-        if not state_file.exists():
-            return None
-        try:
-            return json.loads(state_file.read_text(encoding="utf-8"))
-        except Exception:
-            return None
+        from server.db.usb_store import usb_store
+        return usb_store.get(instance_name)
 
     def _save_assignment(self, instance_name: str, data: Dict[str, Any]) -> None:
-        inst_dir = INSTANCES_DIR / instance_name
-        inst_dir.mkdir(parents=True, exist_ok=True)
-        state_file = inst_dir / "usb_tether.json"
-        state_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        from server.db.usb_store import usb_store
+        usb_store.save(instance_name, data)
 
     def _remove_assignment(self, instance_name: str) -> None:
-        state_file = INSTANCES_DIR / instance_name / "usb_tether.json"
-        if state_file.exists():
-            try:
-                state_file.unlink()
-            except OSError:
-                pass
+        from server.db.usb_store import usb_store
+        usb_store.remove(instance_name)
 
     def _sync_meta_state(self, instance_name: str, state: str, exit_ip: Optional[str] = None) -> None:
         try:
@@ -357,23 +346,20 @@ class UsbNetworkService:
                         "path": resolved_path,
                     })
 
-        # 3. Mapear asignaciones activas desde disco
+        # 3. Mapear asignaciones activas desde SQLite
+        from server.db.usb_store import usb_store
         assignments: Dict[str, str] = {}  # iface -> instance_name
-        for inst_entry in INSTANCES_DIR.glob("*/usb_tether.json"):
-            try:
-                dt = json.loads(inst_entry.read_text(encoding="utf-8"))
-                assigned_iface = dt.get("iface")
-                inst_name = inst_entry.parent.name
-                if assigned_iface and self._container_running(inst_name):
+        for assign in usb_store.list_all():
+            assigned_iface = assign.get("iface")
+            inst_name = assign.get("instance")
+            if assigned_iface and inst_name:
+                if self._container_running(inst_name):
                     assignments[assigned_iface] = inst_name
                     if inst_name in self.waiting_queue:
                         self.waiting_queue.remove(inst_name)
                 else:
                     # Si el contenedor ya no corre, limpiar estado huérfano
-                    if not self._container_running(inst_name):
-                        inst_entry.unlink(missing_ok=True)
-            except Exception:
-                pass
+                    usb_store.remove(inst_name)
 
         # 4. Construir lista unificada de UsbDevice
         devices: List[UsbDevice] = []
