@@ -29,15 +29,16 @@ class DbPersistenceTest(unittest.TestCase):
         """Verifica que las migraciones corran y sean idempotentes."""
         first_run = run_migrations(self.db_path)
         self.assertIn(1, first_run)
+        self.assertIn(2, first_run)
 
         # Segunda corrida no debe reaplicar nada
         second_run = run_migrations(self.db_path)
         self.assertEqual(second_run, [])
 
         with get_connection(self.db_path) as conn:
-            cur = conn.execute("SELECT version FROM _schema_version")
+            cur = conn.execute("SELECT version FROM _schema_version ORDER BY version ASC")
             versions = [r[0] for r in cur.fetchall()]
-            self.assertEqual(versions, [1])
+            self.assertEqual(versions, [1, 2])
 
     def test_json_bootstrap_and_service(self):
         """Verifica la migración automática de datos desde un archivo JSON legacy."""
@@ -115,6 +116,79 @@ class DbPersistenceTest(unittest.TestCase):
         updated_loc = service.get_location(loc["id"])
         self.assertIsNotNone(updated_loc)
         self.assertIsNone(updated_loc["group_id"])
+
+    def test_instance_store_crud(self):
+        """Verifica la persistencia atómica de instancias y perfiles en SQLite y disco."""
+        from server.db.instance_store import InstanceStore
+
+        init_db(self.db_path)
+        inst_dir = Path(self.temp_dir.name) / "instances"
+        store = InstanceStore(db_path=self.db_path, instances_dir=inst_dir)
+
+        test_meta = {
+            "instance_name": "phone-alpha",
+            "template": "samsung/a54x",
+            "carrier": "ar_personal",
+            "adb_port": 5580,
+            "location": {
+                "city": "Buenos Aires",
+                "latitude": -34.6037,
+                "longitude": -58.3816,
+                "altitude": 25.0,
+                "accuracy": 4.2,
+                "timezone": "America/Argentina/Buenos_Aires",
+            },
+            "proxy": {"mode": "direct"},
+            "limits": {"memory": "4g", "cpus": "2.0"},
+            "default_apks_provisioned": False,
+        }
+        test_profile = {
+            "build": {"brand": "samsung", "model": "SM-A546E"},
+            "telephony": {"carrier": "ar_personal"},
+        }
+
+        # 1. Guardar instancia y perfil
+        store.save_instance("phone-alpha", test_meta, test_profile)
+
+        # Verificar en SQLite
+        saved = store.get("phone-alpha")
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved["instance_name"], "phone-alpha")
+        self.assertEqual(saved["adb_port"], 5580)
+        self.assertEqual(saved["location"]["city"], "Buenos Aires")
+        self.assertFalse(store.is_apks_provisioned("phone-alpha"))
+
+        # Verificar en disco
+        meta_disk = json.loads((inst_dir / "phone-alpha" / "meta.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta_disk["instance_name"], "phone-alpha")
+
+        # 2. Mutar meta atómicamente
+        def _add_proxy(m):
+            m["proxy"] = {"mode": "socks5", "host": "127.0.0.1", "port": 1080}
+            m["default_apks_provisioned"] = True
+
+        store.mutate_meta("phone-alpha", _add_proxy)
+        updated = store.get("phone-alpha")
+        self.assertEqual(updated["proxy"]["mode"], "socks5")
+        self.assertTrue(store.is_apks_provisioned("phone-alpha"))
+
+        # 3. Actualizar ubicación
+        new_loc = {
+            "city": "Córdoba",
+            "latitude": -31.4201,
+            "longitude": -64.1888,
+            "altitude": 400.0,
+            "timezone": "America/Argentina/Cordoba",
+        }
+        store.set_instance_location("phone-alpha", new_loc)
+        loc_updated = store.get("phone-alpha")
+        self.assertEqual(loc_updated["location"]["city"], "Córdoba")
+        self.assertAlmostEqual(loc_updated["location"]["latitude"], -31.4201)
+
+        # 4. Eliminar instancia (junto con su carpeta de disco en el test)
+        deleted = store.delete("phone-alpha", delete_disk=True)
+        self.assertTrue(deleted)
+        self.assertIsNone(store.get("phone-alpha"))
 
 
 if __name__ == "__main__":

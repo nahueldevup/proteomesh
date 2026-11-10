@@ -211,17 +211,10 @@ class ProxyService:
         os.replace(tmp_path, meta_path)
 
     def _mutate_meta(self, meta_path: Path, mutator_fn: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
-        """Modifica meta.json bajo fcntl.flock exclusivo para prevenir carreras TOCTOU (FRAG-02)."""
-        lock_path = meta_path.with_suffix(".lock")
-        with open(lock_path, "w") as lock_file:
-            fcntl.flock(lock_file, fcntl.LOCK_EX)
-            try:
-                meta = self._load_meta(meta_path)
-                mutator_fn(meta)
-                self._save_meta(meta_path, meta)
-                return meta
-            finally:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
+        """Modifica meta en SQLite y sincroniza disco bajo transacción ACID (Fase 3)."""
+        instance_name = meta_path.parent.name
+        from server.db.instance_store import instance_store
+        return instance_store.mutate_meta(instance_name, mutator_fn)
 
     def _set_network_state(
         self,

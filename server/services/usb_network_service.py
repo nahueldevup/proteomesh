@@ -201,19 +201,17 @@ class UsbNetworkService:
                 pass
 
     def _sync_meta_state(self, instance_name: str, state: str, exit_ip: Optional[str] = None) -> None:
-        meta_file = INSTANCES_DIR / instance_name / "meta.json"
-        if not meta_file.exists():
-            return
         try:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            meta["network"] = {
-                "state": state,
-                "error": None,
-                "exit_ip": exit_ip,
-                "latency_ms": None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+            from server.db.instance_store import instance_store
+            def _update(meta: Dict[str, Any]) -> None:
+                meta["network"] = {
+                    "state": state,
+                    "error": None,
+                    "exit_ip": exit_ip,
+                    "latency_ms": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            instance_store.mutate_meta(instance_name, _update)
         except Exception:
             pass
 

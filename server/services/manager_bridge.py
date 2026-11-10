@@ -136,15 +136,15 @@ def get_running_containers_map() -> Dict[str, str]:
 
 
 def get_instances_list() -> List[InstanceResponse]:
-    """Lista todas las instancias configuradas con su estado actual."""
-    instances = [d for d in INSTANCES_DIR.iterdir() if d.is_dir() and (d / "meta.json").exists()]
+    """Lista todas las instancias configuradas con su estado actual usando SQLite como fuente de verdad."""
+    from server.db.instance_store import instance_store
+    instances = instance_store.list_all()
     running_map = get_running_containers_map()
     res: List[InstanceResponse] = []
-    for inst in sorted(instances):
+    for meta in sorted(instances, key=lambda m: m.get("instance_name", "")):
         try:
-            with open(inst / "meta.json", "r", encoding="utf-8") as f:
-                meta = json.load(f)
-            stat = running_map.get(inst.name, "Detenido (Offline)")
+            name = meta["instance_name"]
+            stat = running_map.get(name, "Detenido (Offline)")
             is_running = stat.startswith("Up")
             loc_data = meta.get("location")
             location_obj = LocationSchema(**loc_data) if loc_data else None
@@ -152,7 +152,7 @@ def get_instances_list() -> List[InstanceResponse]:
             proxy_obj = ProxyConfig(**proxy_data) if proxy_data else None
 
             res.append(InstanceResponse(
-                instance_name=inst.name,
+                instance_name=name,
                 template=meta.get("template"),
                 carrier=meta.get("carrier"),
                 adb_port=meta.get("adb_port", 5555),
@@ -170,14 +170,11 @@ def get_instances_list() -> List[InstanceResponse]:
 
 
 def get_single_instance(name: str) -> InstanceResponse:
-    """Obtiene el estado y metadatos de una única instancia."""
-    inst_dir = INSTANCES_DIR / name
-    meta_path = inst_dir / "meta.json"
-    if not inst_dir.exists() or not meta_path.exists():
+    """Obtiene el estado y metadatos de una única instancia consultando SQLite."""
+    from server.db.instance_store import instance_store
+    meta = instance_store.get(name)
+    if not meta:
         raise FileNotFoundError(f"Instancia '{name}' no existe")
-
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
 
     running_map = get_running_containers_map()
     stat = running_map.get(name, "Detenido (Offline)")
@@ -251,15 +248,17 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         err_msg = stderr.decode().strip() or stdout.decode().strip()
         raise RuntimeError(f"Error al crear instancia: {err_msg}")
 
-    # Preservar ciudad y timezone personalizados en meta.json
-    if req.custom_location and (req.custom_location.city or req.custom_location.timezone or req.custom_location.custom_name):
-        inst_dir = INSTANCES_DIR / req.name
-        meta_path = inst_dir / "meta.json"
-        profile_path = inst_dir / "profile.json"
-        if meta_path.exists():
-            try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
+    # Sincronizar y registrar en SQLite con preservación de ciudad y timezone
+    from server.db.instance_store import instance_store
+    inst_dir = INSTANCES_DIR / req.name
+    meta_path = inst_dir / "meta.json"
+    profile_path = inst_dir / "profile.json"
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            prof = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.exists() else None
+            if req.custom_location and (req.custom_location.city or req.custom_location.timezone or req.custom_location.custom_name):
                 if "location" in meta:
                     if req.custom_location.city:
                         meta["location"]["city"] = req.custom_location.city
@@ -271,18 +270,11 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
                         meta["location"]["custom_location_id"] = req.custom_location.custom_location_id
                     if req.custom_location.group_name:
                         meta["location"]["group_name"] = req.custom_location.group_name
-                with open(meta_path, "w", encoding="utf-8") as f:
-                    json.dump(meta, f, indent=2)
-
-                if profile_path.exists():
-                    with open(profile_path, "r", encoding="utf-8") as f:
-                        prof = json.load(f)
-                    if "location" in prof and "location" in meta:
+                    if prof and "location" in prof:
                         prof["location"] = meta["location"]
-                        with open(profile_path, "w", encoding="utf-8") as f:
-                            json.dump(prof, f, indent=2)
-            except Exception:
-                pass
+            instance_store.save_instance(req.name, meta, prof)
+        except Exception as e:
+            logger.warning(f"Error registrando nueva instancia '{req.name}' en SQLite: {e}")
 
     # Asignar proxy residencial si fue provisto
     if req.raw_proxy or req.proxy:
@@ -415,29 +407,15 @@ async def _wait_for_boot_completed(serial: str, timeout: float = 120.0) -> bool:
 
 
 def _is_apks_provisioned(name: str) -> bool:
-    """Verifica en meta.json si la instancia ya recibio su provision inicial de APKs."""
-    meta_path = INSTANCES_DIR / name / "meta.json"
-    if meta_path.exists():
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                return bool(json.load(f).get("default_apks_provisioned", False))
-        except Exception:
-            pass
-    return False
+    """Verifica en SQLite si la instancia ya recibio su provision inicial de APKs."""
+    from server.db.instance_store import instance_store
+    return instance_store.is_apks_provisioned(name)
 
 
 def _set_apks_provisioned(name: str) -> None:
-    """Marca en meta.json que la instancia ya fue aprovisionada con sus APKs iniciales."""
-    meta_path = INSTANCES_DIR / name / "meta.json"
-    if meta_path.exists():
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            data["default_apks_provisioned"] = True
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Error guardando default_apks_provisioned para {name}: {e}")
+    """Marca en SQLite y meta.json que la instancia ya fue aprovisionada con sus APKs iniciales."""
+    from server.db.instance_store import instance_store
+    instance_store.set_apks_provisioned(name)
 
 
 async def _install_default_apks(
@@ -571,118 +549,96 @@ async def delete_instance_async(name: str) -> Dict[str, Any]:
             import shutil
             shutil.rmtree(inst_dir, ignore_errors=True)
 
+    # Eliminar de la base de datos SQLite
+    try:
+        from server.db.instance_store import instance_store
+        instance_store.delete(inst_name)
+    except Exception as e:
+        logger.warning(f"Error eliminando '{inst_name}' de SQLite: {e}")
+
     return {"status": "ok", "instance": inst_name, "message": "Instancia eliminada correctamente"}
 
 
 def set_instance_location_sync(name: str, update: LocationUpdate) -> LocationResponse:
-    """Actualiza la geolocalización en caliente o frío y persiste en disco."""
+    """Actualiza la geolocalización en caliente o frío y persiste atómicamente en SQLite y disco."""
     inst_name = validate_instance_name(name)
-    inst_dir = INSTANCES_DIR / inst_name
-    if not inst_dir.exists() or not (inst_dir / "meta.json").exists():
+    from server.db.instance_store import instance_store
+    meta = instance_store.get(inst_name)
+    if not meta:
         raise FileNotFoundError(f"Instancia '{inst_name}' no existe")
 
-    meta_path = inst_dir / "meta.json"
-    lock_path = meta_path.with_suffix(".lock")
+    profile_data = instance_store.get_profile(inst_name) or {}
+    carrier_tz = profile_data.get("telephony", {}).get("timezone")
 
-    with open(lock_path, "w") as lock_file:
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                meta = json.load(f)
+    # Resolución de ubicación custom o preset o coordenadas
+    loc = None
+    if update.custom_location_id:
+        custom_loc = custom_location_service.get_location(update.custom_location_id)
+        if custom_loc:
+            loc = {
+                "city": custom_loc.get("city", "Custom"),
+                "latitude": float(custom_loc["latitude"]),
+                "longitude": float(custom_loc["longitude"]),
+                "altitude": float(custom_loc.get("altitude", 25.0)),
+                "accuracy": float(custom_loc.get("accuracy", 4.2)),
+                "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
+                "custom_name": custom_loc.get("name"),
+                "custom_location_id": custom_loc.get("id"),
+            }
+            if custom_loc.get("group_id"):
+                for grp in custom_location_service.list_groups():
+                    if grp.get("id") == custom_loc["group_id"]:
+                        loc["group_name"] = grp.get("name")
+                        break
 
-            carrier_tz = None
-            profile_path = inst_dir / "profile.json"
-            profile_data = {}
-            if profile_path.exists():
-                try:
-                    with open(profile_path, "r", encoding="utf-8") as f:
-                        profile_data = json.load(f)
-                    carrier_tz = profile_data.get("telephony", {}).get("timezone")
-                except Exception:
-                    pass
+    if loc is None and update.latitude is not None and update.longitude is not None:
+        loc = {
+            "city": update.city or f"Coordenadas ({update.latitude:.4f}, {update.longitude:.4f})",
+            "latitude": float(update.latitude),
+            "longitude": float(update.longitude),
+            "altitude": float(update.altitude if update.altitude is not None else 25.0),
+            "accuracy": 4.2,
+            "timezone": update.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
+        }
+        if update.custom_name:
+            loc["custom_name"] = update.custom_name
+        if update.custom_location_id:
+            loc["custom_location_id"] = update.custom_location_id
+    elif loc is None and update.location:
+        # Verificar primero si es una ubicación custom por id o nombre
+        custom_loc = custom_location_service.find_location(update.location)
+        if custom_loc:
+            loc = {
+                "city": custom_loc.get("city", "Custom"),
+                "latitude": float(custom_loc["latitude"]),
+                "longitude": float(custom_loc["longitude"]),
+                "altitude": float(custom_loc.get("altitude", 25.0)),
+                "accuracy": float(custom_loc.get("accuracy", 4.2)),
+                "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
+                "custom_name": custom_loc.get("name"),
+                "custom_location_id": custom_loc.get("id"),
+            }
+            if custom_loc.get("group_id"):
+                for grp in custom_location_service.list_groups():
+                    if grp.get("id") == custom_loc["group_id"]:
+                        loc["group_name"] = grp.get("name")
+                        break
+        else:
+            loc = parse_location(update.location, default_tz=carrier_tz)
+            if update.city:
+                loc["city"] = update.city
+            if update.timezone:
+                loc["timezone"] = update.timezone
+            if update.altitude is not None:
+                loc["altitude"] = float(update.altitude)
+            if update.custom_name:
+                loc["custom_name"] = update.custom_name
 
-            # Resolución de ubicación custom o preset o coordenadas
-            loc = None
-            if update.custom_location_id:
-                custom_loc = custom_location_service.get_location(update.custom_location_id)
-                if custom_loc:
-                    loc = {
-                        "city": custom_loc.get("city", "Custom"),
-                        "latitude": float(custom_loc["latitude"]),
-                        "longitude": float(custom_loc["longitude"]),
-                        "altitude": float(custom_loc.get("altitude", 25.0)),
-                        "accuracy": float(custom_loc.get("accuracy", 4.2)),
-                        "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
-                        "custom_name": custom_loc.get("name"),
-                        "custom_location_id": custom_loc.get("id"),
-                    }
-                    if custom_loc.get("group_id"):
-                        for grp in custom_location_service.list_groups():
-                            if grp.get("id") == custom_loc["group_id"]:
-                                loc["group_name"] = grp.get("name")
-                                break
+    if loc is None:
+        raise ValueError("Debes especificar 'location' (preset o 'lat,lon'), 'custom_location_id', o 'latitude' y 'longitude'.")
 
-            if loc is None and update.latitude is not None and update.longitude is not None:
-                loc = {
-                    "city": update.city or f"Coordenadas ({update.latitude:.4f}, {update.longitude:.4f})",
-                    "latitude": float(update.latitude),
-                    "longitude": float(update.longitude),
-                    "altitude": float(update.altitude if update.altitude is not None else 25.0),
-                    "accuracy": 4.2,
-                    "timezone": update.timezone or carrier_tz or "America/Argentina/Buenos_Aires"
-                }
-                if update.custom_name:
-                    loc["custom_name"] = update.custom_name
-                if update.custom_location_id:
-                    loc["custom_location_id"] = update.custom_location_id
-            elif loc is None and update.location:
-                # Verificar primero si es una ubicación custom por id o nombre
-                custom_loc = custom_location_service.find_location(update.location)
-                if custom_loc:
-                    loc = {
-                        "city": custom_loc.get("city", "Custom"),
-                        "latitude": float(custom_loc["latitude"]),
-                        "longitude": float(custom_loc["longitude"]),
-                        "altitude": float(custom_loc.get("altitude", 25.0)),
-                        "accuracy": float(custom_loc.get("accuracy", 4.2)),
-                        "timezone": custom_loc.get("timezone") or carrier_tz or "America/Argentina/Buenos_Aires",
-                        "custom_name": custom_loc.get("name"),
-                        "custom_location_id": custom_loc.get("id"),
-                    }
-                    if custom_loc.get("group_id"):
-                        for grp in custom_location_service.list_groups():
-                            if grp.get("id") == custom_loc["group_id"]:
-                                loc["group_name"] = grp.get("name")
-                                break
-                else:
-                    loc = parse_location(update.location, default_tz=carrier_tz)
-                    if update.city:
-                        loc["city"] = update.city
-                    if update.timezone:
-                        loc["timezone"] = update.timezone
-                    if update.altitude is not None:
-                        loc["altitude"] = float(update.altitude)
-                    if update.custom_name:
-                        loc["custom_name"] = update.custom_name
-
-            if loc is None:
-                raise ValueError("Debes especificar 'location' (preset o 'lat,lon'), 'custom_location_id', o 'latitude' y 'longitude'.")
-
-            # Persistir en meta.json y profile.json bajo lock
-            meta["location"] = loc
-            tmp_meta = meta_path.with_suffix(".tmp")
-            with open(tmp_meta, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2)
-            os.replace(tmp_meta, meta_path)
-
-            if profile_data:
-                profile_data["location"] = loc
-                tmp_prof = profile_path.with_suffix(".tmp")
-                with open(tmp_prof, "w", encoding="utf-8") as f:
-                    json.dump(profile_data, f, indent=2)
-                os.replace(tmp_prof, profile_path)
-        finally:
-            fcntl.flock(lock_file, fcntl.LOCK_UN)
+    # Persistir en SQLite y sincronizar a disco bajo transacción atómica
+    instance_store.set_instance_location(inst_name, loc, profile_data=profile_data)
 
     # Inyectar si el contenedor está en ejecución
     check_cid = subprocess.run(

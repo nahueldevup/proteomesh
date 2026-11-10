@@ -322,15 +322,16 @@ async def usb_detach(name: str):
 
 
 def _instance_names() -> List[str]:
-    if not INSTANCES_DIR.exists():
-        return []
-    return [p.name for p in INSTANCES_DIR.iterdir() if (p / "meta.json").exists()]
+    from server.db.instance_store import instance_store
+    return [m["instance_name"] for m in instance_store.list_all()]
 
 
 def _read_state(instance_name: str) -> Optional[str]:
     try:
-        import json
-        with open(INSTANCES_DIR / instance_name / "meta.json", encoding="utf-8") as f:
-            return (json.load(f).get("network") or {}).get("state")
+        from server.db.instance_store import instance_store
+        meta = instance_store.get(instance_name)
+        if meta and meta.get("network"):
+            return meta["network"].get("state")
     except Exception:
-        return None
+        pass
+    return None

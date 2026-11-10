@@ -214,3 +214,9 @@ def init_db(db_path: Optional[Path] = None) -> None:
     """Inicializa completamente la base de datos: migraciones + bootstrap."""
     run_migrations(db_path)
     migrate_legacy_json_locations(db_path)
+    try:
+        from server.db.instance_store import InstanceStore
+        store = InstanceStore(db_path=db_path)
+        store.sync_from_disk()
+    except Exception as e:
+        logger.warning(f"Error sincronizando instancias de disco a SQLite: {e}")
