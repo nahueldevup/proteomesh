@@ -1721,6 +1721,42 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 91. FEAT(UI-NETWORK-027) — Rediseño de Centro de Red USB, Libro Mayor de IPs y Tooltips Estilizados Estilo Lovable Dark Tech (2026-11-10)
+
+* **Objetivo:** Portar e integrar la especificación oficial de diseño de Lovable Dark Tech (`usb-network-control-center-main`) en el módulo del Centro de Red USB (`UsbNetworkCenter.tsx`), erradicando desbordes verticales y tarjetas apelmazadas, adoptando la arquitectura master-detail 100% Viewport-Fit en dos pestañas (`Módems y Cola FIFO` y `Libro Mayor de IPs`), garantizando la regla de 380 px en el panel inspector sin borde duplicado, implementando conmutación reactiva directa a `FocusView` desde enlaces en vivo, y reemplazando los tooltips nativos rectangulares negros por el componente Radix UI `TooltipSimple` a nivel proyecto.
+* **Causa raíz / Contexto:**
+  - El diseño previo de red USB presentaba una estructura en bloques apilados con un límite vertical arbitrario (`max-h-[340px]`) y tarjetas genéricas, sin inspector lateral de hardware ni vista dedicada para el historial y política anti-vinculación.
+  - Al hacer clic en los accesos de "Abrir en vista enfocada" o en los badges de CloudPhones asignados, la navegación interna fallaba porque `openFocus()` cambiaba el sub-modo a `focus` pero mantenía la pestaña global en `activeNav === 'network'`.
+  - La presencia de atributos `title="..."` nativos de HTML provocaba que el navegador renderizara rectángulos negros opacos y toscos, desentonando con la estética obsidiana/cian del sistema.
+* **Cambios principales:**
+  - **Chasis 100% Viewport-Fit y Arquitectura de 2 Pestañas (`UsbNetworkCenter.tsx`):**
+    - Cabecera canónica de 55 px (`h-[55px]`) con segmented control (`Módems y Cola FIFO` / `Libro Mayor de IPs`), contador en vivo de gracia para promociones pendientes de FIFO y depuración visual (título mono sin icono accesorio).
+    - **Pestaña Módems y Cola FIFO:**
+      * Strip superior de 4 celdas métricas (`MetricCell`): Módems totales/libres con barra continua de progreso verde, enlace móvil enrutado, cola FIFO en espera y acceso directo a retención TTL.
+      * Tabla de inventario en `table-fixed` con sub-pixel column sizing (módem, interfaz, operadora, batería con indicador porcentual y alerta si <25%, IP pública, asignación a FocusView).
+      * Cola FIFO horizontal inferior compacta (`h-[92px]`) con segundero circular SVG en tiempo real (`CountdownRing`) para el turno de gracia (`pending_offer` de 5s), botones de acción rápida (*Conectar ya*, *Ceder turno*) y tarjetas de espera ordenadas con botón *Reclamar*.
+      * Panel inspector lateral derecho de 380 px exactos (`w-[380px]`) sin borde izquierdo duplicado (erradicando el bug de 379 px), ficha técnica 3×2, indicadores de datos/modo avión, controles de radio (*Test Modo Avión*, *Rotar IP*, *Soltar a cuarentena*) y asignador interactivo a CloudPhones con exclusión mutua 1:1.
+    - **Pestaña Libro Mayor de IPs (Anti-vinculación):**
+      * Buscador rápido por IP, instancia, serial u operadora, junto con switch de filtrado `Solo activas`.
+      * Tabla paginada con selector de registros por página (`15`, `20`, `50`, `100`), fecha/hora local, CloudPhone dueño con enlace directo a FocusView y estado activo/expirado con dot LED.
+      * Aside inspector de política anti-vinculación con métricas numéricas, selector interactivo de TTL (`24h`, `7d`, `30d`, `permanent`) vía `PUT /api/v1/network/ip-ledger/ttl` y botón de purga de registros expirados con diálogo `AlertDialog`.
+  - **Navegación e Interoperabilidad Reactiva (`App.tsx`):**
+    - Se ajustó `openFocus(name)` para ejecutar `setActiveNav('instances')` concurrentemente con `setViewMode('focus')`, permitiendo saltar de forma instantánea y fluida desde cualquier enlace de módem o entrada del Libro Mayor directamente al CloudPhone en pantalla completa.
+  - **Componente Global Reutilizable `TooltipSimple` (`web/src/components/ui/tooltip.tsx`):**
+    - Helper de alto orden basado en Radix UI (`TooltipPrimitive.Portal`) con retardo de 150 ms, fondo `bg-popover/95`, micro-borde `border-border`, sombra `shadow-xl`, desenfoque `backdrop-blur` y tipografía monospace `text-[11px]`.
+    - Erradicación total de los atributos `title="..."` nativos en badges de interfaces (`enp48s0f3u2`), medidores de batería, modelos de módems y acciones de radio.
+* **Archivos afectados:**
+  - `web/src/App.tsx`
+  - `web/src/components/ui/tooltip.tsx`
+  - `web/src/components/network/UsbNetworkCenter.tsx`
+* **Verificación:**
+  - Suite de tests de host `tests/host/test_usb_network.py` pasando al 100% (11/11).
+  - Compilación de producción Vite en 346 ms sin advertencias ni errores de TypeScript.
+  - Cero emojis Unicode verificados mediante regex.
+* **Estado:** UI-NETWORK-027 **completado y validado el 2026-11-10**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

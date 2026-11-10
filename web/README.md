@@ -138,14 +138,21 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
   - **Control Global de Radios:** Botón toggle en la barra de herramientas y en el mapa flotante (`CircleDot`) para encender o apagar todos los círculos del mapa con un solo clic.
   - **Tema reactivo claro/oscuro:** Inversión de azulejos en modo oscuro obsidiana y colores saturados naturales en modo claro con invalidación reactiva de tamaño (`map.invalidateSize()`). Cero emojis Unicode.
 
-### 11. Red Móvil USB: Cola de Espera y Ventana de Gracia (5s)
-* **Gestión de Demanda Excedente de Módems:**
-  - Cuando los CloudPhones superan a los módems 4G/LTE conectados por USB, las instancias entran en cola de espera (`waiting_queue`) en cuarentena segura.
-  - Al liberarse un módem, se activa una ventana de gracia de 5 segundos (`pending_offer`).
-* **Widgets Reactivos y Acciones en Tiempo Real:**
-  - `DeviceCard.tsx`: Badge `OFERTA (5s)` con cuenta regresiva en vivo, más botones instantáneos `Conectar ya` y `Ceder turno` en el overlay y menú contextual.
-  - `UsbNetworkCenter.tsx`: Banner interactivo con cuenta regresiva en vivo, datos del módem y botones de acción.
-  - `declineOffer(name, requeue=true)`: Permite ceder el turno al siguiente dispositivo de la lista y pasar al final de la cola sin interrupciones.
+### 11. Red Móvil USB y Libro Mayor de IPs (Lovable Dark Tech)
+* **Centro de Red USB Rediseñado (`UsbNetworkCenter.tsx`):**
+  - **Chasis 100% Viewport-Fit en 2 pestañas:** Cabecera fija de 55 px con segmented control (`Módems y Cola FIFO` / `Libro Mayor de IPs`) y contador de promociones pendientes.
+  - **Pestaña Módems y Cola FIFO:**
+    - Strip de métricas rápidas con barra continua de progreso de módems libres/totales, enlace móvil activo, estado de cola FIFO y acceso directo a retención TTL.
+    - Tabla de inventario `table-fixed` con sub-pixel column sizing: interfaz Linux, operadora, red, batería con alerta porcentual, IP pública y badge de asignación con enlace directo a `FocusView`.
+    - Cola FIFO horizontal compacta (`h-[92px]`) con segundero circular SVG interactivo (`CountdownRing`) de 5 segundos de gracia, botones instantáneos `Conectar ya` y `Ceder turno`, y tarjetas de espera ordenadas con botón `Reclamar`.
+    - Aside inspector de 380 px sin borde izquierdo duplicado (erradicación del bug de 379 px): ficha técnica 3×2, botones de acción de radio (`Test Modo Avión`, `Rotar IP`, `Soltar a cuarentena`) y selector de CloudPhones destinos con exclusión mutua 1:1.
+  - **Pestaña Libro Mayor de IPs (Anti-vinculación):**
+    - Historial paginado de IPs públicas utilizadas por cada CloudPhone para prevenir colisiones y baneos cruzados.
+    - Filtro de búsqueda rápida y switch `Solo activas`.
+    - Selector interactivo de retención TTL (`24h`, `7d`, `30d`, `permanent`) vía `PUT /api/v1/network/ip-ledger/ttl`.
+    - Purga asistida de registros expirados protegida por diálogo `AlertDialog`.
+* **Componente Global Reutilizable `TooltipSimple` (`tooltip.tsx`):**
+  - Helper de alto orden basado en Radix UI (`TooltipPrimitive.Portal`) con retardo de 150 ms, erradicando los rectángulos negros nativos de HTML y unificando los tooltips flotantes en todo el sistema.
 
 ### 12. Estabilidad de Creación y Humanización de Operadoras
 * **Inmunidad a Errores de Hooks en `CreateDeviceModal.tsx`:**
