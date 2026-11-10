@@ -70,6 +70,12 @@ app.include_router(files_router, prefix=API_PREFIX)
 def startup_event():
     """Asegura la disponibilidad de servicios críticos y reconcilia estado vs kernel (FRAG-01)."""
     try:
+        from server.db.migrate import init_db
+        init_db()
+    except Exception as e:
+        logger.error(f"[Startup] Error inicializando base de datos SQLite: {e}")
+
+    try:
         from server.services.manager_bridge import ensure_ws_scrcpy_daemon
         ensure_ws_scrcpy_daemon()
     except Exception as e:

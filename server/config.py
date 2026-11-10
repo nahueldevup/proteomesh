@@ -13,6 +13,7 @@ INSTANCES_DIR = REPO_ROOT / "instances"
 BUNDLES_DIR = REPO_ROOT / "bundles"
 DATA_CLEAN_DIR = REPO_ROOT / "data-clean"
 CUSTOM_LOCATIONS_FILE = REPO_ROOT / "custom_locations.json"
+PROTEOMESH_DB_PATH = Path(os.getenv("PROTEOMESH_DB_PATH", str(INSTANCES_DIR / "proteomesh.db")))
 
 # Repositorio global de APKs (WEB-017 / Bundles)
 APK_REPO_DIR = REPO_ROOT / "apk_repo"
