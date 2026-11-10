@@ -19,6 +19,7 @@ import type { Instance } from './types';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
 import { TooltipProvider } from './components/ui/tooltip';
+import { GlobalTooltip } from './components/ui/GlobalTooltip';
 import { IconBtn } from './components/ui/IconBtn';
 
 import { cn } from './lib/utils';
@@ -218,6 +219,7 @@ export function App() {
 
   return (
     <TooltipProvider delayDuration={150}>
+      <GlobalTooltip />
       <SidebarProvider defaultOpen={false}>
         <div className="flex h-screen w-full overflow-hidden bg-background">
           <Toaster richColors position="top-right" theme={theme} />
