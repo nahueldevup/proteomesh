@@ -24,3 +24,29 @@ export const TooltipContent = React.forwardRef<
   </TooltipPrimitive.Portal>
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+
+export interface TooltipSimpleProps {
+  content?: React.ReactNode;
+  children: React.ReactElement;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  sideOffset?: number;
+  className?: string;
+}
+
+export function TooltipSimple({
+  content,
+  children,
+  side = 'top',
+  sideOffset = 6,
+  className,
+}: TooltipSimpleProps) {
+  if (!content) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side} sideOffset={sideOffset} className={className}>
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
