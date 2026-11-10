@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-from server.config import INSTANCES_DIR
+from server.config import INSTANCES_DIR, PROTEOMESH_DB_PATH
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -22,7 +22,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 class RouteStore:
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = Path(db_path) if db_path else (INSTANCES_DIR / "routes.db")
+        self.db_path = Path(db_path) if db_path else PROTEOMESH_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         try:

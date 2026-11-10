@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Set
 
-from server.config import INSTANCES_DIR
+from server.config import INSTANCES_DIR, PROTEOMESH_DB_PATH
 
 
 class IpConflictError(Exception):
@@ -29,7 +29,7 @@ class IpLeaseRegistry:
     """
 
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = Path(db_path) if db_path else (INSTANCES_DIR / "leases.db")
+        self.db_path = Path(db_path) if db_path else PROTEOMESH_DB_PATH
         self._local = threading.local()
         self._init_db()
 

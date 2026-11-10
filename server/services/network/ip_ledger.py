@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from server.config import INSTANCES_DIR
+from server.config import INSTANCES_DIR, PROTEOMESH_DB_PATH
 
 DEFAULT_TTL_SETTING = "7d"
 TTL_DELTAS = {
@@ -29,7 +29,7 @@ TTL_DELTAS = {
 
 class IpLedger:
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or (INSTANCES_DIR / "ip_ledger.db")
+        self.db_path = db_path or PROTEOMESH_DB_PATH
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:

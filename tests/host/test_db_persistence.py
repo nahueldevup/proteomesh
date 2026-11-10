@@ -31,6 +31,7 @@ class DbPersistenceTest(unittest.TestCase):
         self.assertIn(1, first_run)
         self.assertIn(2, first_run)
         self.assertIn(3, first_run)
+        self.assertIn(4, first_run)
 
         # Segunda corrida no debe reaplicar nada
         second_run = run_migrations(self.db_path)
@@ -39,7 +40,7 @@ class DbPersistenceTest(unittest.TestCase):
         with get_connection(self.db_path) as conn:
             cur = conn.execute("SELECT version FROM _schema_version ORDER BY version ASC")
             versions = [r[0] for r in cur.fetchall()]
-            self.assertEqual(versions, [1, 2, 3])
+            self.assertEqual(versions, [1, 2, 3, 4])
 
     def test_json_bootstrap_and_service(self):
         """Verifica la migración automática de datos desde un archivo JSON legacy."""
@@ -238,6 +239,56 @@ class DbPersistenceTest(unittest.TestCase):
         self.assertTrue(usb.remove("phone-usb"))
         self.assertIsNone(usb.get("phone-usb"))
         self.assertFalse((inst_dir / "phone-usb" / "usb_tether.json").exists())
+
+    def test_consolidated_stores_coexistence(self):
+        """Verifica que las 4 tiendas de datos consolidadas compartan la misma base SQLite."""
+        from server.services.network.route_store import RouteStore
+        from server.services.network.lease_registry import IpLeaseRegistry
+        from server.services.network.ip_ledger import IpLedger
+        from server.services.apk_repository import ApkRepository
+
+        init_db(self.db_path)
+
+        # 1. RouteStore
+        route_store = RouteStore(db_path=self.db_path)
+        created = route_store.create(
+            label="proxy-alpha",
+            host="127.0.0.1",
+            port=9050,
+            username="user",
+            password="pwd",
+            route_type="socks5",
+        )
+        self.assertIsNotNone(created)
+        rid = created["id"]
+        route = route_store.get(rid)
+        self.assertIsNotNone(route)
+        self.assertEqual(route["label"], "proxy-alpha")
+
+        # 2. IpLeaseRegistry
+        leases = IpLeaseRegistry(db_path=self.db_path)
+        lease_id = leases.reserve("190.2.3.4", "phone-alpha", "socks5", {"meta": "val"})
+        self.assertIsNotNone(lease_id)
+        active = leases.get_active_lease("phone-alpha")
+        self.assertIsNotNone(active)
+        self.assertEqual(active["exit_ip"], "190.2.3.4")
+        leases.release("phone-alpha")
+        self.assertIsNone(leases.get_active_lease("phone-alpha"))
+
+        # 3. IpLedger
+        ledger = IpLedger(db_path=self.db_path)
+        ledger.record_ip("200.10.20.30", "phone-beta", "usb-1", "Claro")
+        allowed, reason, owner = ledger.check_ip_safety("200.10.20.30", "phone-beta")
+        self.assertTrue(allowed)
+        allowed_other, _, _ = ledger.check_ip_safety("200.10.20.30", "phone-gamma")
+        self.assertFalse(allowed_other)
+
+        # 4. ApkRepository
+        apk_dir = Path(self.temp_dir.name) / "apk_repo"
+        repo = ApkRepository(repo_dir=apk_dir, db_path=self.db_path)
+        apks = repo.list_apks()
+        self.assertIsInstance(apks, list)
+        self.assertGreaterEqual(len(apks), 0)
 
 
 if __name__ == "__main__":

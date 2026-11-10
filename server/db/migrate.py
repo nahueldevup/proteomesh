@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from server.config import CUSTOM_LOCATIONS_FILE
-from server.db.connection import get_connection, transaction
+from server.db.connection import get_connection, transaction, get_db_path
 
 logger = logging.getLogger("proteomesh.db")
 
@@ -210,10 +210,70 @@ def migrate_legacy_json_locations(
         return True
 
 
+def migrate_legacy_sqlite_stores(db_path: Optional[Path] = None) -> None:
+    """Migra datos de bases de datos SQLite legadas si existen y la tabla destino está vacía."""
+    import sqlite3
+    from server.config import INSTANCES_DIR
+    target_path = db_path or get_db_path()
+
+    legacy_mappings = [
+        (
+            INSTANCES_DIR / "apks.db",
+            "apks",
+            "SELECT id, sha256, original_name, package, version_name, version_code, size, is_default, entry_type, bundle_format, splits_info, created_at FROM apks",
+            "INSERT OR IGNORE INTO apks (id, sha256, original_name, package, version_name, version_code, size, is_default, entry_type, bundle_format, splits_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ),
+        (
+            INSTANCES_DIR / "ip_ledger.db",
+            "usb_ip_ledger",
+            "SELECT id, ip, instance_name, usb_id, carrier, first_seen_at, last_seen_at, expires_at FROM usb_ip_ledger",
+            "INSERT OR IGNORE INTO usb_ip_ledger (id, ip, instance_name, usb_id, carrier, first_seen_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ),
+        (
+            INSTANCES_DIR / "leases.db",
+            "proxy_leases",
+            "SELECT id, instance_id, exit_ip, transport, metadata, acquired_at, released_at FROM proxy_leases",
+            "INSERT OR IGNORE INTO proxy_leases (id, instance_id, exit_ip, transport, metadata, acquired_at, released_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ),
+        (
+            INSTANCES_DIR / "routes.db",
+            "routes",
+            "SELECT id, label, type, host, port, username, password, enabled, created_at FROM routes",
+            "INSERT OR IGNORE INTO routes (id, label, type, host, port, username, password, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ),
+    ]
+
+    for legacy_file, table_name, select_sql, insert_sql in legacy_mappings:
+        if not legacy_file.exists():
+            continue
+        if legacy_file.resolve() == target_path.resolve():
+            continue
+        try:
+            with transaction(db_path=target_path) as conn:
+                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                if count == 0:
+                    with sqlite3.connect(f"file:{legacy_file.resolve()}?mode=ro", uri=True, timeout=5.0) as leg_conn:
+                        leg_cur = leg_conn.execute(select_sql)
+                        rows = leg_cur.fetchall()
+                        if rows:
+                            conn.executemany(insert_sql, rows)
+                            logger.info(f"[DB Bootstrap] {len(rows)} filas migradas desde {legacy_file.name} a {table_name}.")
+                        if table_name == "usb_ip_ledger":
+                            try:
+                                conf_rows = leg_conn.execute("SELECT key, value FROM ledger_config").fetchall()
+                                if conf_rows:
+                                    conn.executemany("INSERT OR IGNORE INTO ledger_config (key, value) VALUES (?, ?)", conf_rows)
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.warning(f"[DB Bootstrap] No se pudo migrar desde {legacy_file.name}: {e}")
+
+
 def init_db(db_path: Optional[Path] = None) -> None:
     """Inicializa completamente la base de datos: migraciones + bootstrap."""
     run_migrations(db_path)
     migrate_legacy_json_locations(db_path)
+    migrate_legacy_sqlite_stores(db_path)
     try:
         from server.db.instance_store import InstanceStore
         store = InstanceStore(db_path=db_path)
