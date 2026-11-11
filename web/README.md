@@ -7,7 +7,7 @@ Panel web de orquestación, supervisión y control masivo de CloudPhones Android
 ## 🎯 Origen, Referencias y Decisiones de Diseño
 
 ### 1. Referencias Clave
-* **Lovable (`proteo-harvest-flow`):** Modelo estético de referencia directa. Paleta de colores en espacio **OKLCH** con fondo negro carbón con tinte pizarra (`--background: oklch(0.155 0.008 250)`), superficies elevadas (`--surface: oklch(0.19 0.009 250)`), bordes milimétricos al 10% de opacidad (`--border: oklch(0.28 0.01 250)`), y acento verde esmeralda neón (`--primary: oklch(0.86 0.2 145)`). Tipografías emparejadas: **Space Grotesk** para interfaz y títulos, y **JetBrains Mono** para identificadores técnicos, puertos ADB y metadatos.
+* **Lovable (`proteo-harvest-flow`):** Modelo estético de referencia directa. Paleta de colores en espacio **OKLCH** con fondo negro obsidiana (`--background: oklch(0.17 0.008 255)`), superficies elevadas (`--surface: oklch(0.195 0.009 255)`), bordes técnicos (`--border: oklch(0.29 0.01 255)`), y acento primario cian eléctrico (`--primary: oklch(0.74 0.14 225)`). Tipografías emparejadas: **Geist** para interfaz y títulos, y **Geist Mono** / **JetBrains Mono** para identificadores técnicos, puertos ADB y metadatos.
 * **GenFarmer (`genfarmer.com`):** Estándar ergonómico de control de granjas de terminales móviles. Requiere densidad variable (slider de 4 a 12 columnas), selección masiva (clic, Shift+clic por rangos, Ctrl+A), interacción sincronizada en tiempo real (espejo de toques multi-device) y barra de acciones en lote flotante (`BulkBar`).
 * **ws-scrcpy (NetrisTV):** Motor de streaming de hardware H.264 de latencia ultrabaja (~20ms / 60 FPS) vía WebCodecs y MSE.
 
@@ -107,7 +107,7 @@ Tanto en la tarjeta del rack (`DeviceCard`) como en la vista dividida (`FocusVie
 * **Consolidación en 3 Pasos Ergonómicos:**
   - **Paso 1: Dispositivo & SIM:** Nombre, puerto ADB con detección de colisión, operadora móvil con badges MCC/MNC, selector de marca (`Samsung`, `Motorola`, `Xiaomi`, `Google`) y modelos de catálogo.
   - **Paso 2: GPS & Proxy:** Mapa interactivo Leaflet con presets rápidos, campos de coordenadas y proxy residencial SOCKS5/HTTP con verificación en vivo.
-  - **Paso 3: Recursos & Crear:** Presets de RAM y CPU Pinning, ficha técnica determinista tipo consola y botón primario de creación en verde esmeralda neón (`bg-primary`).
+  - **Paso 3: Recursos & Crear:** Presets de RAM y CPU Pinning, ficha técnica determinista tipo consola y botón primario de creación (`bg-primary`).
 * **Estética Fina y Disciplinada:**
   - Montaje mediante React Portal en `document.body` (`z-[99999]`), con cierre por tecla `Escape` o clic exterior en backdrop.
   - Sustitución de botones azules por tokens OKLCH coherentes con el resto de la interfaz.
