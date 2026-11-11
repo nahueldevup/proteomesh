@@ -56,6 +56,17 @@ type NavTab = 'instances' | 'network' | 'locations' | 'files';
 
 const NO_INSTANCES: Instance[] = [];
 
+function ViewLoadingSkeleton() {
+  return (
+    <div className="flex h-full w-full flex-1 items-center justify-center p-8 bg-background select-none">
+      <div className="flex items-center gap-2.5 font-mono text-xs text-muted-foreground animate-pulse">
+        <div className="size-2 rounded-full bg-primary" />
+        <span>Cargando vista…</span>
+      </div>
+    </div>
+  );
+}
+
 function SidebarBrand() {
   return (
     <>
@@ -342,7 +353,7 @@ export function App() {
 
         {/* ── ÁREA PRINCIPAL ───────────────────────────────────────────────── */}
         <SidebarInset>
-          <Suspense fallback={null}>
+          <Suspense fallback={<ViewLoadingSkeleton />}>
           {/* Cabecera / Toolbar (solo en la grilla de CloudPhones) */}
           {activeNav === 'instances' && viewMode === 'grid' && (
             <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card/40 px-3">
