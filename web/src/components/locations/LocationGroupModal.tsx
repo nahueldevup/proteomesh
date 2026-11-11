@@ -54,7 +54,6 @@ export const LocationGroupModal: React.FC<LocationGroupModalProps> = ({
               id="group-name"
               type="text"
               required
-              autoFocus
               placeholder="Ej: Sedes LATAM, Zonas bancarias…"
               value={groupNameInput}
               onChange={(e) => setGroupNameInput(e.target.value)}

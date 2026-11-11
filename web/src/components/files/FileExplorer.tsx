@@ -890,7 +890,7 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Nombre de la carpeta…"
-              autoFocus
+              aria-label="Nombre de la carpeta"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && newFolderName.trim() && !creatingFolder) {
                   doCreateFolder();

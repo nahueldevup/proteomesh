@@ -493,7 +493,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
             <div className="flex gap-1">
               <input
                 type="text"
-                autoFocus
+                aria-label="Texto a enviar vía ADB"
                 value={textValue}
                 onChange={(e) => setTextValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
@@ -523,7 +523,7 @@ export const DeviceControlRail = memo(function DeviceControlRail({
             <div className="flex gap-1">
               <input
                 type="text"
-                autoFocus
+                aria-label="URL a abrir en Chrome"
                 value={urlValue}
                 onChange={(e) => setUrlValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendUrl()}

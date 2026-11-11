@@ -308,7 +308,7 @@ export default function BulkBar({
             <div className="flex gap-1">
               <input
                 type="text"
-                autoFocus
+                aria-label="Texto a enviar en todos"
                 value={textValue}
                 onChange={(e) => setTextValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
@@ -335,7 +335,7 @@ export default function BulkBar({
             <div className="flex gap-1">
               <input
                 type="text"
-                autoFocus
+                aria-label="URL a abrir en todos"
                 value={urlValue}
                 onChange={(e) => setUrlValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendUrl()}
