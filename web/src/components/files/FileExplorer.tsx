@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Folder,
   FolderOpen,
@@ -48,8 +49,10 @@ import {
 } from "../ui/dialog";
 import type { Instance, FileEntry } from "../../types";
 import { api } from "../../lib/api";
+import { useDeviceFiles, queryKeys } from "../../lib/queries";
 import { cn, getErrorMessage } from "../../lib/utils";
 import { IconBtn } from "../ui/IconBtn";
+import { FilePreviewModal } from "./FilePreviewModal";
 
 const ROOT_NAMES = ["Download", "DCIM", "Pictures", "Movies", "Music", "Documents"] as const;
 type RootName = (typeof ROOT_NAMES)[number];
@@ -133,9 +136,16 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ instances, preselectedInstance }: FileExplorerProps) {
+  const queryClient = useQueryClient();
   const [phoneName, setPhoneName] = useState<string>(
     preselectedInstance || instances[0]?.instance_name || "phone-80"
   );
+  const [prevPreselected, setPrevPreselected] = useState(preselectedInstance);
+  if (preselectedInstance && preselectedInstance !== prevPreselected) {
+    setPrevPreselected(preselectedInstance);
+    setPhoneName(preselectedInstance);
+  }
+
   const [pathSegments, setPathSegments] = useState<string[]>(["Download"]);
   const [view, setView] = useState<"list" | "grid">("list");
   const [query, setQuery] = useState("");
@@ -145,11 +155,7 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
   const [sendOpen, setSendOpen] = useState(false);
   const [sendTarget, setSendTarget] = useState<string | null>(null);
   const [delOpen, setDelOpen] = useState(false);
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [loading, setLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -161,56 +167,11 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
   // Ruta física canónica en Android
   const fullPath = "/sdcard/" + pathSegments.join("/");
 
-  const fetchFiles = async (inst: string, p: string) => {
-    if (!inst) return;
-    setLoading(true);
-    try {
-      const data = await api.listFiles(inst, p);
-      setFiles(data);
-    } catch (err) {
-      toast.error(`Error al listar archivos: ${getErrorMessage(err)}`);
-      setFiles([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (preselectedInstance) {
-      setPhoneName(preselectedInstance);
-    }
-  }, [preselectedInstance]);
-
-  useEffect(() => {
-    if (currentPhone && currentPhone.running) {
-      fetchFiles(currentPhone.instance_name, fullPath);
-    } else {
-      setFiles([]);
-    }
-    setSelected([]);
-    setQuery("");
-  }, [phoneName, fullPath, currentPhone?.running]);
-
-  useEffect(() => {
-    if (!previewFile || !currentPhone) {
-      setPreviewContent(null);
-      return;
-    }
-    if (isText(previewFile.name)) {
-      setLoadingPreview(true);
-      fetch(api.getFileViewUrl(phoneName, `${fullPath}/${previewFile.name}`))
-        .then((r) => r.text())
-        .then((txt) => {
-          setPreviewContent(txt);
-        })
-        .catch(() => {
-          setPreviewContent("Error al leer el archivo desde el dispositivo");
-        })
-        .finally(() => setLoadingPreview(false));
-    } else {
-      setPreviewContent(null);
-    }
-  }, [previewFile]);
+  const { data: files = [], isLoading: loading } = useDeviceFiles(
+    currentPhone?.instance_name,
+    fullPath,
+    { enabled: Boolean(currentPhone && currentPhone.running) }
+  );
 
   const doCreateFolder = async () => {
     if (!currentPhone || !newFolderName.trim()) return;
@@ -220,7 +181,9 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
       toast.success(`Carpeta «${newFolderName.trim()}» creada correctamente`);
       setMkdirOpen(false);
       setNewFolderName("");
-      fetchFiles(currentPhone.instance_name, fullPath);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.files(currentPhone.instance_name, fullPath),
+      });
     } catch (err) {
       toast.error(`Error al crear carpeta: ${getErrorMessage(err)}`);
     } finally {
@@ -276,7 +239,9 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
     setUploading([]);
     if (uploadedCount > 0) {
       toast.success(`${uploadedCount} archivo(s) subidos a ${fullPath}`);
-      fetchFiles(currentPhone.instance_name, fullPath);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.files(currentPhone.instance_name, fullPath),
+      });
     }
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -327,6 +292,10 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
     setSendOpen(false);
     setSendTarget(null);
     setSelected([]);
+    queryClient.invalidateQueries({ queryKey: queryKeys.files(sendTarget, fullPath) });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.files(currentPhone.instance_name, fullPath),
+    });
   };
 
   const doDelete = async () => {
@@ -344,7 +313,9 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
     toast.success(`${delCount} elemento(s) eliminados`);
     setSelected([]);
     setDelOpen(false);
-    fetchFiles(currentPhone.instance_name, fullPath);
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.files(currentPhone.instance_name, fullPath),
+    });
   };
 
   const rowActions = (e: FileEntry) => (
@@ -897,85 +868,13 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
       </AlertDialog>
 
       {/* MODAL DE PREVISUALIZACIÓN DE ARCHIVO (LIGHTBOX / QUICK LOOK) */}
-      <Dialog
-        open={!!previewFile}
-        onOpenChange={(o) => {
-          if (!o) setPreviewFile(null);
-        }}
-      >
-        <DialogContent className="max-w-2xl bg-card border-border p-4">
-          <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-border">
-            <div className="min-w-0 flex-1">
-              <DialogTitle className="truncate text-sm font-semibold text-foreground">
-                {previewFile?.name}
-              </DialogTitle>
-              <DialogDescription className="font-mono text-xs text-muted-foreground mt-0.5">
-                {previewFile
-                  ? `${fmtBytes(previewFile.size)} · ${formatDate(previewFile.mtime)} · ${fullPath}/${previewFile.name}`
-                  : ""}
-              </DialogDescription>
-            </div>
-          </DialogHeader>
-          <div className="mt-3 flex max-h-[70vh] items-center justify-center overflow-hidden rounded bg-black/40 p-2">
-            {previewFile && isImg(previewFile.name) ? (
-              <img
-                src={api.getFileViewUrl(phoneName, `${fullPath}/${previewFile.name}`)}
-                alt={previewFile.name}
-                className="max-h-[65vh] max-w-full rounded object-contain select-none"
-              />
-            ) : previewFile && isText(previewFile.name) ? (
-              loadingPreview ? (
-                <div className="flex items-center gap-2 py-12 text-xs text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin text-primary" /> Leyendo archivo...
-                </div>
-              ) : (
-                <pre className="max-h-[65vh] w-full overflow-auto rounded bg-surface p-3 font-mono text-xs text-foreground/90 whitespace-pre-wrap select-text border border-border">
-                  <code>{previewContent}</code>
-                </pre>
-              )
-            ) : previewFile && isMedia(previewFile.name) ? (
-              /\.(mp4|webm|mkv|mov)$/i.test(previewFile.name) ? (
-                <video
-                  controls
-                  className="max-h-[65vh] max-w-full rounded"
-                  src={api.getFileViewUrl(phoneName, `${fullPath}/${previewFile.name}`)}
-                />
-              ) : (
-                <div className="flex flex-col items-center gap-3 p-6 w-full">
-                  <Music className="size-12 text-primary/60" />
-                  <audio
-                    controls
-                    className="w-full max-w-md"
-                    src={api.getFileViewUrl(phoneName, `${fullPath}/${previewFile.name}`)}
-                  />
-                </div>
-              )
-            ) : (
-              <div className="py-12 text-xs text-muted-foreground">
-                Vista previa no disponible para este formato
-              </div>
-            )}
-          </div>
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (previewFile) download([previewFile]);
-              }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium hover:bg-surface-2 cursor-pointer transition-colors"
-            >
-              <Download className="size-3.5" /> Descargar
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreviewFile(null)}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 cursor-pointer transition-opacity"
-            >
-              Cerrar
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FilePreviewModal
+        file={previewFile}
+        phoneName={phoneName}
+        fullPath={fullPath}
+        onClose={() => setPreviewFile(null)}
+        onDownload={(f) => download([f])}
+      />
 
       {/* DIÁLOGO CREAR NUEVA CARPETA */}
       <Dialog open={mkdirOpen} onOpenChange={setMkdirOpen}>
