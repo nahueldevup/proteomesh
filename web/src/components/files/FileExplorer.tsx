@@ -589,7 +589,7 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
                   <th className="py-2.5 font-medium">Nombre</th>
                   <th className="w-32 px-4 py-2.5 text-right font-medium">Tamaño</th>
                   <th className="w-44 px-4 py-2.5 font-medium">Modificado</th>
-                  <th className="w-28 px-4 py-2.5" />
+                  <th className="w-28 px-4 py-2.5" aria-label="Acciones" />
                 </tr>
               </thead>
               <tbody>

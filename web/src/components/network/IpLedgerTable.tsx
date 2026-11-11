@@ -80,14 +80,16 @@ export function IpLedgerTable({
               className="h-8 w-full rounded-md border border-input bg-surface pl-8 pr-3 font-mono text-xs outline-none placeholder:font-sans placeholder:text-muted-foreground focus:border-primary"
             />
           </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+          <label htmlFor="ip-ledger-active-only" className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
             <Switch
+              id="ip-ledger-active-only"
               checked={activeOnly}
               onCheckedChange={(v) => {
                 setActiveOnly(v);
                 setPage(1);
               }}
               className="data-[state=checked]:bg-success"
+              aria-label="Solo activas"
             />
             Solo activas
           </label>
@@ -125,7 +127,7 @@ export function IpLedgerTable({
                 paginatedEntries.map((row) => (
                   <tr key={row.id} className="border-b border-border/60 transition-colors hover:bg-surface-2/60">
                     <td className="px-4 py-2 font-mono text-xs font-semibold text-foreground tabular-nums">{row.ip}</td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2" aria-label={`CloudPhone dueño: ${row.instance_name}`}>
                       <TooltipSimple content="Abrir CloudPhone en Vista Enfocada">
                         <button
                           type="button"
@@ -137,7 +139,7 @@ export function IpLedgerTable({
                         </button>
                       </TooltipSimple>
                     </td>
-                    <td className="truncate px-2 py-2 font-mono text-xs text-muted-foreground">
+                    <td className="truncate px-2 py-2 font-mono text-xs text-muted-foreground" aria-label={`Módem: ${row.usb_id}`}>
                       <TooltipSimple content={`Módem: ${row.usb_id}`}>
                         <span className="truncate block">{row.usb_id}</span>
                       </TooltipSimple>

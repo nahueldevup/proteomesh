@@ -443,7 +443,7 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
                       </div>
                     </td>
                     <td className="px-2 py-2.5 text-right font-mono text-xs tabular-nums">{sizeMB} MB</td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-2 py-2.5" aria-label={`Instalada en ${installedList.length} de ${instances.length} instancias`}>
                       <div
                         className="flex items-center gap-2"
                         title={
@@ -558,13 +558,15 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
                 </div>
               )}
 
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5">
+              <label htmlFor="apk-autoinstall-default" className="mt-3 flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5">
                 <Star className={cn("size-4", sel.is_default ? "text-success" : "text-muted-foreground")} />
                 <div className="flex-1">
                   <div className="text-sm font-medium">Autoinstalar por defecto</div>
                   <div className="text-xs text-muted-foreground">Se instala una vez en cada CloudPhone nuevo</div>
                 </div>
                 <Switch
+                  id="apk-autoinstall-default"
+                  aria-label="Autoinstalar por defecto"
                   checked={sel.is_default}
                   onCheckedChange={() => toggleDefault(sel.id)}
                   className="data-[state=checked]:bg-success"

@@ -64,7 +64,7 @@ export function ModemRow({
         active ? 'bg-accent/60' : 'hover:bg-surface-2/60'
       )}
     >
-      <td className="px-4 py-2.5">
+      <td className="px-4 py-2.5" aria-label={`Módem ${dev.model}`}>
         <div className="flex min-w-0 items-center gap-3">
           <div
             className={cn(
@@ -89,7 +89,7 @@ export function ModemRow({
           </div>
         </div>
       </td>
-      <td className="px-2 py-2.5">
+      <td className="px-2 py-2.5" aria-label={`Interfaz de red: ${dev.iface}`}>
         <TooltipSimple content={`Interfaz de red: ${dev.iface}`}>
           <span
             className="inline-block max-w-full truncate rounded-sm border border-border bg-card px-1.5 py-0.5 align-middle font-mono text-[11px] text-foreground cursor-default"

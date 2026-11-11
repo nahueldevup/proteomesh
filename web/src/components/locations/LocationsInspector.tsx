@@ -208,7 +208,6 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
                 id="loc-name"
                 type="text"
                 required
-                autoFocus
                 placeholder="Ej: Oficina Palermo, Depósito Norte…"
                 value={locName}
                 onChange={(e) => setLocName(e.target.value)}
@@ -321,21 +320,21 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
             </div>
 
             <div className="space-y-2 pt-1">
-              <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
+              <label htmlFor="loc-form-set-default" className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
                 <Star className={cn('size-4 shrink-0', locSetAsDefault ? 'fill-current text-warning' : 'text-muted-foreground')} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">Ubicación predeterminada</div>
                   <div className="text-xs text-muted-foreground">Base para CloudPhones nuevos y vistas de mapa</div>
                 </div>
-                <Switch checked={locSetAsDefault} onCheckedChange={setLocSetAsDefault} className="data-[state=checked]:bg-success" />
+                <Switch id="loc-form-set-default" checked={locSetAsDefault} onCheckedChange={setLocSetAsDefault} className="data-[state=checked]:bg-success" aria-label="Ubicación predeterminada" />
               </label>
-              <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
+              <label htmlFor="loc-form-is-pinned" className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
                 <Pin className={cn('size-4 shrink-0', locIsPinned ? 'fill-current text-primary' : 'text-muted-foreground')} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">Fijar en accesos rápidos</div>
                   <div className="text-xs text-muted-foreground">Aparece en la barra GPS de FocusView</div>
                 </div>
-                <Switch checked={locIsPinned} onCheckedChange={setLocIsPinned} />
+                <Switch id="loc-form-is-pinned" checked={locIsPinned} onCheckedChange={setLocIsPinned} aria-label="Fijar en accesos rápidos" />
               </label>
 
               <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
@@ -494,6 +493,7 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
 
             <div className="mt-3 space-y-2">
               <label
+                htmlFor="loc-detail-set-default"
                 className={cn(
                   'flex items-center gap-3 rounded-md border border-border bg-card p-2.5',
                   selIsDefault ? 'cursor-default' : 'cursor-pointer transition-colors hover:border-muted-foreground/40'
@@ -508,19 +508,21 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
                   </div>
                 </div>
                 <Switch
+                  id="loc-detail-set-default"
+                  aria-label="Ubicación predeterminada"
                   checked={selIsDefault}
                   disabled={selIsDefault}
                   onCheckedChange={() => onSetDefaultLocation('custom', sel.id, sel.name)}
                   className="data-[state=checked]:bg-success disabled:opacity-100"
                 />
               </label>
-              <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
+              <label htmlFor="loc-detail-is-pinned" className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
                 <Pin className={cn('size-4 shrink-0', sel.is_pinned ? 'fill-current text-primary' : 'text-muted-foreground')} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">Fijar en accesos rápidos</div>
                   <div className="text-xs text-muted-foreground">Aparece en la barra GPS de FocusView</div>
                 </div>
-                <Switch checked={!!sel.is_pinned} onCheckedChange={(v) => onTogglePin('custom', sel.id, v)} />
+                <Switch id="loc-detail-is-pinned" aria-label="Fijar en accesos rápidos" checked={!!sel.is_pinned} onCheckedChange={(v) => onTogglePin('custom', sel.id, v)} />
               </label>
 
               <div className="rounded-md border border-border bg-card p-2.5 space-y-2">

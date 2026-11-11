@@ -168,6 +168,7 @@ export function FocusGpsTab({
                       >
                         <button
                           type="button"
+                          aria-label={`Seleccionar ubicación ${loc.name}`}
                           onClick={() => {
                             setSelectedCustomLoc(loc);
                             setMapLat(loc.latitude);
@@ -199,6 +200,7 @@ export function FocusGpsTab({
                           <button
                             type="button"
                             title={loc.is_pinned ? 'Desfijar de accesos rápidos' : 'Fijar en accesos rápidos'}
+                            aria-label={loc.is_pinned ? 'Desfijar de accesos rápidos' : 'Fijar en accesos rápidos'}
                             onClick={(e) => {
                               e.stopPropagation();
                               onTogglePinLocation(loc);
@@ -249,10 +251,11 @@ export function FocusGpsTab({
 
               <form onSubmit={onCreateCustomLocationHere} className="space-y-2.5">
                 <div>
-                  <label className="block text-[11px] font-semibold text-foreground mb-1">
+                  <label htmlFor="focus-custom-name-input" className="block text-[11px] font-semibold text-foreground mb-1">
                     Nombre Personalizado *
                   </label>
                   <input
+                    id="focus-custom-name-input"
                     type="text"
                     required
                     placeholder="Ej: Oficina Central, Depósito 2..."
@@ -263,10 +266,11 @@ export function FocusGpsTab({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-foreground mb-1">
+                  <label htmlFor="focus-custom-group-select" className="block text-[11px] font-semibold text-foreground mb-1">
                     Grupo
                   </label>
                   <select
+                    id="focus-custom-group-select"
                     value={customGroupInput}
                     onChange={(e) => setCustomGroupInput(e.target.value)}
                     className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
