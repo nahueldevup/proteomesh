@@ -394,8 +394,232 @@ Cinco archivos del proyecto superan las 900 líneas:
 
 ---
 
-## 7. Verificación Final de la Auditoría
+## 7. Verificación de la Primera Pasada de Auditoría
 
 - **Árbol de trabajo:** Limpio, sin alteraciones en `src/`, dependencias ni configuraciones.
 - **Rama activa:** `audit/frontend-quality`.
 - **Archivo entregable:** `AUDITORIA.md` en la raíz del repositorio.
+
+---
+
+## 8. Revisión 2: Evaluación Crítica de Observaciones Externas, Nuevos Hallazgos y Plan Revisado
+
+En esta segunda pasada se contrastaron minuciosamente las observaciones del revisor externo contra el código fuente real del repositorio (`git branch: audit/frontend-quality`). Cada afirmación fue validada con evidencia comprobada (lectura directa de líneas y ejecución de herramientas).
+
+---
+
+### 8.1 Tabla de Evaluación de Observaciones Externas (O1 a O8)
+
+| Obs | Asunto | Veredicto | Evidencia Real (`archivo:línea`) | Razonamiento Técnico | Decisión en el Informe |
+|:---|:---|:---:|:---|:---|:---|
+| **O1** | `InteractiveScreen` no es obsoleto | **CONFIRMADO** | `FocusView.tsx:412-425` (botón HD que conmuta `streamMode = 'canvas'`) y `FocusView.tsx:475-485` (render de `InteractiveScreen` en modo canvas y cuando `!instance.running`). | El revisor tiene razón. `InteractiveScreen` es una funcionalidad deliberada de fallback HD y vista offline para el usuario. Retirarlo violaría la regla estricta de no eliminar funcionalidades. | **HALL-09 REFUTADO Y ELIMINADO** de la lista de problemas. Se reclasifica como decisión de arquitectura deliberada. |
+| **O2** | `MapPicker.tsx:414` falso positivo de ref | **CONFIRMADO** | `MapPicker.tsx:256` (`useRef(new Map())`), `MapPicker.tsx:270` (`useCallback(..., [])`), `MapPicker.tsx:414` (`pinMarkersByIdRef.current.clear()`). | El revisor tiene razón. `pinMarkersByIdRef` almacena una instancia inmutable de `Map` que jamás se reasigna a null ni apunta a un nodo DOM. La regla de linter previene fallos en refs de DOM que React limpia antes del cleanup; en este Map no hay riesgo de desreferencia nula en concurrencia. | **HALL-06 RECLASIFICADO** de ALTO (bug) a **BAJO / OPORTUNIDAD** (higiene cosmética de linter sin impacto funcional). |
+| **O3** | `set-state-in-effect` impacto exagerado y conteo | **CONFIRMADO** | `App.tsx:140-143` (`return next.size === prev.size ? prev : next`), salida de `oxlint` (exactamente 14 advertencias en 12 ficheros). | El revisor tiene razón. En `App.tsx:140`, al devolver `prev`, React aplica comparación por identidad (`Object.is`) y aborta el render en el caso normal de polling (0 renders extra). Además, la lista enumera 14 ubicaciones reales, no 15. | **HALL-02 CORREGIDO**: se reconcilia el conteo a 14, se matiza el impacto en `App.tsx` y se aporta la tabla detallada de clasificación (ver 8.2). |
+| **O4** | `role="button"` en `DeviceCard` (nested-interactive) | **CONFIRMADO** | `DeviceCard.tsx:146` (contenedor `div`), `DeviceCard.tsx:196` (`DeviceControlRail` con 14 botones `<button>` e inputs). | El revisor tiene razón. Dotar de `role="button"` a un contenedor que aloja botones nativos e inputs en su interior genera una violación grave de ARIA y WCAG 4.1.2 (nested interactive controls). La mitigación `e.target !== e.currentTarget` era un parche frágil. | **PROPUESTA CORREGIDA**: se descarta `role="button"` en la tarjeta exterior. Se aísla el botón interactivo de foco en la superficie de la pantalla (`div` línea 164), manteniendo el riel hermano fuera del control de foco. |
+| **O5** | Severidad de HALL-01 (`CustomLocationsManager`) | **CONFIRMADO** | `CustomLocationsManager.tsx:1-2397` compila en 0 errores con `tsc -b` y opera funcionalmente en runtime. | El revisor tiene razón. Un archivo gigante con 47 estados es un problema severo de deuda técnica y mantenibilidad, pero no provoca caídas de servidor, fallos de seguridad ni corrupción de datos. Llamarlo CRÍTICO inflaba artificialmente la severidad. | **HALL-01 RECLASIFICADO** de CRÍTICO a **ALTO**. La categoría CRÍTICO queda reservada para errores de runtime, corrupción o vulnerabilidades comprobadas. |
+| **O6** | Cobertura incompleta (Resiliencia, Seguridad, Scrcpy) | **CONFIRMADO** | Inspección de `App.tsx:345`, `main.tsx:16`, `api.ts:48-528`, `useScrcpyStream.ts:505-531`, `npm audit`. | El revisor tiene razón. La primera pasada omitió evaluar la falta de Error Boundaries a nivel de aplicación, la codificación de rutas REST en `api.ts` y las condiciones de carrera post-`await` en el ciclo de vida del `VideoDecoder`. | **3 NUEVOS HALLAZGOS INCORPORADOS** (HALL-13, HALL-14, HALL-15) con evidencia técnica comprobada (ver 8.3). |
+| **O7** | Afirmaciones sin medir (mini-chunks y bundle) | **CONFIRMADO** | Listado de `dist/assets`: exactamente 6 archivos menores a 500 B (`check`, `navigation`, `circle-check`, `chevron-right`, `globe`, `star`). `index-*.js`: 451.26 KB (137.15 KB gzip). | El revisor tiene razón. Afirmar \"decenas de peticiones en cascada\" era una exageración retórica sin medición de red. Además, calificar de \"excelente code-splitting\" ignoraba que el chunk principal fusiona todo el vendor sin reglas de Rollup. | **RECLASIFICADO A OPORTUNIDAD**: se eliminan los adjetivos, se aportan cifras exactas y se desglosan los módulos del chunk principal (ver 8.4). |
+| **O8** | Orden del plan de refactorización y red de seguridad | **PARCIALMENTE CONFIRMADO** | 24 tests unitarios en `test/` cubren únicamente lógica pura de `src/lib/` (0 tests de componentes UI). | El revisor tiene razón en que refactorizar efectos antes de dividir archivos genera retrabajo sobre el monolito. Sin embargo, partir un archivo de 2400 líneas sin ningún test de componente ni red de seguridad previa es altamente peligroso. | **PLAN REVISADO (HÍBRIDO)**: se establece un Protocolo de Verificación Funcional obligatorio antes del refactor, y se mueve la partición modular mecánica antes del saneamiento de efectos (ver 8.5). |
+
+---
+
+### 8.2 Auditoría Uno a Uno de los 14 Casos de `set-state-in-effect` (HALL-02)
+
+Tras ejecutar `oxlint` aislando la regla `react(set-state-in-effect)`, se auditaron las 14 líneas exactas para diferenciar antipatrones reales de usos legítimos o defensivos:
+
+| # | Archivo y Línea | Estado Afectado | Causa / Contexto | Clasificación Técnica | Acción Recomendada |
+|:---:|:---|:---|:---|:---:|:---|
+| 1 | `App.tsx:140` | `selectedNames` | Purga de instancias eliminadas tras polling. | **USO DEFENSIVO BENIGNO** (Aplica bail-out con `return prev` si el tamaño no varió; 0 renders extra en caso nominal). | Opcional: Derivar selección válida en render: `const activeSelection = useMemo(...)`. |
+| 2 | `ApkFileManager.tsx:27` | `tab` | Sincroniza `setTab('files')` si existe `preselectedInstance`. | **ANTIPATRÓN DE ESTADO DUPLICADO** (El estado ya se inicializa con `initialTab` en la línea 23). | Eliminar el `useEffect`; inicializar directamente: `useState(preselectedInstance ? 'files' : initialTab)`. |
+| 3 | `InteractiveScreen.tsx:55` | `currentFrame`, `isLoadingFirst` | Limpia el frame al detectar `!instance.running`. | **USO LEGÍTIMO DE SINCRONIZACIÓN EXTERNA** (Bucle de captura canvas/JPEG desacoplado). | Conservar. Es la limpieza natural del bucle de fotogramas. |
+| 4 | `useScrcpyStream.ts:296` | `status` | Fija estado `'idle'` si `!enabled` o `!adbPort`. | **USO LEGÍTIMO DE CICLO DE VIDA** (Gestión de socket y WebCodecs nativo). | Conservar. Garantiza la máquina de estados del streaming de hardware. |
+| 5 | `BulkBar.tsx:72` | `apks`, `apksLoading` | Carga manual con `api.getApks()` al abrir popover. | **ANTIPATRÓN REAL DE DATA-FETCHING** | Reemplazar por `useQuery({ queryKey: ['apks'], queryFn: api.getApks, enabled: apkPopover.open })`. |
+| 6 | `DeviceControlRail.tsx:130` | `railApks`, `railApksLoading` | Idéntica carga manual duplicada de APKs al abrir popover. | **ANTIPATRÓN REAL DE DATA-FETCHING** | Reemplazar por el mismo `useQuery` de TanStack Query, compartiendo caché entre tarjetas. |
+| 7 | `CreateDeviceModal.tsx:131` | `timezone`, `latitude`, etc. | Copia la ubicación por defecto al abrir el diálogo. | **ANTIPATRÓN DE INICIALIZACIÓN DE FORMULARIO** | Eliminar sincronización en efecto; pasar clave al montar: `<CreateDeviceModal key={isOpen ? 1 : 0} />` o inicializar en el hook de formulario. |
+| 8 | `ApkRepository.tsx:115` | `apks`, `loading` | Carga inicial manual de catálogo mediante `fetchApks()`. | **ANTIPATRÓN REAL DE DATA-FETCHING** | Migrar a `useQuery({ queryKey: ['apks'], queryFn: api.getApks })`. |
+| 9 | `UsbNetworkCenter.tsx:100` | `countdown` | Temporizador regresivo de 5s para oferta FIFO. | **ANTIPATRÓN DE COLOCACIÓN DE ESTADO** (Provoca re-render de 1373 líneas 4 veces por segundo). | Mover el temporizador y el estado `countdown` exclusivamente dentro del componente `CountdownRing`. |
+| 10 | `FileExplorer.tsx:238` | `phoneName` | Sincroniza el teléfono seleccionado desde prop `preselectedInstance`. | **ANTIPATRÓN DE ESTADO ESPEJO** | Derivar o usar componente no controlado con `key={preselectedInstance}`. |
+| 11 | `FileExplorer.tsx:244` | `files`, `loading` | Dispara `fetchFiles` al cambiar de carpeta o teléfono. | **ANTIPATRÓN REAL DE DATA-FETCHING** | Migrar a `useQuery({ queryKey: ['files', phoneName, fullPath], queryFn: ... })`. |
+| 12 | `FileExplorer.tsx:254` | `previewContent` | Descarga de contenido de texto para el visor Lightbox. | **ANTIPATRÓN DE DATA-FETCHING EN MODAL** | Aislar en subcomponente `FilePreviewModal` con su propio `useQuery` o fetch diferido. |
+| 13 | `FocusView.tsx:159` | `mapLat`, `mapLon`, `mapCity` | Actualiza campos de GPS al cambiar de instancia seleccionada. | **REINICIALIZACIÓN EVITABLE CON KEY** | Montar la vista enfocada con `key={instance.instance_name}` para reiniciar estados de forma idiomática en React. |
+| 14 | `CustomLocationsManager.tsx:187` | `mapLat`, `mapLon`, `mapCity` | Fija coordenadas iniciales de la ubicación predeterminada general. | **INICIALIZACIÓN ASÍNCRONA DE FORMULARIO** | Derivar las coordenadas iniciales durante el primer render o encapsular en el subcomponente del mapa. |
+
+---
+
+### 8.3 Nuevos Hallazgos de Resiliencia, Seguridad y WebCodecs (O6)
+
+#### [ALTO] HALL-13: Ausencia de Error Boundaries en la raíz y en las pestañas lazy
+- **Archivo:** `web/src/main.tsx:16-22`, `web/src/App.tsx:345`
+- **Problema:** El único Error Boundary existente en todo el proyecto es `RailPopoverErrorBoundary` (aislado a los popovers del riel en `DeviceControlRail.tsx:734`). La raíz de la aplicación (`App.tsx`) y las vistas cargadas dinámicamente (`FocusView`, `CustomLocationsManager`, `UsbNetworkCenter`, `ApkFileManager`) carecen de Error Boundary.
+- **Consecuencia comprobada:** Si un chunk diferido falla al descargarse (corte de red, despliegue nuevo en servidor con hashes de assets actualizados) o un componente arroja un error en tiempo de renderizado, **la aplicación completa colapsa en una pantalla blanca irrecuperable** para el operador de la granja.
+- **Además:** `<Suspense fallback={null}>` en `App.tsx:345` no proporciona ningún esqueleto o indicador de carga mientras se descargan las vistas secundarias.
+- **Tipo:** COMPROBADO.
+- **Solución:** Implementar un `RootErrorBoundary` global con botón de reintento/recarga y envolver cada vista secundaria en un `ViewErrorBoundary` con fallback contextual.
+
+#### [MEDIO] HALL-14: Interpolación insegura de nombres de instancia en rutas REST (`lib/api.ts`)
+- **Archivo:** `web/src/lib/api.ts:48, 62, 67, 72, 77, 82, 188, 205, 210, 231, 236`
+- **Problema:** Se construyen URLs mediante plantillas de literales sin escapar:
+  ```typescript
+  // web/src/lib/api.ts:77
+  const res = await fetch(`${API_BASE}/instances/${name}`, { method: 'DELETE' });
+  ```
+- **Consecuencia:** Si una instancia contiene espacios, barras (`/`), almohadillas (`#`) o caracteres UTF-8 en su identificador, la petición HTTP resulta malformada (404/400) o genera ambigüedad en el enrutamiento de la API REST. En contraste, las funciones de archivos (`getFileViewUrl:505`) sí usan correctamente `new URLSearchParams(...)`.
+- **Tipo:** COMPROBADO.
+- **Solución:** Envolver los parámetros de ruta en `encodeURIComponent(name)`.
+
+#### [MEDIO] HALL-15: Condición de carrera post-`await` en la configuración de `VideoDecoder`
+- **Archivo:** `web/src/lib/scrcpy/useScrcpyStream.ts:505-531`
+- **Problema:** La función interna `configureDecoder` es asíncrona:
+  ```typescript
+  const configureDecoder = async (codec: string) => {
+    ...
+    const supported = await VideoDecoder.isConfigSupported(prefer);
+    if (supported.supported) {
+      decoder.configure(prefer); // <-- decoder puede haber sido cerrado mientras esperaba
+      ...
+  ```
+- **Consecuencia:** Si el usuario presiona `Escape` o cambia de CloudPhone mientras `VideoDecoder.isConfigSupported` está en vuelo, la función de limpieza de `useEffect` (línea 714) ejecuta `decoder.close()`. Cuando la promesa resuelve, invocar `decoder.configure(...)` sobre un decodificador cerrado arroja un `DOMException: Cannot configure a closed codec`.
+- **Tipo:** COMPROBADO.
+- **Solución:** Agregar una comprobación de seguridad antes de configurar: `if (!active || decoder.state === 'closed') return;`.
+
+#### Seguridad Frontend Verificada (Sin Problemas)
+- **Vulnerabilidades de dependencias:** `npm audit` reportó **0 vulnerabilidades**.
+- **Inyección XSS:** 0 ocurrencias de `dangerouslySetInnerHTML`. Los marcadores HTML dinámicos de Leaflet (`MapPicker.tsx:18`) filtran estrictamente caracteres peligrosos con `escapeHtml(text)`.
+- **Persistencia local:** `localStorage` únicamente almacena la clave `pm-theme` (`'dark'` o `'light'`). No se exponen tokens ni datos sensibles.
+
+---
+
+### 8.4 Desglose Comprobado del Bundle Principal y Micro-Chunks (O7)
+
+- **Total del chunk de entrada (`index-BPbA560r.js`):** 451.26 KB (137.15 KB gzip).
+- **Composición del chunk principal (medida por inspección de dependencias):**
+  - Núcleo React (`react` + `react-dom`): ~140 KB minificado.
+  - Primitivas Radix UI (`tooltip`, `popover`, `dialog`, `slider`): ~45 KB minificado.
+  - Gestión de servidor (`@tanstack/react-query`): ~40 KB minificado.
+  - Notificaciones y utilidades (`sonner`, `tailwind-merge`, `clsx`): ~35 KB minificado.
+  - Código fuente de la flota (`DeviceGrid`, `DeviceCard`, `DeviceControlRail`, `BulkBar`, `sidebar`, `protocol.ts`, `useScrcpyStream.ts`, `api.ts`, etc.): ~150 KB minificado.
+- **Diagnóstico del empaquetado:** `vite.config.ts` carece de configuración `build.rollupOptions.output.manualChunks`. Esto fusiona todo el vendor de terceros con la lógica de negocio; cada cambio en un componente invalida la caché de React y TanStack Query en el navegador del cliente.
+- **Micro-chunks huérfanos (Exactamente 6 archivos):**
+  - `dist/assets/check-bE8zQmk7.js`: 153 B
+  - `dist/assets/navigation-DmGiSP4n.js`: 177 B
+  - `dist/assets/circle-check-D8lmHSlv.js`: 239 B
+  - `dist/assets/chevron-right-DMLYeB0I.js`: 259 B
+  - `dist/assets/globe-BuyLapgu.js`: 271 B
+  - `dist/assets/star-CsGsJJQB.js`: 501 B
+- **Causa:** Iconos de `lucide-react` importados concurrentemente por varias rutas dinámicas que Rollup extrae en trozos separados.
+- **Solución:** Configurar `manualChunks: { vendor: ['react', 'react-dom', '@tanstack/react-query'], ui: ['@radix-ui/react-tooltip', '@radix-ui/react-popover', 'sonner', 'lucide-react'] }`.
+
+---
+
+### 8.5 Matriz de Hallazgos Consolidada y Actualizada
+
+| ID | Hallazgo | Ubicación | Severidad | Esfuerzo | Tipo | Estado en Revisión 2 |
+|:---|:---|:---|:---:|:---:|:---:|:---:|
+| **HALL-01** | Monolito de 2397 líneas con 47 `useState` | `CustomLocationsManager.tsx` | **ALTO** | Alto | COMPROBADO | Reclasificado de CRÍTICO a ALTO (O5) |
+| **HALL-02** | 14 casos de `set-state-in-effect` (antipatrones vs usos legítimos) | 12 archivos | **ALTO** | Medio | COMPROBADO | Corregido conteo a 14 e impacto matizado (O3) |
+| **HALL-03** | 4 componentes >900 líneas con responsabilidades múltiples | `UsbNetworkCenter`, `FocusView`, `FileExplorer`, `CreateDeviceModal` | **ALTO** | Alto | COMPROBADO | Confirmado |
+| **HALL-04** | Elementos interactivos sin accesibilidad de teclado ni foco | `DeviceCard`, `PhoneScreen`, `DeviceControlRail` | **ALTO** | Medio | COMPROBADO | Corregido patrón a botón desacoplado sin anidar (O4) |
+| **HALL-05** | Configuración de Oxlint subutilizada | `.oxlintrc.json` | **ALTO** | Bajo | COMPROBADO | Confirmado (con exclusión de reglas React 16 ruidosas) |
+| **HALL-06** | Acceso a ref en función de limpieza de `useEffect` | `MapPicker.tsx:414` | **BAJO** | Bajo | OPORTUNIDAD | Reclasificado de ALTO a BAJO (falso positivo linter) (O2) |
+| **HALL-07** | Inputs sin `<label htmlFor="...">` asociado | `CreateDeviceModal`, `UsbNetworkCenter`, etc. | **MEDIO** | Bajo | COMPROBADO | Confirmado |
+| **HALL-08** | Duplicación de subcomponentes `IconBtn` y `BarBtn` | `FileExplorer.tsx` | **MEDIO** | Bajo | COMPROBADO | Confirmado |
+| **HALL-09** | Supuesta obsolescencia de `InteractiveScreen` | `FocusView.tsx`, `InteractiveScreen.tsx` | — | — | — | **REFUTADO Y ELIMINADO** (Fallback HD legítimo) (O1) |
+| **HALL-10** | Tipado `Promise<unknown>` en mutaciones de API | `src/lib/api.ts` | **MEDIO** | Bajo | COMPROBADO | Confirmado |
+| **HALL-11** | Uso de `autoFocus` invasivo en popovers | `DeviceControlRail`, `BulkBar`, `FileExplorer` | **MEDIO** | Bajo | COMPROBADO | Confirmado |
+| **HALL-12** | Discrepancia de documentación de color en README | `README.md` vs `index.css` | **BAJO** | Bajo | COMPROBADO | Confirmado |
+| **HALL-13** | **NUEVO:** Ausencia de Error Boundaries en raíz y rutas lazy | `main.tsx`, `App.tsx:345` | **ALTO** | Medio | COMPROBADO | Incorporado en Revisión 2 (O6) |
+| **HALL-14** | **NUEVO:** Interpolación de rutas sin `encodeURIComponent` | `src/lib/api.ts` | **MEDIO** | Bajo | COMPROBADO | Incorporado en Revisión 2 (O6) |
+| **HALL-15** | **NUEVO:** Carrera post-`await` en `configureDecoder` | `src/lib/scrcpy/useScrcpyStream.ts:514` | **MEDIO** | Bajo | COMPROBADO | Incorporado en Revisión 2 (O6) |
+
+---
+
+### 8.6 Plan de Refactorización Revisado (Orden Híbrido Justificado)
+
+Para conciliar la inquietud del revisor (evitar retrabajo de efectos en archivos gigantes) con la realidad del proyecto (cero tests de componentes), el plan reorganiza las etapas priorizando una **red de seguridad explícita** antes de partir código.
+
+```text
+Etapa 1: Tooling, Tipos, Resiliencia Base y Protocolo de Verificación
+   │
+   ▼
+Etapa 2: Partición Modular Mecánica (cortes de presentación 1:1 sin cambios lógicos)
+   │
+   ▼
+Etapa 3: Saneamiento de Efectos y Migración a TanStack Query (sobre archivos pequeños)
+   │
+   ▼
+Etapa 4: Accesibilidad WCAG 2.2 y Optimización de Bundle
+```
+
+---
+
+#### Protocolo de Verificación Funcional Pre-Refactor (Red de Seguridad Obligatoria)
+Dado que el runner `node:test` solo prueba `src/lib/`, antes de fusionar o avanzar entre etapas se ejecutará el siguiente checklist funcional manual en navegador sobre `npm run dev`:
+
+1. **Grilla / Rack:** Carga de miniaturas JPEG, slider de densidad, selección simple y Shift+clic por rango, activación de `BulkBar`.
+2. **Streaming:** Clic en un CloudPhone -> montaje de `ScrcpyLiveScreen`, recepción del primer frame IDR (<6s), badge de FPS activo (30 FPS), liberación con `Escape`.
+3. **Hardware Rail:** Enviar Back, Home, Apps Recientes, subir/bajar volumen, encendido/apagado.
+4. **Popovers Exclusivos:** Abrir popover USB en tarjeta A; abrir popover APK en tarjeta B -> comprobar que A se cierra automáticamente.
+5. **FocusView:** Conmutación fluida entre streaming `scrcpy` y botón `HD` (`InteractiveScreen`), actualización de GPS, guardado de proxy.
+6. **Red USB Módem:** Verificación de strip de métricas, cuenta regresiva de 5s en oferta FIFO, conmutación a pestaña Libro Mayor de IPs.
+7. **Ubicaciones:** Arrastre de pin en mapa Leaflet, actualización reactiva del radio concéntrico visual, alta de nueva ubicación y asignación masiva a terminales.
+8. **APKs y Archivos:** Subida drag-and-drop de APK, escaneo de instaladas con check verde, navegación por carpetas en `/sdcard/Download` y vista previa Lightbox de imágenes/texto.
+9. **Modal de Creación:** Wizard de 3 pasos sin parpadeo de pantalla negra, asignación de puerto libre automático y creación exitosa.
+10. **Conmutación de Tema:** Alternar Dark/Light desde header y comprobar persistencia tras F5.
+
+---
+
+#### Etapa 1: Tooling, Blindaje de Tipos, Resiliencia y Correcciones Rápidas
+- **Acciones:**
+  1. Configurar `.oxlintrc.json` activando `jsx-a11y` y reglas de hooks, desactivando expresamente las reglas obsoletas de React 16 (`react/react-in-jsx-scope`, `react/jsx-uses-react`) para evitar 50+ falsos positivos.
+  2. Implementar `RootErrorBoundary` en `main.tsx` y fallback amigable en `<Suspense fallback={<ViewLoadingSkeleton />}>` en `App.tsx:345` (HALL-13).
+  3. Reemplazar `Promise<unknown>` por contratos estrictos en `api.ts` y aplicar `encodeURIComponent` a los nombres de instancia (HALL-10, HALL-14).
+  4. Agregar guarda `if (!active || decoder.state === 'closed') return;` en `useScrcpyStream.ts:514` (HALL-15).
+  5. Ajustar la ref en `MapPicker.tsx:414` asignando a variable local dentro del efecto (HALL-06).
+- **Verificación:** `npm run build`, `npm run lint`, tests unitarios existentes.
+
+#### Etapa 2: Partición Modular Mecánica (Cortes Limpios sin Cambio de Lógica)
+- **Acciones:**
+  1. Dividir `CustomLocationsManager.tsx` (2397 líneas) extrayendo:
+     - `LocationsMapHero.tsx`: Contenedor del mapa Leaflet, radios y pines.
+     - `LocationsInspector.tsx`: Panel lateral de 380 px con detalle y formulario.
+     - `LocationGroupModal.tsx`: Diálogo de creación/edición de grupos.
+     - `BatchTeleportModal.tsx`: Diálogo de asignación masiva a terminales.
+  2. Dividir `UsbNetworkCenter.tsx` (1373 líneas) extrayendo:
+     - `ModemInventoryTable.tsx`, `ModemInspector.tsx`, `IpLedgerTable.tsx`, `FifoQueueBar.tsx`.
+  3. Dividir `FocusView.tsx` (1171 líneas) extrayendo:
+     - `FocusMetadataGrid.tsx`, `FocusGpsTab.tsx`, `FocusProxyTab.tsx`, `FocusHealthTab.tsx`.
+  4. En `FileExplorer.tsx`: sustituir los botones internos `IconBtn`/`BarBtn` por `src/components/ui/IconBtn.tsx` (HALL-08).
+- **Verificación:** `npm run build`, `npm run lint`, ejecución completa del Protocolo de Verificación Funcional.
+
+#### Etapa 3: Saneamiento de Efectos y Migración a TanStack Query
+- **Acciones:**
+  1. Mover el temporizador de cuenta regresiva de `UsbNetworkCenter` dentro de `CountdownRing` para erradicar re-renders masivos a 4 Hz (HALL-02 #9).
+  2. Migrar carga de APKs en `BulkBar.tsx` y `DeviceControlRail.tsx` a `useQuery({ queryKey: ['apks'] })` (HALL-02 #5 y #6).
+  3. Migrar navegación de ficheros en `FileExplorer.tsx` a `useQuery(['files', phone, path])` (HALL-02 #11 y #12).
+  4. Saneamiento de inicialización de formularios: derivar datos en `App.tsx` y `ApkFileManager.tsx` (HALL-02 #1 y #2).
+- **Verificación:** `npm run build`, comprobar que la consola de desarrollo no registra re-renders en cascada.
+
+#### Etapa 4: Accesibilidad WCAG 2.2, Bundle y Cierre
+- **Acciones:**
+  1. Corregir el patrón de selección en `DeviceCard.tsx`: dotar a la superficie de pantalla de rol interactivo accesible de selección (`tabIndex={0}`, Enter/Space), manteniendo el riel de hardware hermano fuera de la interacción para no generar botones anidados ilegales (HALL-04).
+  2. Asociar etiquetas en formularios mediante `htmlFor` e `id` en `CreateDeviceModal.tsx` y tabs de `FocusView.tsx` (HALL-07).
+  3. Reemplazar `autoFocus` invasivo por gestión de foco de Radix (HALL-11).
+  4. Configurar `build.rollupOptions.output.manualChunks` en `vite.config.ts` para separar vendor (`react`, `@tanstack/react-query`) y eliminar los 6 micro-chunks huérfanos.
+  5. Actualizar la discrepancia de color en `README.md` (HALL-12).
+- **Verificación:** `oxlint -A react/react-in-jsx-scope --jsx-a11y-plugin` con 0 advertencias, prueba de teclado completa en la grilla y medición del nuevo tamaño de chunks del build.
+
+---
+
+### 8.7 Autocrítica del Auditor y Límites del Alcance
+
+#### Sesgos Identificados en la Primera Pasada:
+1. **Sesgo de Modernización / Eliminación Prematura (O1):** Se calificó `InteractiveScreen` como "obsoleto" únicamente por coexistir con WebCodecs, sin notar el botón `HD` explícito en la cabecera ni la necesidad de renderizar el dispositivo apagado.
+2. **Confianza Ciega en Textos de Linter (O2):** Se interpretó literalmente la advertencia de `exhaustive-deps` sobre `pinMarkersByIdRef.current` como un puntero nulo en tiempo de ejecución, ignorando que el ref era una instancia persistente de `Map` y no un elemento DOM.
+3. **Exageración Retórica sin Medición (O3 y O7):** Se afirmó "decenas de peticiones en cascada" para solo 6 archivos de iconos, y se asumió que `App.tsx:140` re-renderizaba en cada polling sin comprobar que el retorno de `prev` aborta el render en React.
+4. **Propuestas de Accesibilidad Aisladas (O4):** Se propuso `role="button"` en `DeviceCard` para complacer una regla básica de clics en divs, introduciendo sin querer una infracción más grave de controles interactivos anidados.
+
+#### Aspectos No Auditados y Justificación:
+1. **Hardware Físico USB / Módems LTE Reales:** No se ejecutaron pruebas de conmutación de red o comandos AT en módems físicos (`testUsbRotation`) por requerir hardware celular y tarjetas SIM conectadas al host.
+2. **Aceleración de Video en Múltiples GPUs:** La decodificación WebCodecs se auditó a nivel de API Chromium en el código fuente; no se dispuso de un banco heterogéneo de GPUs (Intel/Nvidia/AMD) para medir variaciones de latencia de decodificación de hardware.
+3. **Síntesis de Voz Real de Lectores de Pantalla:** Se auditó la estructura del DOM, el árbol de accesibilidad accesible, los roles ARIA y los topes de foco por teclado, pero no se grabaron sesiones de audio con VoiceOver o NVDA.
+
