@@ -1017,11 +1017,176 @@ Para cerrar cualquier ambigüedad en el plan de refactorización, se auditan y a
 
 #### 5. Autocrítica del Auditor (Cuarta Pasada)
 
-1. **Lectura Incompleta del Manejo de Excepciones (Q1):** Se diagnosticó que `configureDecoder` causaba un crash por `DOMException` sin verificar que el bloque `try/catch` exterior capturaba el error y que `scheduleReconnect` abortaba cuando `!active` era falso.
+1. **Lectura Incompleta del Manejo de Excepciones (Q1):** Se diagnosticó que `configureDecoder` causaba un crash por `DOMException` sin verificar que el bloque `try/catch` exterior capturaba el error y que `scheduleReconnect` abortaba cuando `!active` es true.
 2. **Ignorancia del Bail-out por Valor Idéntico (Q2):** Se asumió que cada ejecución de un `setInterval` de 250 ms causaba un re-render sin notar que `setCountdown` recibía enteros redondeados por segundo, donde React aborta el render por `Object.is`.
 3. **Propuesta Incompleta de Teclado (Q4):** Se propuso Enter/Space en la superficie de la pantalla para accesibilidad sin contrastar que el componente hijo `ScrcpyLiveScreen` roba el foco al canvas y captura Enter/Tab para Android.
 4. **Propuesta Peligrosa de `key` (Q5):** Se sugirió `key={instance.instance_name}` en `FocusView` para evitar un efecto sin advertir que desmontaría la vista completa, reseteando pestañas activas y consolas de auditoría.
 5. **Inexactitud en URL Parsers (Q6):** Se usó el espacio como ejemplo de rotura en `fetch` ignorando que el estándar WHATWG URL autocodifica espacios a `%20`, siendo `#`, `?` y `%` los verdaderos caracteres de corrupción de ruta.
+
+---
+
+### 8.11 Ajustes Finales (Matriz y Plan Vigentes de Ejecución)
+
+En esta sección se consolidan los ajustes finales derivados de la revisión de 8.10, reconciliando conteos, separando estrictamente la partición mecánica del cambio de lógica, reordenando el baseline funcional y suspendiendo la implementación de componentes UI que requieren decisión explícita de diseño del dueño. **Esta matriz y este plan constituyen la única versión vigente para la fase de implementación.**
+
+---
+
+#### 1. Tabla de Evaluación de Ajustes Finales
+
+| Ajuste | Asunto | Veredicto | Evidencia Real (`archivo:línea`) | Razonamiento Técnico | Decisión Aplicada |
+|:---:|:---|:---:|:---|:---|:---|
+| **A1** | Reconciliación de conteo y severidad de HALL-02 | **CONFIRMADO** | Tabla 8.10.2: asigna 10 casos (#2, #5, #6, #7, #8, #9, #10, #11, #12, #14). Casos #1 y #13 descartados/conservados con justificación. | La matriz decía "8 casos" por un error aritmético al no sumar #10 y #14. Son exactamente 10 casos a intervenir. Ninguno causa un fallo visual roto ni desbordamiento crítico en producción; la mayoría son cargas de datos que se benefician de `useQuery`. Su severidad real es **MEDIO**. | **HALL-02 RECLASIFICADO** a **MEDIO** (10 casos de saneamiento). Conteo reconciliado en la matriz. |
+| **A2** | Purga de lógica en Etapa 2 (Cortes 100% mecánicos) | **CONFIRMADO** | Definición de Etapa 2: "cortes mecánicos sin cambio de lógica". Eliminar efectos o mutar flujos de inicialización viola la premisa. | Si en la Etapa 2 se mueven archivos Y al mismo tiempo se alteran efectos o inicializaciones de estado (#2, #7, #9, #10, #14), se mezcla la refactorización estructural con cambios de comportamiento, dificultando el git diff y aumentando el riesgo de regresiones. | **ETAPA 2 BLINDADA COMO ESTRUCTURAL**: solo partición de archivos y reemplazo de `IconBtn`. Todos los cambios de lógica de efectos (#2, #7, #9, #10, #14) se trasladan a la **Etapa 3**. |
+| **A3** | Protocolo de Verificación Funcional como Ítem 1 de Etapa 1 | **CONFIRMADO** | Flujo metodológico de refactorización segura y red de seguridad. | Ejecutar el checklist de 10 flujos como último paso no permite registrar el baseline de comportamiento actual antes de modificar código o tooling. Debe ser el paso 0 / paso 1 previo a cualquier cambio en la rama. | **REORDENADO**: El Protocolo de Verificación Funcional pasa a ser el **Paso 1 de la Etapa 1** (Baseline Funcional Previo). |
+| **A4** | Configuración de Oxlint en severidad `warn` | **CONFIRMADO** | Salida de `oxlint -A react/react-in-jsx-scope --jsx-a11y-plugin`: 74 advertencias en todo el árbol de `src/`. | Si se configuran `jsx-a11y` o `react-hooks` como `error`, el comando `npm run lint` fallará de inmediato bloqueando el repositorio antes de empezar a refactorizar. | **CONFIGURADO COMO WARN**: En `.oxlintrc.json`, las reglas de accesibilidad y hooks se configurarán en nivel `warn` para visibilidad sin bloquear compilaciones. |
+| **A5** | Retiro de HALL-06 del plan de trabajo | **CONFIRMADO** | `MapPicker.tsx:256, 414` (falso positivo comprobado de linter en ref de `Map`). | Mantener una tarea en la Etapa 1 para "copiar ref a variable local" contradice la regla de "no optimizar sin evidencia de daño". Es un falso positivo inocuo. | **RETIRADO DEL PLAN**: HALL-06 queda como nota informativa en la matriz sin tarea asignada. |
+| **A6** | Estrategia de Caché e Invalidación en Etapa 3 (`useQuery`) | **CONFIRMADO** | `ApkRepository.tsx:145-280` (`toggleDefault` actualización optimista, `uploadApk` invalidación, `deleteApk` invalidación); `FileExplorer.tsx:277-396` (`mkdir`, `upload`, `delete`, `send-to`). `main.tsx:7` (`defaultOptions` sin `staleTime`). | Al migrar a `useQuery({ queryKey: ['apks'] })`, se debe fijar `staleTime: 30_000`. En `toggleDefault`, se debe usar `queryClient.setQueryData` para mantener la UI optimista instantánea. En `uploadApk` y `deleteApk`, se debe llamar a `queryClient.invalidateQueries({ queryKey: ['apks'] })`. En `FileExplorer`, cada `mkdir`/`upload`/`delete` debe invalidar `['files', phone, fullPath]`. | **DETALLADO EN EL PLAN**: Se formaliza la matriz de invalidación y el protocolo de verificación manual para evitar listas desactualizadas. |
+| **A7** | HALL-04: Suspensión por decisión de diseño requerida | **CONFIRMADO** | `DeviceCard.tsx:188` (`span` slot index: `w-5 h-4 text-[9px]`); WCAG 2.5.8 exige 24×24 px mínimo; ausencia de primitivas `Checkbox` en `src/components/ui/`. Preferencia del usuario: estética sobria, técnica y compacta. | Alterar el badge de índice para transformarlo en un checkbox táctil introduce un elemento interactivo visual no solicitado en una UI de alta densidad inspirada en Lovable/GenFarmer. Requiere decisión explícita de producto/diseño del usuario antes de tocar código. | **SUSPENDIDO DE IMPLEMENTACIÓN**: Se retira de la Etapa 4 obligatoria y se formulan 3 alternativas con sus trade-offs para que el usuario elija. |
+| **A8** | Corrección textual en autocrítica de Q1 | **CONFIRMADO** | `useScrcpyStream.ts:353` (`if (!active) return;`). | Error tipográfico menor en la redacción previa. | **CORREGIDO**: se sustituyó "cuando `!active` era falso" por "cuando `!active` es true". |
+
+---
+
+#### 2. Matriz de Hallazgos Vigente (Definitiva y Sincronizada)
+
+| ID | Hallazgo | Ubicación | Severidad | Esfuerzo | Tipo | Etapa Asignada |
+|:---|:---|:---|:---:|:---:|:---:|:---:|
+| **HALL-01** | Monolito de 2397 líneas con 47 `useState` | `CustomLocationsManager.tsx` | **ALTO** | Alto | COMPROBADO | **Etapa 2** |
+| **HALL-02** | 10 casos de sincronización y fetch manual a sanear (#2, #5, #6, #7, #8, #9, #10, #11, #12, #14) | 6 archivos | **MEDIO** | Medio | COMPROBADO | **Etapa 3** |
+| **HALL-03** | 4 componentes >900 líneas con múltiples responsabilidades | `UsbNetworkCenter`, `FocusView`, `FileExplorer`, `CreateDeviceModal` | **ALTO** | Alto | COMPROBADO | **Etapa 2** |
+| **HALL-04** | Accesibilidad de selección por teclado en grilla | `DeviceCard.tsx` | **MEDIO** | Medio | OPORTUNIDAD | **En Pausa** (Requiere decisión de diseño) |
+| **HALL-05** | Configuración de Oxlint subutilizada (activar como `warn`) | `.oxlintrc.json` | **ALTO** | Bajo | COMPROBADO | **Etapa 1** |
+| **HALL-06** | Acceso a ref de Map en limpieza (falso positivo linter) | `MapPicker.tsx:414` | **BAJO** | Bajo | OPORTUNIDAD | **Sin Acción** (Retirado del plan) |
+| **HALL-07** | Inputs sin `<label htmlFor="...">` asociado | `CreateDeviceModal`, `UsbNetworkCenter`, etc. | **MEDIO** | Bajo | COMPROBADO | **Etapa 4** |
+| **HALL-08** | Duplicación de subcomponentes `IconBtn` y `BarBtn` | `FileExplorer.tsx` | **MEDIO** | Bajo | COMPROBADO | **Etapa 2** |
+| **HALL-09** | ~~Supuesta obsolescencia de `InteractiveScreen`~~ | `FocusView.tsx`, `InteractiveScreen.tsx` | — | — | — | **ELIMINADO** (Decisión deliberada) |
+| **HALL-10** | Tipado `Promise<unknown>` en 11 funciones cuyos retornos se descartan | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | **Etapa 1** |
+| **HALL-11** | Uso de `autoFocus` invasivo en popovers | `DeviceControlRail`, `BulkBar`, `FileExplorer` | **MEDIO** | Bajo | COMPROBADO | **Etapa 4** |
+| **HALL-12** | Discrepancia documental de color en README | `README.md` vs `index.css` | **BAJO** | Bajo | COMPROBADO | **Etapa 4** |
+| **HALL-13** | Ausencia de Error Boundaries en raíz y rutas lazy (Pantalla blanca) | `main.tsx`, `App.tsx:345` | **ALTO** | Medio | COMPROBADO | **Etapa 1** |
+| **HALL-14** | Falta de `encodeURIComponent` defensivo en rutas REST ante `#`, `?`, `%` | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | **Etapa 1** |
+| **HALL-15** | Error espurio en consola por `configureDecoder` post-desmontaje | `src/lib/scrcpy/useScrcpyStream.ts:514` | **BAJO** | Bajo | OPORTUNIDAD | **Etapa 1** |
+| **HALL-16** | Parseo fallido de errores HTTP 422 de FastAPI (`[object Object]`) | `src/lib/api.ts:31-40` | **MEDIO** | Bajo | COMPROBADO | **Etapa 1** |
+| **HALL-17** | Falso éxito en `batchQuarantine` ante fallos parciales del backend | `src/components/grid/BulkBar.tsx:221-223` | **MEDIO** | Bajo | COMPROBADO | **Etapa 3** |
+
+---
+
+#### 3. Plan de Refactorización Vigente por Etapas
+
+---
+
+##### Etapa 1: Baseline Funcional, Tooling Seguro, Resiliencia y Correcciones de API
+**Objetivo:** Establecer la red de seguridad operativa, blindar la aplicación contra caídas de runtime y corregir contratos de datos sin tocar la arquitectura de componentes.
+
+1. **Protocolo de Verificación Funcional Previo (Paso 0 / Baseline):**
+   - El operador/desarrollador ejecuta manualmente el checklist de 10 flujos en `npm run dev` para registrar cualquier anomalía previa existente antes de realizar cambios.
+2. **Tooling Seguro en `.oxlintrc.json` (HALL-05):**
+   - Habilitar el plugin `jsx-a11y` y reglas de hooks con severidad `"warn"` (no `"error"`), permitiendo visibilidad de accesibilidad sin quebrar el pipeline por advertencias preexistentes.
+   - Desactivar expresamente reglas obsoletas de React 16 (`react/react-in-jsx-scope`, `react/jsx-uses-react`).
+3. **Resiliencia Global ante Errores de Render (HALL-13):**
+   - Crear `RootErrorBoundary` en `src/components/ui/RootErrorBoundary.tsx` con UI sobria Dark Tech y botón de recarga.
+   - Envolver el root de la app en `main.tsx`.
+   - Reemplazar `<Suspense fallback={null}>` en `App.tsx:345` por un fallback sutil no invasivo.
+4. **Corrección de Errores 422 de FastAPI en `api.ts` (HALL-16):**
+   - En `handleResponse`, detectar si `data.detail` es un array y extraer `msg` de cada elemento, erradicando el mensaje `Error: [object Object]`.
+5. **Silenciamiento de Log Espurio en WebCodecs (HALL-15):**
+   - Añadir la guarda `if (!active || decoder.state === 'closed') return;` antes de invocar `decoder.configure(...)` en `useScrcpyStream.ts:514`.
+6. **Tipado Defensivo y URL Encoding en `api.ts` (HALL-10, HALL-14):**
+   - Aplicar `encodeURIComponent(name)` en las rutas REST y definir tipos de retorno flexibles en `src/types.ts`.
+- **Verificación de Etapa 1:** `npm run build`, `npm run lint` (0 errores, advertencias controladas), `node --test test/*.ts` (24/24 pasan).
+
+---
+
+##### Etapa 2: Partición Modular Mecánica (100% Estructural sin Alteración Lógica)
+**Objetivo:** Reducir la complejidad de los 4 archivos gigantes mediante cortes de presentación limpios, manteniendo idéntico estado, idénticos efectos y cero cambios de comportamiento.
+
+1. **Descomposición de `CustomLocationsManager.tsx` (2397 líneas) en 4 submódulos bajo `src/components/locations/`:**
+   - `LocationsMapHero.tsx`: Chasis del mapa Leaflet, capas de círculos de radio y pines vectoriales.
+   - `LocationsInspector.tsx`: Panel lateral derecho de 380 px con detalle y formulario.
+   - `LocationGroupModal.tsx`: Diálogo para creación y edición de grupos.
+   - `BatchTeleportModal.tsx`: Diálogo de asignación masiva de ubicaciones a terminales.
+2. **Descomposición de `UsbNetworkCenter.tsx` (1373 líneas) en submódulos bajo `src/components/network/`:**
+   - `ModemInventoryTable.tsx`: Tabla de inventario de módems físicos.
+   - `ModemInspector.tsx`: Panel lateral de control de radio y asignación 1:1.
+   - `IpLedgerTable.tsx`: Historial paginado de IPs públicas.
+   - `FifoQueueBar.tsx`: Barra de cola FIFO y estado del enlace móvil.
+3. **Descomposición de `FocusView.tsx` (1171 líneas) en submódulos bajo `src/components/focus/`:**
+   - `FocusMetadataGrid.tsx`: Tarjeta compacta de especificaciones técnicas (2 columnas).
+   - `FocusGpsTab.tsx`: Pestaña y formulario de geolocalización.
+   - `FocusProxyTab.tsx`: Pestaña y formulario de proxy residencial.
+   - `FocusHealthTab.tsx`: Consola y auditoría de salud e integridad.
+   - *(Se preserva intacto el ciclo de vida sin `key` destructivo).*
+4. **Descomposición de `CreateDeviceModal.tsx` (911 líneas) bajo `src/components/create-wizard/`:**
+   - Extraer pasos del wizard: `StepDeviceSim.tsx`, `StepGpsProxy.tsx`, `StepResourcesSummary.tsx`.
+5. **Consolidación de Botones en `FileExplorer.tsx` (HALL-08):**
+   - Reemplazar las funciones internas `IconBtn` y `BarBtn` de las líneas 119-174 por el componente canónico `src/components/ui/IconBtn.tsx`.
+- **Verificación de Etapa 2:** `npm run build`, comprobación de que el tamaño del bundle no presenta duplicaciones, y re-ejecución del Protocolo de Verificación Funcional (10 flujos idénticos al baseline).
+
+---
+
+##### Etapa 3: Saneamiento de Data-Fetching, Caché y Acciones por Lote
+**Objetivo:** Migrar consultas manuales a TanStack Query, sanear los 10 casos de `set-state-in-effect` y corregir el reporte de cuarentena por lotes.
+
+1. **Estrategia de Caché e Invalidación para Catálogo de APKs (`['apks']`):**
+   - Crear hook `useApkCatalog()` con `staleTime: 30_000`.
+   - En `BulkBar.tsx` (#5) y `DeviceControlRail.tsx` (#6): sustituir fetch manual por `useApkCatalog({ enabled: popoverOpen })`.
+   - En `ApkRepository.tsx` (#8): sustituir `fetchApks()` por `useApkCatalog()`.
+   - **Manejo de Mutaciones:**
+     - En `toggleDefault`: aplicar actualización optimista en caché con `queryClient.setQueryData(['apks'], ...)`, con rollback en `onError`.
+     - En `uploadApk`: invalidar `queryClient.invalidateQueries({ queryKey: ['apks'] })` al completar la subida.
+     - En `deleteApk`: invalidar `queryClient.invalidateQueries({ queryKey: ['apks'] })`.
+2. **Estrategia de Caché para Explorador de Archivos (`['files', phone, path]`):**
+   - En `FileExplorer.tsx` (#11): crear hook `useDeviceFiles(phoneName, fullPath)` con `staleTime: 10_000`.
+   - Al ejecutar `mkdir`, `uploadFile`, `deleteFile` o `sendFile`: invalidar `['files', phoneName, fullPath]`.
+   - En #12: aislar el visor de texto en subcomponente `FilePreviewModal` que descargue bajo demanda.
+3. **Saneamiento de Casos de Estado Local (#2, #7, #9, #10, #14):**
+   - En `ApkFileManager.tsx` (#2): eliminar `useEffect`; inicializar directamente con `useState(preselectedInstance ? 'files' : initialTab)`.
+   - En `UsbNetworkCenter.tsx` (#9): trasladar el temporizador de cuenta regresiva exclusivamente al interior de `CountdownRing`.
+   - En `CreateDeviceModal.tsx` (#7), `FileExplorer.tsx` (#10) y `CustomLocationsManager.tsx` (#14): inicializar estados en render o subcomponentes sin sincronizaciones forzadas en efectos.
+4. **Corrección de Cuarentena por Lotes (HALL-17):**
+   - En `BulkBar.tsx:221-223`, tipar la respuesta de `api.batchQuarantine` como `BatchQuarantineResponse`.
+   - Contabilizar fallos: si `results.some(r => r.status === 'error')`, emitir `toast.warning("N aislados, M con error")` en lugar de falso éxito.
+- **Verificación de Etapa 3:**
+  - Probar subida, borrado y alternancia de default de APK comprobando que la grilla y el panel lateral se actualizan de inmediato sin quedar desfasados.
+  - Comprobar navegación entre carpetas de `/sdcard/` con refresco tras crear carpetas o subir archivos.
+  - `npm run build` y `npm run lint`.
+
+---
+
+##### Etapa 4: Accesibilidad WCAG 2.2, Ergonomía y Cierre
+**Objetivo:** Elevar el estándar de accesibilidad de formularios y popovers manteniendo la sobriedad estética Dark Tech.
+
+1. **Asociación Semántica de Labels en Formularios (HALL-07):**
+   - Asignar `id` únicos y enlazar `<label htmlFor="...">` en `CreateDeviceModal`, `UsbNetworkCenter`, `FocusView` y `CustomLocationsManager`.
+2. **Gestión de Foco en Popovers y Diálogos (HALL-11):**
+   - Remover atributos `autoFocus` invasivos en inputs de `DeviceControlRail`, `BulkBar` y `FileExplorer`.
+   - Delegar el foco inicial en `onOpenAutoFocus` gestionado por Radix UI.
+3. **Discrepancia Documental de Color (HALL-12):**
+   - Actualizar en `web/README.md` la especificación de tokens OKLCH reflejando la paleta canónica real de `src/index.css` (`--primary: oklch(0.74 0.14 225)`).
+- **Verificación de Etapa 4:**
+  - `oxlint -A react/react-in-jsx-scope --jsx-a11y-plugin` con reducción drástica de advertencias de labels y foco.
+  - Navegación por teclado completa con `Tab` a través de los formularios de creación y configuración.
+
+---
+
+#### 4. Opciones de Diseño para HALL-04 (Selección Masiva Accesible por Teclado)
+
+Debido a que `DeviceCard.tsx` aloja en su interior controles de emulación de hardware (`DeviceControlRail`) y video en vivo (`ScrcpyLiveScreen`), **la implementación de selección por teclado se suspende a la espera de la decisión de diseño del usuario**. Se presentan 3 alternativas evaluadas:
+
+- **Opción A (Recomendada — Botón Checkbox Compacto en Slot Index):**
+  - *Diseño:* Convertir el badge actual de slot (`<span className="...">{index + 1}</span>`, línea 188) en un botón interactivo accesible: `<button type="button" role="checkbox" aria-checked={selected} aria-label={`Seleccionar CloudPhone ${instance.instance_name}`} className="...">{selected ? <Check className="size-3" /> : index + 1}</button>`.
+  - *Ventajas:* Cero impacto en el chasis de la pantalla; conserva la alta densidad visual; separa limpiamente la selección del foco de video; cumple WCAG con `role="checkbox"`.
+  - *Desventajas:* Su tamaño actual (20×18 px) queda por debajo de los 24×24 px recomendados por WCAG 2.5.8 a menos que se le agregue un padding táctil invisible de 24 px (`p-1`).
+
+- **Opción B (Atajo Global de Teclado con Foco Navegable):**
+  - *Diseño:* El contenedor exterior `DeviceCard` no es un botón ni un checkbox. Soporta navegación por flechas del teclado en la grilla (`ArrowRight`/`ArrowLeft`) y la barra espaciadora (`Space`) conmuta la selección exclusivamente si no hay ningún stream enfocado.
+  - *Ventajas:* Cero cambios visuales; cero elementos DOM adicionales.
+  - *Desventajas:* Menor descubribilidad para tecnologías asistivas tradicionales (requiere documentar el atajo).
+
+- **Opción C (Checkbox Flotante Superior Derecho):**
+  - *Diseño:* Añadir un checkbox explícito de Radix o Tailwind en la esquina superior derecha de la tarjeta, visible al hover o cuando la tarjeta está seleccionada.
+  - *Ventajas:* Estándar universal de interfaces de galería / selección masiva.
+  - *Desventajas:* Ocupa superficie visual sobre la miniatura de pantalla de Android y puede solaparse con elementos de la interfaz móvil.
+
 
 
 
