@@ -916,5 +916,113 @@ En esta pasada se contrastaron las observaciones P1–P6 del revisor contra el c
 2. **Evaluación de Tipos sin Mirar el Uso Real (P2):** Se clasificó el tipado de 11 funciones como severidad MEDIO sin haber comprobado antes si los llamadores usaban los valores de retorno. El hecho de que los 15 llamadores descartaran el retorno reduce el impacto a una mejora de calidad contractual (BAJO), excepto en `batchQuarantine`.
 3. **Punto Ciego de Cuarentena Parcial (P3):** Se documentó en la tabla de 8.8 que `batchQuarantine` respondía HTTP 200 con resultados mixtos, pero no se conectó ese hallazgo del servidor con el código de `BulkBar.tsx` que asumía éxito ciego. El revisor identificó correctamente ese puente entre backend y frontend.
 
+---
+
+### 8.10 Revisión Crítica de la Cuarta Pasada (Ajuste Fino de Premisas y Foco de Ejecución)
+
+En esta cuarta iteración se verificaron las hipótesis Q1 a Q6 contra el código real de `src/lib/scrcpy/useScrcpyStream.ts`, `src/components/network/UsbNetworkCenter.tsx`, `src/components/farm/ScrcpyLiveScreen.tsx`, `src/components/focus/FocusView.tsx`, y la semántica estándar de `fetch` / WHATWG URL.
+
+---
+
+#### 1. Tabla de Evaluación de Observaciones (Q1 a Q6)
+
+| Obs | Asunto | Veredicto | Evidencia Real (`archivo:línea`) | Razonamiento Técnico | Decisión en el Informe |
+|:---|:---|:---:|:---|:---|:---|
+| **Q1** | Severidad y consecuencia real de HALL-15 (`configureDecoder`) | **CONFIRMADO** | `useScrcpyStream.ts:506-530` (ambas llamadas a `configure` están dentro de bloques `try/catch`); `useScrcpyStream.ts:353` (`if (!active || reconnectTimerRef.current) return`). | El revisor tiene razón. Si `decoder.close()` corre en desmontaje, la llamada posterior a `decoder.configure()` es atrapada por el `try/catch`. No arroja una excepción no capturada ni colapsa la app: simplemente emite un `console.error` en la consola del navegador, y `scheduleReconnect` aborta de inmediato porque `!active` es true. | **HALL-15 RECLASIFICADO** de MEDIO a **BAJO / OPORTUNIDAD**. Se corrige la consecuencia: no es un crash, sino un error espurio de consola al desmontar. |
+| **Q2** | Frecuencia de renders reales del countdown (HALL-02 #9) | **CONFIRMADO** | `UsbNetworkCenter.tsx:108` (`remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))`); semántica `Object.is` de React `useState`. | El revisor tiene razón. Aunque el `setInterval` corre cada 250 ms, `remaining` evalúa al mismo número entero de segundos durante 4 ticks consecutivos. React compara con `Object.is` y aborta el render (*bail-out*) cuando el valor es idéntico. Se produce solo **~1 render por segundo** y únicamente durante los 5 s de la oferta pendiente. | **HALL-02 #9 CORREGIDO**: se elimina la afirmación de "4 renders/segundo". La extracción a `CountdownRing` se mantiene como buena práctica de colocación, pero con impacto real de ~5 renders por evento. |
+| **Q3** | Rigor métrico del bundle y fragilidad de `manualChunks` | **CONFIRMADO** | Suma de breakdown anterior: 140+45+40+35+150 = 410 KB vs 451.26 KB reales; naturaleza de `lucide-react` (1400+ iconos). | El revisor tiene razón. Los números anteriores eran una estimación orientativa y no una medición exacta con visualizador. Además, configurar `manualChunks` en Vite 8 para agrupar `lucide-react` puede romper el tree-shaking e inflar el bundle. Proponerlo como obligatorio viola la regla de "no optimizar sin evidencia". | **CORREGIDO**: se etiqueta el desglose explícitamente como **estimación orientativa** y `manualChunks` se degrada a **OPORTUNIDAD OPCIONAL**, retirándose de las tareas obligatorias del plan. |
+| **Q4** | Conflicto de teclado entre `DeviceCard` y `ScrcpyLiveScreen` | **CONFIRMADO** | `ScrcpyLiveScreen.tsx:80-84` (`canvasRef.current.focus()`), `ScrcpyLiveScreen.tsx:112-142` (captura `Enter`, `Tab` y alfanuméricas para enviarlas a Android). | El revisor tiene razón. Si se pone `tabIndex={0}` con `Enter/Space` en la superficie de la pantalla para seleccionar la tarjeta, cuando el usuario active el live stream, el canvas de `ScrcpyLiveScreen` tomará el foco y capturará `Enter`/`Tab` para Android. Si un usuario por teclado solo quiere seleccionar tarjetas para la `BulkBar`, no debe disparar el stream en vivo a 30 FPS. | **HALL-04 REVISADO**: se descarta capturar `Enter/Space` en la pantalla. Se define un **control de selección accesible dedicado** en el badge de índice de slot (`<button role="checkbox" aria-label="Seleccionar...">`), separando limpiamente la selección masiva de la emulación de video. |
+| **Q5** | Mapeo de los 14 casos de `set-state-in-effect` y `key` en `FocusView` | **CONFIRMADO** | `FocusView.tsx:152-181` (comentario de código documenta explícitamente que el efecto preserva la selección de usuario frente a polling); `App.tsx:142` (bail-out confirmado). | El revisor tiene razón. Poner `key={instance.instance_name}` en `FocusView` desmontaría todo el componente, reseteando la pestaña activa (`gps`/`proxy`/`salud`), el reporte de auditoría y los formularios en edición. El caso #13 es deliberado y legítimo para mantener el contexto del operador. Además, el caso #1 es benigno y no debe tocarse. | **CORREGIDO**: se mapean formalmente los 14 casos (ver 8.10.2). Se descartan intervenciones en #1 y #13, y se asignan rigurosamente los casos reales restantes (#2, #5, #6, #7, #8, #9, #10, #11, #12, #14). |
+| **Q6** | Caracteres que realmente rompen URLs en `fetch` (HALL-14) | **CONFIRMADO** | Prueba con `new URL('/api/v1/instances/phone 1')` -> produce `/api/v1/instances/phone%201`. En cambio, `phone#1` produce path `/api/v1/instances/phone` (trunca el resto como hash) y `phone?1` lo convierte en query string. | El revisor tiene razón. La especificación WHATWG URL usada por `fetch` autocodifica espacios a `%20`. Los caracteres que realmente corrompen la ruta REST sin codificar son `#` (trunca la ruta en el cliente antes de enviar el paquete HTTP), `?` (bifurca hacia query string) y `%` (ambigüedad de decodificación). | **HALL-14 CORREGIDO**: se sustituye el ejemplo erróneo de espacios por los caracteres reales de rotura (`#`, `?`, `%`). |
+
+---
+
+#### 2. Mapeo Exhaustivo y Definitivo de los 14 Casos de `set-state-in-effect` (HALL-02)
+
+Para cerrar cualquier ambigüedad en el plan de refactorización, se auditan y asignan los 14 casos individualmente:
+
+| # | Archivo:Línea | Estado | Diagnóstico Verificado | Decisión de Plan |
+|:---:|:---|:---|:---|:---:|
+| 1 | `App.tsx:140` | `selectedNames` | Purga defensiva con bail-out por `Object.is`. 0 renders extra nominales. | **DESCARTADO** (No tocar: regla de no optimizar sin evidencia). |
+| 2 | `ApkFileManager.tsx:27` | `tab` | `useEffect` redundante que replica la inicialización de `initialTab`. | **Etapa 2** (Eliminar efecto; inicializar en `useState`). |
+| 3 | `InteractiveScreen.tsx:55` | `currentFrame` | Limpieza de fotogramas del bucle de captura canvas/JPEG. | **CONSERVAR** (Uso legítimo de sincronización con sistema externo). |
+| 4 | `useScrcpyStream.ts:296` | `status` | Fija estado `'idle'` cuando el streaming está inactivo. | **CONSERVAR** (Uso legítimo de máquina de estados WebCodecs). |
+| 5 | `BulkBar.tsx:72` | `apks` | Fetch manual de catálogo en popover sin caché. | **Etapa 3** (Migrar a `useQuery({ queryKey: ['apks'] })`). |
+| 6 | `DeviceControlRail.tsx:130` | `railApks` | Idéntico fetch manual duplicado en popover del riel. | **Etapa 3** (Migrar a `useQuery({ queryKey: ['apks'] })`). |
+| 7 | `CreateDeviceModal.tsx:131` | `timezone`, etc. | Sincroniza ubicación por defecto con refs y efectos al abrir modal. | **Etapa 2** (Inicialización limpia dentro del subcomponente de wizard). |
+| 8 | `ApkRepository.tsx:115` | `apks` | `fetchApks()` manual en montaje con `setLoading(true)` síncrono. | **Etapa 3** (Migrar a `useQuery({ queryKey: ['apks'] })`). |
+| 9 | `UsbNetworkCenter.tsx:100` | `countdown` | Temporizador regresivo de 5s con impacto de ~1 render/s por 5s. | **Etapa 2** (Mover estado a `CountdownRing` por colocación de componentes). |
+| 10 | `FileExplorer.tsx:238` | `phoneName` | Sincroniza estado local con prop `preselectedInstance`. | **Etapa 2** (Manejo no controlado / derivación en subcomponente). |
+| 11 | `FileExplorer.tsx:244` | `files` | Carga de archivos por `useEffect` al cambiar de carpeta o dispositivo. | **Etapa 3** (Migrar a `useQuery(['files', phone, path])`). |
+| 12 | `FileExplorer.tsx:254` | `previewContent` | Descarga de contenido de texto para lightbox. | **Etapa 3** (Aislar en subcomponente `FilePreviewModal` con `useQuery`). |
+| 13 | `FocusView.tsx:159` | `mapLat`, `mapLon` | Sincroniza GPS conservando la pestaña activa y reportes de auditoría. | **CONSERVAR** (Patrón deliberado de inspector: no usar `key` destructivo). |
+| 14 | `CustomLocationsManager.tsx:187` | `mapLat`, etc. | Fija coordenadas iniciales de la ubicación predeterminada general. | **Etapa 2** (Derivar coordenadas en el subcomponente `LocationsMapHero`). |
+
+---
+
+#### 3. Matriz Consolidada Definitiva de Hallazgos
+
+| ID | Hallazgo | Ubicación | Severidad | Esfuerzo | Tipo | Etapa Asignada |
+|:---|:---|:---|:---:|:---:|:---:|:---:|
+| **HALL-01** | Monolito de 2397 líneas con 47 `useState` | `CustomLocationsManager.tsx` | **ALTO** | Alto | COMPROBADO | Etapa 2 |
+| **HALL-02** | 8 casos justificados de `set-state-in-effect` a sanear (#2, #5, #6, #7, #8, #9, #11, #12) | 6 archivos | **ALTO** | Medio | COMPROBADO | Etapa 2 y 3 |
+| **HALL-03** | 4 componentes >900 líneas con múltiples responsabilidades | `UsbNetworkCenter`, `FocusView`, `FileExplorer`, `CreateDeviceModal` | **ALTO** | Alto | COMPROBADO | Etapa 2 |
+| **HALL-04** | Elementos interactivos sin control accesible desacoplado | `DeviceCard`, `PhoneScreen`, `DeviceControlRail` | **ALTO** | Medio | COMPROBADO | Etapa 4 |
+| **HALL-05** | Configuración de Oxlint subutilizada | `.oxlintrc.json` | **ALTO** | Bajo | COMPROBADO | Etapa 1 |
+| **HALL-06** | Acceso a ref de Map en limpieza de `useEffect` | `MapPicker.tsx:414` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-07** | Inputs sin `<label htmlFor="...">` asociado | `CreateDeviceModal`, `UsbNetworkCenter`, etc. | **MEDIO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-08** | Duplicación de subcomponentes `IconBtn` y `BarBtn` | `FileExplorer.tsx` | **MEDIO** | Bajo | COMPROBADO | Etapa 2 |
+| **HALL-09** | ~~Supuesta obsolescencia de `InteractiveScreen`~~ | `FocusView.tsx`, `InteractiveScreen.tsx` | — | — | — | **ELIMINADO** (Decisión deliberada) |
+| **HALL-10** | Tipado `Promise<unknown>` en 11 funciones cuyos retornos se descartan | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-11** | Uso de `autoFocus` invasivo en popovers | `DeviceControlRail`, `BulkBar`, `FileExplorer` | **MEDIO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-12** | Discrepancia documental de color en README | `README.md` vs `index.css` | **BAJO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-13** | Ausencia de Error Boundaries en raíz y rutas lazy (Pantalla blanca) | `main.tsx`, `App.tsx:345` | **ALTO** | Medio | COMPROBADO | Etapa 1 |
+| **HALL-14** | Falta de `encodeURIComponent` en rutas REST ante nombres con `#`, `?`, `%` | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-15** | Error espurio en consola por `configureDecoder` post-desmontaje | `src/lib/scrcpy/useScrcpyStream.ts:514` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-16** | Parseo fallido de errores HTTP 422 de FastAPI (`[object Object]`) | `src/lib/api.ts:31-40` | **MEDIO** | Bajo | COMPROBADO | Etapa 1 |
+| **HALL-17** | Falso éxito en `batchQuarantine` ante fallos parciales del backend | `src/components/grid/BulkBar.tsx:221-223` | **MEDIO** | Bajo | COMPROBADO | Etapa 3 |
+
+---
+
+#### 4. Plan de Refactorización Definitivo Ajustado
+
+- **Etapa 1: Tooling, Tipos, Resiliencia y Correcciones Rápidas:**
+  1. Configuración de `.oxlintrc.json` activando `jsx-a11y` y reglas seguras (desactivando reglas obsoletas de React 16).
+  2. Implementación de `RootErrorBoundary` en `main.tsx` y fallback visual para `<Suspense>` en `App.tsx` (HALL-13).
+  3. Corrección de `handleResponse` en `api.ts` para parsear listas de errores 422 de FastAPI (HALL-16).
+  4. Guarda de seguridad `if (!active || decoder.state === 'closed') return;` en `useScrcpyStream.ts:514` para silenciar error de consola (HALL-15).
+  5. Copia local de ref en `MapPicker.tsx:414` (HALL-06).
+  6. Tipado flexible en `src/types.ts` y aplicación de `encodeURIComponent` defensivo en `api.ts` (HALL-10, HALL-14).
+  7. Ejecución del Protocolo de Verificación Funcional Pre-Refactor (10 flujos manuales).
+
+- **Etapa 2: Partición Modular Mecánica (Cortes Limpios sin Cambio de Lógica):**
+  1. Partición de `CustomLocationsManager.tsx` (2397 líneas) en: `LocationsMapHero.tsx`, `LocationsInspector.tsx`, `LocationGroupModal.tsx` y `BatchTeleportModal.tsx`. Derivar coordenadas en `LocationsMapHero` (#14).
+  2. Partición de `UsbNetworkCenter.tsx` (1373 líneas) extrayendo: `ModemInventoryTable.tsx`, `ModemInspector.tsx`, `IpLedgerTable.tsx`, `FifoQueueBar.tsx`. Mover el estado del countdown a `CountdownRing` (#9).
+  3. Partición de `FocusView.tsx` (1171 líneas) extrayendo: `FocusMetadataGrid.tsx`, `FocusGpsTab.tsx`, `FocusProxyTab.tsx`, `FocusHealthTab.tsx` (conservando el ciclo de vida sin `key` destructivo, manteniendo #13).
+  4. Partición de `CreateDeviceModal.tsx` (911 líneas) separando los pasos del wizard y saneando inicialización (#7).
+  5. Sustituir en `FileExplorer.tsx` los botones internos por `src/components/ui/IconBtn.tsx` (HALL-08) y limpiar sincronización de #2 y #10.
+
+- **Etapa 3: Saneamiento de Data-Fetching y Acciones por Lote:**
+  1. Migrar consultas manuales de APKs en `BulkBar.tsx`, `DeviceControlRail.tsx` y `ApkRepository.tsx` a `useQuery({ queryKey: ['apks'] })` (#5, #6, #8).
+  2. Migrar navegación de ficheros en `FileExplorer.tsx` a `useQuery(['files', phone, path])` (#11) y visor de texto a `FilePreviewModal` (#12).
+  3. Corregir `handleBatchQuarantine` en `BulkBar.tsx` (HALL-17) para evaluar el array de resultados devuelto por el backend y alertar sobre fallos parciales.
+
+- **Etapa 4: Accesibilidad WCAG 2.2, Ergonomía y Cierre:**
+  1. Implementar control de selección accesible desacoplado en el badge de `DeviceCard.tsx` (`<button role="checkbox">`), evitando interferencias con los atajos de teclado de `ScrcpyLiveScreen.tsx` (HALL-04).
+  2. Asociar etiquetas en formularios mediante `htmlFor` e `id` en `CreateDeviceModal.tsx` y tabs de `FocusView.tsx` (HALL-07).
+  3. Reemplazar `autoFocus` invasivo por gestión de foco de Radix (HALL-11).
+  4. Actualizar la discrepancia documental de color en `README.md` (HALL-12).
+
+---
+
+#### 5. Autocrítica del Auditor (Cuarta Pasada)
+
+1. **Lectura Incompleta del Manejo de Excepciones (Q1):** Se diagnosticó que `configureDecoder` causaba un crash por `DOMException` sin verificar que el bloque `try/catch` exterior capturaba el error y que `scheduleReconnect` abortaba cuando `!active` era falso.
+2. **Ignorancia del Bail-out por Valor Idéntico (Q2):** Se asumió que cada ejecución de un `setInterval` de 250 ms causaba un re-render sin notar que `setCountdown` recibía enteros redondeados por segundo, donde React aborta el render por `Object.is`.
+3. **Propuesta Incompleta de Teclado (Q4):** Se propuso Enter/Space en la superficie de la pantalla para accesibilidad sin contrastar que el componente hijo `ScrcpyLiveScreen` roba el foco al canvas y captura Enter/Tab para Android.
+4. **Propuesta Peligrosa de `key` (Q5):** Se sugirió `key={instance.instance_name}` en `FocusView` para evitar un efecto sin advertir que desmontaría la vista completa, reseteando pestañas activas y consolas de auditoría.
+5. **Inexactitud en URL Parsers (Q6):** Se usó el espacio como ejemplo de rotura en `fetch` ignorando que el estándar WHATWG URL autocodifica espacios a `%20`, siendo `#`, `?` y `%` los verdaderos caracteres de corrupción de ruta.
+
+
 
 
