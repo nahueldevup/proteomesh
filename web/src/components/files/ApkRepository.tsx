@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Upload,
@@ -31,6 +32,7 @@ import {
 } from "../ui/alert-dialog";
 import type { Instance, ApkEntry } from "../../types";
 import { api } from "../../lib/api";
+import { useApkCatalog, useInstalledApks, queryKeys } from "../../lib/queries";
 import { cn, getErrorMessage } from "../../lib/utils";
 
 type Filter = "all" | "default" | "bundle" | "apk";
@@ -77,8 +79,9 @@ interface ApkRepositoryProps {
 }
 
 export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryProps) {
-  const [apks, setApks] = useState<ApkEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: apks = [], isLoading: loading } = useApkCatalog();
+  const { data: installedMap = {} } = useInstalledApks();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -89,31 +92,7 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
   const [dragging, setDragging] = useState(false);
   const [toDelete, setToDelete] = useState<ApkEntry | null>(null);
   const [showSplits, setShowSplits] = useState(false);
-  const [installedMap, setInstalledMap] = useState<Record<string, string[]>>({});
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const fetchApks = async () => {
-    setLoading(true);
-    try {
-      const [data, installed] = await Promise.all([
-        api.getApks(),
-        api.getInstalledApks().catch(() => ({} as Record<string, string[]>)),
-      ]);
-      setApks(data);
-      setInstalledMap(installed);
-      if (data.length > 0 && (selectedId === null || !data.some((a) => a.id === selectedId))) {
-        setSelectedId(data[0].id);
-      }
-    } catch (err) {
-      toast.error(`Error al listar APKs: ${getErrorMessage(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchApks();
-  }, []);
 
   const visible = useMemo(() => {
     return apks.filter((a) => {
@@ -130,7 +109,11 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
     });
   }, [apks, query, filter]);
 
-  const sel = apks.find((a) => a.id === selectedId) ?? null;
+  const effectiveSelectedId =
+    selectedId !== null && apks.some((a) => a.id === selectedId)
+      ? selectedId
+      : (apks[0]?.id ?? null);
+  const sel = apks.find((a) => a.id === effectiveSelectedId) ?? null;
   const onlineInstances = instances.filter((p) => p.running);
   const totalSizeBytes = apks.reduce((s, a) => s + (a.size || 0), 0);
   const totalSizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(1);
@@ -148,10 +131,18 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
     const willBeDefault = !targetApk.is_default;
 
     // Optimistic UI update
-    setApks((xs) => xs.map((a) => (a.id === id ? { ...a, is_default: willBeDefault } : a)));
+    await queryClient.cancelQueries({ queryKey: queryKeys.apks });
+    const previousApks = queryClient.getQueryData<ApkEntry[]>(queryKeys.apks);
+
+    queryClient.setQueryData<ApkEntry[]>(queryKeys.apks, (old) =>
+      (old || []).map((a) => (a.id === id ? { ...a, is_default: willBeDefault } : a))
+    );
 
     try {
-      const currentDefaults = apks.filter((a) => (a.id === id ? willBeDefault : a.is_default)).map((a) => a.id);
+      const currentDefaults = apks
+        .map((a) => (a.id === id ? { ...a, is_default: willBeDefault } : a))
+        .filter((a) => a.is_default)
+        .map((a) => a.id);
       await api.setDefaultApks(currentDefaults);
       toast.success(
         willBeDefault
@@ -159,8 +150,12 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
           : `${deriveDisplayName(targetApk.original_name, targetApk.package)} ya no se autoinstala`
       );
     } catch (err) {
+      if (previousApks) {
+        queryClient.setQueryData(queryKeys.apks, previousApks);
+      }
       toast.error(`Error al actualizar default: ${getErrorMessage(err)}`);
-      fetchApks();
+    } finally {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apks });
     }
   };
 
@@ -195,7 +190,7 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
           toast.warning(res.warning);
         }
         toast.success(`${res.entry_type === "bundle" ? "Bundle" : "APK"} "${file.name}" agregado al repositorio`);
-        await fetchApks();
+        await queryClient.invalidateQueries({ queryKey: queryKeys.apks });
         if (res.id) selectApk(res.id);
       } catch (err) {
         const errMsg = getErrorMessage(err);
@@ -243,10 +238,11 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
       });
 
       setJobs(newJobs);
-      setInstalledMap((prev) => ({
+      queryClient.setQueryData<Record<string, string[]>>(queryKeys.installedApks, (prev = {}) => ({
         ...prev,
         [sel.package]: [...new Set([...(prev[sel.package] || []), ...newlyInstalled])],
       }));
+      queryClient.invalidateQueries({ queryKey: queryKeys.installedApks });
 
       const okCount = results.filter((r) => r.ok && r.status === "ok").length;
       const skipCount = results.filter((r) => r.status === "skipped").length;
@@ -265,12 +261,11 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
 
   const confirmDelete = async () => {
     if (!toDelete) return;
+    const deletedId = toDelete.id;
     try {
-      await api.deleteApk(toDelete.id);
-      const rest = apks.filter((a) => a.id !== toDelete.id);
-      setApks(rest);
-      if (rest.length > 0) selectApk(rest[0].id);
-      else setSelectedId(null);
+      await api.deleteApk(deletedId);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.apks });
+      if (selectedId === deletedId) setSelectedId(null);
       toast.success(`${deriveDisplayName(toDelete.original_name, toDelete.package)} eliminada`);
     } catch (err) {
       toast.error(`Error al eliminar: ${getErrorMessage(err)}`);
@@ -397,7 +392,7 @@ export function ApkRepository({ instances, onRefreshInstances }: ApkRepositoryPr
             </thead>
             <tbody>
               {visible.map((a) => {
-                const active = a.id === selectedId;
+                const active = a.id === effectiveSelectedId;
                 const displayName = deriveDisplayName(a.original_name, a.package);
                 const sizeMB = (a.size / (1024 * 1024)).toFixed(1);
                 const isBundle = a.entry_type === "bundle";

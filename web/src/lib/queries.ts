@@ -6,6 +6,8 @@ import type {
   UsbNetworkOverview,
   CustomLocationsCatalog,
   LocationData,
+  ApkEntry,
+  FileEntry,
 } from '../types';
 
 export const queryKeys = {
@@ -16,6 +18,9 @@ export const queryKeys = {
   streamInfo: (name?: string, player?: string) => ['stream-info', name, player] as const,
   locationsCatalog: ['locations-catalog'] as const,
   locationPresets: ['location-presets'] as const,
+  apks: ['apks'] as const,
+  installedApks: ['installed-apks'] as const,
+  files: (phoneName?: string, fullPath?: string) => ['files', phoneName, fullPath] as const,
 };
 
 export const EMPTY_CATALOG: CustomLocationsCatalog = {
@@ -74,5 +79,36 @@ export function useLocationPresets(options?: { enabled?: boolean }) {
     queryFn: () => api.getLocationPresets().catch(() => ({})),
     staleTime: 60_000,
     enabled: options?.enabled,
+  });
+}
+
+export function useApkCatalog(options?: { enabled?: boolean }) {
+  return useQuery<ApkEntry[]>({
+    queryKey: queryKeys.apks,
+    queryFn: () => api.getApks(),
+    staleTime: 30_000,
+    enabled: options?.enabled,
+  });
+}
+
+export function useInstalledApks(options?: { enabled?: boolean }) {
+  return useQuery<Record<string, string[]>>({
+    queryKey: queryKeys.installedApks,
+    queryFn: () => api.getInstalledApks().catch(() => ({})),
+    staleTime: 30_000,
+    enabled: options?.enabled,
+  });
+}
+
+export function useDeviceFiles(
+  phoneName?: string,
+  fullPath?: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery<FileEntry[]>({
+    queryKey: queryKeys.files(phoneName, fullPath),
+    queryFn: () => (phoneName && fullPath ? api.listFiles(phoneName, fullPath) : Promise.resolve([])),
+    staleTime: 10_000,
+    enabled: Boolean(phoneName && fullPath && (options?.enabled ?? true)),
   });
 }

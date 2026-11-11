@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Power,
   RotateCw,
@@ -21,9 +21,9 @@ import { IconBtn } from '../ui/IconBtn';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
-import { useLocationsCatalog, EMPTY_CATALOG } from '../../lib/queries';
+import { useLocationsCatalog, EMPTY_CATALOG, useApkCatalog } from '../../lib/queries';
 import { cn, getErrorMessage } from '../../lib/utils';
-import type { LocationData, ApkEntry } from '../../types';
+import type { LocationData } from '../../types';
 import { toast } from 'sonner';
 import { useExclusivePopover } from '../../lib/useExclusivePopover';
 
@@ -54,8 +54,7 @@ export default function BulkBar({
   const [urlValue, setUrlValue] = useState('');
 
   const apkPopover = useExclusivePopover('bulk:apk');
-  const [apks, setApks] = useState<ApkEntry[]>([]);
-  const [apksLoading, setApksLoading] = useState(false);
+  const { data: apks = [], isLoading: apksLoading } = useApkCatalog({ enabled: apkPopover.open });
   const [selectedApkId, setSelectedApkId] = useState<number | null>(null);
   const [installingApk, setInstallingApk] = useState(false);
 
@@ -65,25 +64,6 @@ export default function BulkBar({
 
   // Confirm delete modal state
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-
-  useEffect(() => {
-    if (!apkPopover.open) return;
-    let cancelled = false;
-    setApksLoading(true);
-    api.getApks()
-      .then((data) => {
-        if (!cancelled) setApks(data);
-      })
-      .catch((err) => {
-        if (!cancelled) toast.error(`Error al cargar APKs: ${getErrorMessage(err)}`);
-      })
-      .finally(() => {
-        if (!cancelled) setApksLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apkPopover.open]);
 
   const count = selectedNames.length;
   if (count < 2) return null;

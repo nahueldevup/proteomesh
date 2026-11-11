@@ -1,4 +1,4 @@
-import { Component, lazy, memo, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Component, lazy, memo, Suspense, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
   Power,
@@ -28,6 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { useExclusivePopover } from '../../lib/useExclusivePopover';
 import { closeActivePopover } from '../../lib/popoverStore';
+import { useApkCatalog } from '../../lib/queries';
 import type { UsbSlice } from './DeviceCard';
 
 // Contenido de los Popovers cargado perezosamente (mismo chunk compartido).
@@ -120,28 +121,8 @@ export const DeviceControlRail = memo(function DeviceControlRail({
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   // APKs rápidos desde el repo (botón 12)
-  const [railApks, setRailApks] = useState<ApkEntry[]>([]);
-  const [railApksLoading, setRailApksLoading] = useState(false);
+  const { data: railApks = [], isLoading: railApksLoading } = useApkCatalog({ enabled: apkPopover.open });
   const [railInstallingId, setRailInstallingId] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!apkPopover.open) return;
-    let cancelled = false;
-    setRailApksLoading(true);
-    api.getApks()
-      .then((data) => {
-        if (!cancelled) setRailApks(data);
-      })
-      .catch((err) => {
-        if (!cancelled) toast.error(`Error al cargar APKs: ${getErrorMessage(err)}`);
-      })
-      .finally(() => {
-        if (!cancelled) setRailApksLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apkPopover.open]);
 
   const offerSeconds = pendingOffer?.expires_in_seconds ?? 5;
 
