@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MapPin,
-  MapPinPlus,
   Plus,
   Trash2,
-  Smartphone,
   Search,
-  Loader2,
   Folder,
   Layers,
   ChevronDown,
-  ChevronRight,
   Globe,
   Edit2,
   X,
@@ -18,13 +14,7 @@ import {
   Star,
   Check,
   CircleDot,
-  Copy,
-  Crosshair,
-  LocateFixed,
-  ScanSearch,
-  Navigation,
-  MousePointerClick,
-  SearchX,
+  Loader2,
 } from 'lucide-react';
 import type { CustomLocation, LocationGroup, Instance, LocationData, CustomLocationsCatalog } from '../../types';
 import { useQueryClient } from '@tanstack/react-query';
@@ -47,64 +37,27 @@ import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
 import { getPresetDisplay } from '../../lib/locations';
 import type { MapPickerHandle, MapPinItem } from '../MapPicker';
-
-const MapPicker = lazy(() => import('../MapPicker').then((m) => ({ default: m.MapPicker })));
+import {
+  DEFAULT_TZ,
+  DEFAULT_PRESET_MARKER_ID,
+  UNGROUPED_COLOR,
+  type Scope,
+  type JobState,
+  sameCoords,
+  isPhoneAtLocation,
+  fieldClass,
+  fieldLabelClass,
+  toolbarBtnClass,
+} from './locationsTypes';
+import { LocationsMapHero } from './LocationsMapHero';
+import { LocationsInspector } from './LocationsInspector';
+import { LocationGroupModal } from './LocationGroupModal';
 
 interface CustomLocationsManagerProps {
   instances: Instance[];
   onRefreshInstances?: () => void;
   locationPresets?: Record<string, LocationData>;
 }
-
-const PALETTE_COLORS = [
-  '#10b981', // emerald
-  '#3b82f6', // blue
-  '#8b5cf6', // purple
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#6366f1', // indigo
-];
-
-const UNGROUPED_COLOR = '#94a3b8';
-const DEFAULT_TZ = 'America/Argentina/Buenos_Aires';
-const DEFAULT_PRESET_MARKER_ID = '__default__';
-const COORD_EPSILON = 0.0005;
-
-type Scope = 'all' | 'pinned';
-type JobState = 'running' | 'ok' | 'fail';
-
-/** UTC±H legible a partir de una zona IANA. */
-function formatUtcOffset(tz?: string): string {
-  try {
-    const part = new Intl.DateTimeFormat('en-US', { timeZone: tz || 'UTC', timeZoneName: 'shortOffset' })
-      .formatToParts(new Date())
-      .find((p) => p.type === 'timeZoneName');
-    const raw = part?.value ?? 'GMT';
-    return raw === 'GMT' ? 'UTC' : raw.replace('GMT', 'UTC').replace('-', '−');
-  } catch {
-    return '—';
-  }
-}
-
-const sameCoords = (aLat: number, aLon: number, bLat: number, bLon: number) =>
-  Math.abs(aLat - bLat) < COORD_EPSILON && Math.abs(aLon - bLon) < COORD_EPSILON;
-
-/** Un CloudPhone está "en" una ubicación si la referencia por id o si sus coordenadas coinciden. */
-function isPhoneAtLocation(inst: Instance, loc: CustomLocation) {
-  const l = inst.location;
-  if (!l) return false;
-  if (l.custom_location_id) return l.custom_location_id === loc.id;
-  return sameCoords(l.latitude, l.longitude, loc.latitude, loc.longitude);
-}
-
-const fieldClass =
-  'h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary';
-const fieldLabelClass = 'mb-1 block font-mono text-[10px] uppercase tracking-wider text-muted-foreground';
-const toolbarBtnClass =
-  'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 font-mono text-xs font-medium transition-colors cursor-pointer';
-const sectionTitleClass = 'text-[11px] font-medium uppercase tracking-wider text-muted-foreground';
 
 export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   instances,
@@ -339,17 +292,11 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     return catalog.groups.filter((g) => g.name.toLowerCase().includes(q));
   }, [catalog.groups, groupFilterQuery]);
 
-  const selectedFormGroup = useMemo(
-    () => catalog.groups.find((g) => g.id === locGroupId),
-    [catalog.groups, locGroupId]
-  );
-
   const onlineCount = instances.filter((p) => p.running).length;
   const geolocatedCount = instances.filter((p) => !!p.location).length;
   const pinnedCount = pinnedLocations.length;
   const filtersActive = !!normalizedQuery || scope !== 'all' || !!selectedGroupId;
   const searchResults = normalizedQuery ? visibleLocations.slice(0, 6) : [];
-  const selPhones = sel ? phonesByLocation.get(sel.id) ?? [] : [];
   const selGroup = sel?.group_id ? groupsMap.get(sel.group_id) : undefined;
   const selColor = selGroup?.color || UNGROUPED_COLOR;
   const selIsDefault = !!sel && defaultLoc?.id === sel.id;
@@ -458,9 +405,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [creating, selectedId, groupModalOpen, groupToDelete, locToDelete, groupsDropdownOpen, pinnedPopoverOpen]);
 
-  /* ── Acciones (lógica conservada de la versión anterior) ───────────────── */
+  /* ── Acciones ─────────────────────────────────────────────────────────── */
 
-  // Toggle pin de custom location o de preset oficial
   const handleTogglePin = async (type: 'custom' | 'preset', id: string, pinned?: boolean) => {
     try {
       const res = await api.togglePin(type, id, pinned);
@@ -496,7 +442,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Configurar ubicación como predeterminada del sistema
   const handleSetDefaultLocation = async (type: 'custom' | 'preset', id: string, name: string) => {
     try {
       const res = await api.setDefaultLocation({ target_type: type, target_id: id });
@@ -518,7 +463,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Guardar nueva ubicación personalizada
   const handleSaveLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!locName.trim()) {
@@ -567,7 +511,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Actualizar radio y visibilidad de una ubicación existente
   const handleUpdateLocationRadius = async (locId: string, showRadius: boolean, radiusKm: number) => {
     try {
       const sanitizedKm = Math.max(0.05, Math.min(500, Number(radiusKm) || 1.0));
@@ -641,7 +584,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Eliminar ubicación (confirmado vía AlertDialog)
   const confirmDeleteLocation = async () => {
     if (!locToDelete) return;
     const { id, name } = locToDelete;
@@ -661,7 +603,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Teletransportar la ubicación seleccionada a N CloudPhones
   const teleport = async () => {
     if (!sel || targets.length === 0) return;
     setTeleporting(true);
@@ -719,7 +660,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Guardar grupo (crear o editar)
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupNameInput.trim()) {
@@ -756,7 +696,6 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     }
   };
 
-  // Eliminar grupo (confirmado vía AlertDialog)
   const confirmDeleteGroup = async () => {
     if (!groupToDelete) return;
     const { id: groupId, name: groupName } = groupToDelete;
@@ -1165,180 +1104,37 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
           </div>
 
           {/* MAPA HERO */}
-          <div className="relative flex-1 min-h-0 min-w-0 w-full h-full overflow-hidden">
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center gap-2 bg-surface-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin text-primary" /> Cargando mapa…
-                </div>
-              }
-            >
-              <MapPicker
-                ref={mapHandleRef}
-                fill
-                latitude={mapLat}
-                longitude={mapLon}
-                city={mapCity}
-                initialZoom={12}
-                showPresets={false}
-                showInfoOverlay={false}
-                showActiveMarker={creating}
-                showCursorReadout
-                showAllRadii={showAllRadii}
-                activeRadiusKm={locRadiusKm}
-                activeShowRadius={locShowRadius}
-                markers={markers}
-                selectedMarkerId={selectedId}
-                onMarkerClick={handleMarkerClick}
-                onChange={handleMapChange}
-              >
-                {/* Resultados de búsqueda flotantes */}
-                {searchFocused && normalizedQuery && (
-                  <div className="absolute left-3 top-3 z-[40] w-80 overflow-hidden rounded-md border border-border bg-popover shadow-pop animate-in fade-in-0 slide-in-from-top-1 duration-150">
-                    <div className="flex items-center justify-between border-b border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <span>Resultados</span>
-                      <span>{visibleLocations.length}</span>
-                    </div>
-                    {searchResults.length === 0 ? (
-                      <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-                        <SearchX className="size-3.5" /> Sin coincidencias para "{searchQuery}"
-                      </div>
-                    ) : (
-                      <ul className="max-h-64 overflow-y-auto py-1">
-                        {searchResults.map((loc, i) => {
-                          const grp = loc.group_id ? groupsMap.get(loc.group_id) : undefined;
-                          return (
-                            <li key={loc.id}>
-                              <button
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onMouseEnter={() => mapHandleRef.current?.highlight(loc.id)}
-                                onMouseLeave={() => mapHandleRef.current?.highlight(null)}
-                                onClick={() => {
-                                  selectLocation(loc);
-                                  searchInputRef.current?.blur();
-                                }}
-                                className={cn(
-                                  'flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent',
-                                  i === 0 && 'bg-surface-2'
-                                )}
-                              >
-                                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: grp?.color || UNGROUPED_COLOR }} />
-                                <span className="min-w-0 flex-1 truncate">
-                                  <span className="font-medium text-foreground">{loc.name}</span>
-                                  <span className="ml-1.5 text-muted-foreground">{loc.city}</span>
-                                </span>
-                                {i === 0 && <kbd className="rounded-sm border border-border px-1 font-mono text-[9px] text-muted-foreground">Enter</kbd>}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-                {/* Chips de filtros activos */}
-                {!(searchFocused && normalizedQuery) && filtersActive && (
-                  <div className="absolute left-3 top-3 z-[30] flex items-center gap-1.5 animate-in fade-in-0 duration-150">
-                    <span className="rounded-md border border-border bg-popover/90 px-2 py-1 font-mono text-[10px] text-muted-foreground shadow-pop backdrop-blur-md">
-                      {visibleLocations.length}/{catalog.locations.length} en el mapa
-                    </span>
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-popover/90 px-2 py-1 font-mono text-[10px] text-foreground shadow-pop backdrop-blur-md transition-colors hover:text-primary"
-                    >
-                      <X className="size-3" /> Limpiar filtros
-                    </button>
-                  </div>
-                )}
-
-                {/* Controles flotantes */}
-                <div className="absolute right-3 top-3 z-[30] flex flex-col overflow-hidden rounded-md border border-border bg-popover shadow-pop">
-                  <button
-                    type="button"
-                    onClick={() => mapHandleRef.current?.fitToMarkers()}
-                    title="Encuadrar todas las ubicaciones visibles"
-                    className="grid size-[30px] cursor-pointer place-items-center text-foreground transition-colors hover:bg-accent hover:text-primary"
-                  >
-                    <ScanSearch className="size-3.5" />
-                  </button>
-                  {defaultLoc && (
-                    <button
-                      type="button"
-                      onClick={centerOnDefault}
-                      title={`Centrar en predeterminada (${defaultLoc.name})`}
-                      className="grid size-[30px] cursor-pointer place-items-center border-t border-border text-warning transition-colors hover:bg-accent"
-                    >
-                      <Star className="size-3.5 fill-current" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowAllRadii((v) => !v)}
-                    title={showAllRadii ? 'Ocultar radios de referencia' : 'Mostrar radios de referencia'}
-                    className={cn(
-                      'grid size-[30px] cursor-pointer place-items-center border-t border-border transition-colors',
-                      showAllRadii ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                    )}
-                  >
-                    <CircleDot className="size-3.5" />
-                  </button>
-                </div>
-
-                {/* Banner de modo creación */}
-                {creating && (
-                  <div className="pointer-events-none absolute inset-x-0 top-3 z-[30] flex justify-center">
-                    <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-primary/40 bg-popover/95 py-1 pl-3 pr-1 font-mono text-[11px] text-foreground shadow-pop backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-200">
-                      <span className="relative flex size-2">
-                        <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
-                        <span className="relative inline-flex size-2 rounded-full bg-primary" />
-                      </span>
-                      Modo creación · clic o arrastrá el marcador
-                      <button
-                        type="button"
-                        onClick={cancelCreate}
-                        className="cursor-pointer rounded-full px-2 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        Esc
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Estado vacío del catálogo */}
-                {!loading && catalog.locations.length === 0 && !creating && (
-                  <div className="pointer-events-none absolute inset-0 z-[25] grid place-items-center">
-                    <div className="pointer-events-auto w-72 rounded-lg border border-border bg-popover/95 p-5 text-center shadow-pop backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-200">
-                      <div className="mx-auto grid size-11 place-items-center rounded-md border border-dashed border-primary/60 text-primary">
-                        <MapPinPlus className="size-5" />
-                      </div>
-                      <p className="mt-3 text-sm font-semibold text-foreground">Todavía no hay ubicaciones</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Hacé clic en cualquier punto del mapa para fijar coordenadas y guardarlas.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => startCreate()}
-                        className="mt-4 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
-                      >
-                        <Plus className="size-3.5" /> Crear en el centro del mapa
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {loading && (
-                  <div className="pointer-events-none absolute inset-0 z-[25] grid place-items-center bg-background/40 backdrop-blur-[1px]">
-                    <div className="flex items-center gap-2 rounded-md border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-pop">
-                      <Loader2 className="size-3.5 animate-spin text-primary" /> Cargando ubicaciones…
-                    </div>
-                  </div>
-                )}
-              </MapPicker>
-            </Suspense>
-          </div>
+          <LocationsMapHero
+            ref={mapHandleRef}
+            mapLat={mapLat}
+            mapLon={mapLon}
+            mapCity={mapCity}
+            creating={creating}
+            showAllRadii={showAllRadii}
+            setShowAllRadii={setShowAllRadii}
+            locRadiusKm={locRadiusKm}
+            locShowRadius={locShowRadius}
+            markers={markers}
+            selectedId={selectedId}
+            onMarkerClick={handleMarkerClick}
+            onMapChange={handleMapChange}
+            searchFocused={searchFocused}
+            normalizedQuery={normalizedQuery}
+            searchQuery={searchQuery}
+            searchResults={searchResults}
+            visibleLocationsCount={visibleLocations.length}
+            catalogTotalCount={catalog.locations.length}
+            groupsMap={groupsMap}
+            onSelectLocation={selectLocation}
+            onSearchInputBlur={() => searchInputRef.current?.blur()}
+            filtersActive={filtersActive}
+            onClearFilters={clearFilters}
+            defaultLoc={defaultLoc}
+            onCenterOnDefault={centerOnDefault}
+            onCancelCreate={cancelCreate}
+            loading={loading}
+            onStartCreate={startCreate}
+          />
 
           {/* FOOTER MÉTRICAS */}
           <footer className="flex h-9 shrink-0 select-none items-center justify-between gap-4 border-t border-border px-4 font-mono text-xs text-muted-foreground">
@@ -1361,786 +1157,83 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
         </section>
 
         {/* ASIDE INSPECTOR */}
-        <aside className="flex w-[380px] shrink-0 select-none flex-col overflow-hidden bg-surface">
-          {creating ? (
-            /* ── MODO CREACIÓN ── */
-            <form
-              key="create"
-              onSubmit={handleSaveLocation}
-              className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-2 duration-200"
-            >
-              <div className="border-b border-border p-4">
-                <div className="flex items-start gap-3">
-                  <div className="grid size-12 shrink-0 place-items-center rounded-md border border-dashed border-primary/60 bg-primary/10 text-primary">
-                    <MapPinPlus className="size-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold">Nueva ubicación</h2>
-                    <p className="text-xs text-muted-foreground">Clic en el mapa o arrastrá el marcador para ajustar.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={cancelCreate}
-                    title="Cancelar (Esc)"
-                    className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-[11px]">
-                  <Crosshair className="size-3.5 shrink-0 text-primary" />
-                  <span className="flex-1 tabular-nums text-foreground">
-                    {mapLat.toFixed(6)}, {mapLon.toFixed(6)}
-                  </span>
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <span className="size-1.5 animate-pulse rounded-full bg-primary" /> en vivo
-                  </span>
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                <div>
-                  <label className={fieldLabelClass} htmlFor="loc-name">
-                    Nombre personalizado *
-                  </label>
-                  <input
-                    id="loc-name"
-                    type="text"
-                    required
-                    autoFocus
-                    placeholder="Ej: Oficina Palermo, Depósito Norte…"
-                    value={locName}
-                    onChange={(e) => setLocName(e.target.value)}
-                    className={cn(fieldClass, 'font-medium')}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className={fieldLabelClass}>Grupo</span>
-                    <Popover open={formGroupSelectOpen} onOpenChange={setFormGroupSelectOpen}>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(fieldClass, 'flex cursor-pointer items-center justify-between gap-1.5 hover:bg-muted/40')}
-                        >
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            {selectedFormGroup ? (
-                              <>
-                                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: selectedFormGroup.color || '#10b981' }} />
-                                <span className="truncate font-medium">{selectedFormGroup.name}</span>
-                              </>
-                            ) : (
-                              <span className="font-mono text-[11px] text-muted-foreground">Sin grupo</span>
-                            )}
-                          </span>
-                          <ChevronDown className={cn('size-3 shrink-0 opacity-60 transition-transform', formGroupSelectOpen && 'rotate-180')} />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" sideOffset={4} className="w-56 space-y-0.5 p-1 font-mono">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLocGroupId('');
-                            setFormGroupSelectOpen(false);
-                          }}
-                          className={cn(
-                            'flex w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs transition-colors',
-                            locGroupId === '' ? 'bg-primary/15 font-semibold text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          )}
-                        >
-                          Sin grupo
-                        </button>
-                        <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                          {catalog.groups.map((g) => (
-                            <button
-                              key={g.id}
-                              type="button"
-                              onClick={() => {
-                                setLocGroupId(g.id);
-                                setFormGroupSelectOpen(false);
-                              }}
-                              className={cn(
-                                'flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-left text-xs transition-colors',
-                                locGroupId === g.id ? 'bg-primary/15 font-semibold text-foreground' : 'text-foreground hover:bg-muted'
-                              )}
-                            >
-                              <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: g.color || '#10b981' }} />
-                              <span className="flex-1 truncate">{g.name}</span>
-                              {locGroupId === g.id && <Check className="size-3 text-primary" />}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormGroupSelectOpen(false);
-                            openNewGroupModal();
-                          }}
-                          className="flex w-full cursor-pointer items-center gap-1.5 rounded-sm border-t border-border px-2 py-1.5 text-left text-[11px] text-primary hover:bg-muted"
-                        >
-                          <Plus className="size-3" /> Nuevo grupo
-                        </button>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div>
-                    <label className={fieldLabelClass} htmlFor="loc-city">
-                      Ciudad / referencia
-                    </label>
-                    <input id="loc-city" type="text" value={mapCity} onChange={(e) => setMapCity(e.target.value)} className={fieldClass} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[1fr_96px] gap-2">
-                  <div>
-                    <label className={fieldLabelClass} htmlFor="loc-tz">
-                      Zona horaria <span className="normal-case tracking-normal opacity-70">({formatUtcOffset(locTimezone)})</span>
-                    </label>
-                    <input
-                      id="loc-tz"
-                      type="text"
-                      value={locTimezone}
-                      onChange={(e) => setLocTimezone(e.target.value)}
-                      className={cn(fieldClass, 'font-mono text-[11px]')}
-                    />
-                  </div>
-                  <div>
-                    <label className={fieldLabelClass} htmlFor="loc-alt">
-                      Altitud (m)
-                    </label>
-                    <input
-                      id="loc-alt"
-                      type="number"
-                      value={locAltitude}
-                      onChange={(e) => setLocAltitude(Number(e.target.value))}
-                      className={cn(fieldClass, 'font-mono text-[11px] tabular-nums')}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-1">
-                  <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
-                    <Star className={cn('size-4 shrink-0', locSetAsDefault ? 'fill-current text-warning' : 'text-muted-foreground')} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Ubicación predeterminada</div>
-                      <div className="text-xs text-muted-foreground">Base para CloudPhones nuevos y vistas de mapa</div>
-                    </div>
-                    <Switch checked={locSetAsDefault} onCheckedChange={setLocSetAsDefault} className="data-[state=checked]:bg-success" />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
-                    <Pin className={cn('size-4 shrink-0', locIsPinned ? 'fill-current text-primary' : 'text-muted-foreground')} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Fijar en accesos rápidos</div>
-                      <div className="text-xs text-muted-foreground">Aparece en la barra GPS de FocusView</div>
-                    </div>
-                    <Switch checked={locIsPinned} onCheckedChange={setLocIsPinned} />
-                  </label>
-
-                  <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <CircleDot className={cn('size-4 shrink-0', locShowRadius ? 'text-primary' : 'text-muted-foreground')} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium">Radio de referencia</div>
-                        <div className="text-xs text-muted-foreground">
-                          {locShowRadius
-                            ? `Círculo visual de cobertura en el mapa (${locRadiusKm} km)`
-                            : 'Círculo visual desactivado'}
-                        </div>
-                      </div>
-                      <Switch checked={locShowRadius} onCheckedChange={setLocShowRadius} />
-                    </div>
-
-                    {locShowRadius && (
-                      <div className="pt-2 border-t border-border/60 space-y-2 animate-in fade-in-0 duration-150">
-                        <div className="flex items-center justify-between">
-                          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground" htmlFor="loc-radius-input">
-                            Alcance del radio
-                          </label>
-                          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-                            {locRadiusKm} km
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            id="loc-radius-input"
-                            type="number"
-                            min={0.1}
-                            max={500}
-                            step={0.1}
-                            value={locRadiusKm}
-                            onChange={(e) => setLocRadiusKm(Math.max(0.1, Number(e.target.value) || 1.0))}
-                            className={cn(fieldClass, 'font-mono text-xs tabular-nums')}
-                          />
-                          <span className="font-mono text-xs text-muted-foreground shrink-0">km</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {[0.5, 1, 2, 5, 10, 25].map((presetKm) => (
-                            <button
-                              key={presetKm}
-                              type="button"
-                              onClick={() => setLocRadiusKm(presetKm)}
-                              className={cn(
-                                'rounded border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer',
-                                locRadiusKm === presetKm
-                                  ? 'border-primary/50 bg-primary/20 text-primary font-semibold'
-                                  : 'border-border bg-background text-muted-foreground hover:bg-surface-2 hover:text-foreground'
-                              )}
-                            >
-                              {presetKm} km
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-border p-4">
-                <button
-                  type="submit"
-                  disabled={savingLoc || !locName.trim()}
-                  className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {savingLoc ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-                  {savingLoc ? 'Guardando…' : 'Guardar ubicación'}
-                </button>
-                <p className="mt-2 text-center font-mono text-[11px] text-muted-foreground">POST /locations/custom</p>
-              </div>
-            </form>
-          ) : sel ? (
-            /* ── MODO INSPECTOR ── */
-            <div key={sel.id} className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-2 duration-200">
-              <div className="border-b border-border p-4">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="grid size-12 shrink-0 place-items-center rounded-md border bg-card"
-                    style={{ borderColor: selColor, color: selColor }}
-                  >
-                    {selIsDefault ? <Star className="size-5 fill-current text-warning" /> : <MapPin className="size-5" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold" title={sel.name}>
-                      {sel.name}
-                    </h2>
-                    <p className="truncate text-xs text-muted-foreground" title={sel.city}>
-                      {sel.city}
-                    </p>
-                    <p className="mt-0.5 flex items-center gap-1.5 truncate font-mono text-xs">
-                      <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: selColor }} />
-                      {selGroup ? selGroup.name : <span className="text-muted-foreground">Sin grupo</span>}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => openEditLocModal(sel)}
-                      title="Editar ubicación completa"
-                      className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <Edit2 className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLocToDelete(sel)}
-                      title="Eliminar ubicación"
-                      className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeInspector}
-                      title="Cerrar (Esc)"
-                      className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <dl className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-border bg-border text-xs">
-                  {[
-                    ['Altitud', `${sel.altitude ?? 25} m`, undefined],
-                    ['Precisión', sel.accuracy != null ? `±${sel.accuracy} m` : 'auto', undefined],
-                    ['Zona', formatUtcOffset(sel.timezone), sel.timezone || 'UTC'],
-                  ].map(([k, v, title]) => (
-                    <div key={k} className="bg-card px-2.5 py-2" title={title}>
-                      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</dt>
-                      <dd className="mt-0.5 truncate font-mono tabular-nums">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <div className="mt-2 flex items-center gap-2 rounded-md border border-border bg-card py-1 pl-2.5 pr-1 font-mono text-[11px]">
-                  <Crosshair className="size-3.5 shrink-0 text-primary" />
-                  <span className="flex-1 truncate tabular-nums">
-                    {sel.latitude.toFixed(6)}, {sel.longitude.toFixed(6)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => copyCoords(sel.latitude, sel.longitude)}
-                    className={cn(
-                      'inline-flex h-6 cursor-pointer items-center gap-1 rounded-sm px-1.5 transition-colors',
-                      copied ? 'text-success' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    )}
-                  >
-                    {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                    {copied ? 'Copiado' : 'Copiar'}
-                  </button>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  <label
-                    className={cn(
-                      'flex items-center gap-3 rounded-md border border-border bg-card p-2.5',
-                      selIsDefault ? 'cursor-default' : 'cursor-pointer transition-colors hover:border-muted-foreground/40'
-                    )}
-                    title={selIsDefault ? 'Ya es la predeterminada. Elegí otra ubicación para reemplazarla.' : undefined}
-                  >
-                    <Star className={cn('size-4 shrink-0', selIsDefault ? 'fill-current text-warning' : 'text-muted-foreground')} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Ubicación predeterminada</div>
-                      <div className="text-xs text-muted-foreground">
-                        {selIsDefault ? 'Activa: base para CloudPhones nuevos' : 'Base para CloudPhones nuevos y vistas de mapa'}
-                      </div>
-                    </div>
-                    <Switch
-                      checked={selIsDefault}
-                      disabled={selIsDefault}
-                      onCheckedChange={() => handleSetDefaultLocation('custom', sel.id, sel.name)}
-                      className="data-[state=checked]:bg-success disabled:opacity-100"
-                    />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors hover:border-muted-foreground/40">
-                    <Pin className={cn('size-4 shrink-0', sel.is_pinned ? 'fill-current text-primary' : 'text-muted-foreground')} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Fijar en accesos rápidos</div>
-                      <div className="text-xs text-muted-foreground">Aparece en la barra GPS de FocusView</div>
-                    </div>
-                    <Switch checked={!!sel.is_pinned} onCheckedChange={(v) => handleTogglePin('custom', sel.id, v)} />
-                  </label>
-
-                  <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <CircleDot className={cn('size-4 shrink-0', (sel.show_radius ?? true) ? 'text-primary' : 'text-muted-foreground')} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium">Radio de referencia</div>
-                        <div className="text-xs text-muted-foreground">
-                          {(sel.show_radius ?? true)
-                            ? `Zona de influencia visual (${sel.radius_km ?? 1} km) activa en mapa`
-                            : 'Zona de influencia visual desactivada'}
-                        </div>
-                      </div>
-                      <Switch
-                        checked={sel.show_radius ?? true}
-                        onCheckedChange={(val) =>
-                          handleUpdateLocationRadius(sel.id, val, sel.radius_km ?? 1.0)
-                        }
-                      />
-                    </div>
-
-                    {(sel.show_radius ?? true) && (
-                      <div className="pt-2 border-t border-border/60 space-y-2 animate-in fade-in-0 duration-150">
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                            Alcance del radio
-                          </span>
-                          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-                            {sel.radius_km ?? 1} km
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={0.1}
-                            max={500}
-                            step={0.1}
-                            defaultValue={sel.radius_km ?? 1}
-                            key={`${sel.id}-${sel.radius_km}`}
-                            onBlur={(e) => {
-                              const val = Math.max(0.1, Number(e.target.value) || 1.0);
-                              if (val !== (sel.radius_km ?? 1)) {
-                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, val);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                const val = Math.max(0.1, Number((e.target as HTMLInputElement).value) || 1.0);
-                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, val);
-                              }
-                            }}
-                            className={cn(fieldClass, 'font-mono text-xs tabular-nums')}
-                          />
-                          <span className="font-mono text-xs text-muted-foreground shrink-0">km</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {[0.5, 1, 2, 5, 10, 25].map((presetKm) => (
-                            <button
-                              key={presetKm}
-                              type="button"
-                              onClick={() =>
-                                handleUpdateLocationRadius(sel.id, sel.show_radius ?? true, presetKm)
-                              }
-                              className={cn(
-                                'rounded border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer',
-                                (sel.radius_km ?? 1) === presetKm
-                                  ? 'border-primary/50 bg-primary/20 text-primary font-semibold'
-                                  : 'border-border bg-background text-muted-foreground hover:bg-surface-2 hover:text-foreground'
-                              )}
-                            >
-                              {presetKm} km
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* TELETRANSPORTAR A */}
-              <div className="flex min-h-0 flex-1 flex-col p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className={sectionTitleClass}>
-                    Teletransportar a <span className="normal-case tracking-normal">· {selPhones.length} aquí</span>
-                  </h3>
-                  <div className="flex gap-2 text-xs">
-                    <button
-                      type="button"
-                      className="cursor-pointer text-primary hover:underline disabled:opacity-40"
-                      disabled={teleporting}
-                      onClick={() =>
-                        setTargets(instances.filter((p) => !isPhoneAtLocation(p, sel)).map((p) => p.instance_name))
-                      }
-                    >
-                      Faltantes
-                    </button>
-                    <button
-                      type="button"
-                      className="cursor-pointer text-primary hover:underline disabled:opacity-40"
-                      disabled={teleporting}
-                      onClick={() => setTargets(instances.map((p) => p.instance_name))}
-                    >
-                      Todas
-                    </button>
-                    <button
-                      type="button"
-                      className="cursor-pointer text-muted-foreground hover:text-foreground disabled:opacity-40"
-                      disabled={teleporting}
-                      onClick={resetTeleport}
-                    >
-                      Limpiar
-                    </button>
-                  </div>
-                </div>
-
-                {instances.length === 0 ? (
-                  <div className="grid flex-1 place-items-center rounded-md border border-dashed border-border text-center text-xs text-muted-foreground">
-                    <div>
-                      <Smartphone className="mx-auto mb-2 size-6 opacity-40" />
-                      No hay CloudPhones creados.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid min-h-0 grid-cols-2 content-start gap-1.5 overflow-auto">
-                    {instances.map((p) => {
-                      const on = targets.includes(p.instance_name);
-                      const here = isPhoneAtLocation(p, sel);
-                      const job = jobs[p.instance_name];
-                      const currentLabel = p.location?.custom_name || p.location?.city;
-                      return (
-                        <button
-                          key={p.instance_name}
-                          type="button"
-                          disabled={teleporting}
-                          onClick={() =>
-                            setTargets((t) => (on ? t.filter((x) => x !== p.instance_name) : [...t, p.instance_name]))
-                          }
-                          title={currentLabel ? `Ubicación actual: ${currentLabel}` : 'Sin ubicación GPS asignada'}
-                          className={cn(
-                            'flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition-all disabled:cursor-wait',
-                            !p.running && !on && 'opacity-60',
-                            on ? 'glow-primary border-primary bg-primary/10 font-medium' : 'border-border bg-card hover:border-muted-foreground/40'
-                          )}
-                        >
-                          <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-mono">{p.instance_name}</div>
-                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                              <span className={cn('size-1.5 shrink-0 rounded-full', p.running ? 'bg-success' : 'bg-muted-foreground')} />
-                              {job === 'running' ? (
-                                'aplicando…'
-                              ) : job === 'ok' ? (
-                                <span className="font-medium text-success">teletransportado</span>
-                              ) : job === 'fail' ? (
-                                <span className="text-destructive">falló</span>
-                              ) : here ? (
-                                <span className="rounded-sm bg-success/15 px-1 font-mono font-medium text-success">ya asignada</span>
-                              ) : !p.location ? (
-                                <span className="rounded-sm bg-warning/15 px-1 font-mono font-medium text-warning">sin gps</span>
-                              ) : (
-                                <span className="truncate">{currentLabel}</span>
-                              )}
-                            </div>
-                          </div>
-                          {job === 'running' ? (
-                            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
-                          ) : job === 'ok' ? (
-                            <Check className="size-3.5 shrink-0 text-success" />
-                          ) : job === 'fail' ? (
-                            <X className="size-3.5 shrink-0 text-destructive" />
-                          ) : on ? (
-                            <span className="grid size-3.5 shrink-0 place-items-center rounded-sm bg-primary text-primary-foreground">
-                              <Check className="size-2.5" strokeWidth={3} />
-                            </span>
-                          ) : (
-                            <span className="size-3.5 shrink-0 rounded-sm border border-border" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="mt-auto pt-3">
-                  <button
-                    type="button"
-                    onClick={teleport}
-                    disabled={!targets.length || teleporting}
-                    className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {teleporting ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
-                    {teleporting
-                      ? 'Teletransportando…'
-                      : targets.length
-                      ? `Teletransportar a ${targets.length} teléfono${targets.length > 1 ? 's' : ''}`
-                      : 'Elegí teléfonos destino'}
-                  </button>
-                  <p className="mt-2 text-center font-mono text-[11px] text-muted-foreground">
-                    GPS · zona horaria · altitud se aplican en caliente
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ── VISTA GENERAL (sin selección) ── */
-            <div key="overview" className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 duration-200">
-              <div className="border-b border-border p-4">
-                <h3 className={sectionTitleClass}>Predeterminada del sistema</h3>
-                {defaultLoc ? (
-                  <div className="mt-2 flex items-center gap-3 rounded-md border border-border bg-card p-2.5">
-                    <div className="grid size-9 shrink-0 place-items-center rounded-md bg-warning/15 text-warning">
-                      <Star className="size-4 fill-current" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{defaultLoc.name}</div>
-                      <div className="truncate font-mono text-[11px] text-muted-foreground">
-                        {defaultLoc.latitude.toFixed(4)}, {defaultLoc.longitude.toFixed(4)} · {formatUtcOffset(defaultLoc.timezone)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={centerOnDefault}
-                      title="Centrar en el mapa"
-                      className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                    >
-                      <LocateFixed className="size-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-2 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-                    Sin predeterminada. Activala desde el panel de cualquier ubicación.
-                  </div>
-                )}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className={sectionTitleClass}>Ubicaciones</h3>
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {visibleLocations.length}/{catalog.locations.length}
-                  </span>
-                </div>
-
-                {loading ? (
-                  <div className="space-y-1.5">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="h-11 animate-pulse rounded-md bg-card" />
-                    ))}
-                  </div>
-                ) : catalog.locations.length === 0 ? (
-                  <div className="grid flex-1 place-items-center pb-4 text-center">
-                    <div>
-                      <MapPin className="mx-auto mb-2 size-7 text-muted-foreground/40" />
-                      <p className="text-sm font-medium">Sin ubicaciones guardadas</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Hacé clic en el mapa para crear la primera.</p>
-                    </div>
-                  </div>
-                ) : visibleLocations.length === 0 ? (
-                  <div className="grid flex-1 place-items-center pb-4 text-center">
-                    <div>
-                      <SearchX className="mx-auto mb-2 size-7 text-muted-foreground/40" />
-                      <p className="text-sm font-medium">Ninguna ubicación coincide</p>
-                      <button type="button" onClick={clearFilters} className="mt-2 cursor-pointer text-xs text-primary hover:underline">
-                        Limpiar filtros
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <ul className="-mx-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1 pb-2">
-                    {visibleLocations.map((loc) => {
-                      const grp = loc.group_id ? groupsMap.get(loc.group_id) : undefined;
-                      const phones = phonesByLocation.get(loc.id) ?? [];
-                      const online = phones.filter((p) => p.running).length;
-                      const isDefault = defaultLoc?.id === loc.id;
-                      return (
-                        <li key={loc.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectLocation(loc)}
-                            onMouseEnter={() => mapHandleRef.current?.highlight(loc.id)}
-                            onMouseLeave={() => mapHandleRef.current?.highlight(null)}
-                            className="group flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-card"
-                          >
-                            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: grp?.color || UNGROUPED_COLOR }} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 text-sm font-medium">
-                                <span className="truncate">{loc.name}</span>
-                                {isDefault && <Star className="size-3 shrink-0 fill-current text-warning" />}
-                                {loc.is_pinned && <Pin className="size-3 shrink-0 fill-current text-primary" />}
-                              </div>
-                              <div className="truncate text-xs text-muted-foreground">
-                                {loc.city}
-                                {grp ? ` · ${grp.name}` : ''}
-                              </div>
-                            </div>
-                            <span
-                              className={cn(
-                                'inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono text-[10px] tabular-nums',
-                                phones.length === 0
-                                  ? 'text-muted-foreground/60'
-                                  : online > 0
-                                  ? 'bg-success/15 text-success'
-                                  : 'bg-muted text-muted-foreground'
-                              )}
-                              title={`${online}/${phones.length} teléfonos online`}
-                            >
-                              <Smartphone className="size-3" /> {phones.length}
-                            </span>
-                            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
-                <MousePointerClick className="size-3.5 shrink-0 text-primary" />
-                <span className="flex-1">Clic en el mapa para crear una ubicación</span>
-                <kbd className="rounded-sm border border-border bg-background px-1.5 font-mono text-[10px]">/</kbd>
-                <span>buscar</span>
-              </div>
-            </div>
-          )}
-        </aside>
+        <LocationsInspector
+          creating={creating}
+          sel={sel}
+          defaultLoc={defaultLoc}
+          catalog={catalog}
+          groupsMap={groupsMap}
+          phonesByLocation={phonesByLocation}
+          visibleLocations={visibleLocations}
+          loading={loading}
+          mapLat={mapLat}
+          mapLon={mapLon}
+          mapCity={mapCity}
+          setMapCity={setMapCity}
+          locName={locName}
+          setLocName={setLocName}
+          locGroupId={locGroupId}
+          setLocGroupId={setLocGroupId}
+          locTimezone={locTimezone}
+          setLocTimezone={setLocTimezone}
+          locAltitude={locAltitude}
+          setLocAltitude={setLocAltitude}
+          locIsPinned={locIsPinned}
+          setLocIsPinned={setLocIsPinned}
+          locSetAsDefault={locSetAsDefault}
+          setLocSetAsDefault={setLocSetAsDefault}
+          locShowRadius={locShowRadius}
+          setLocShowRadius={setLocShowRadius}
+          locRadiusKm={locRadiusKm}
+          setLocRadiusKm={setLocRadiusKm}
+          savingLoc={savingLoc}
+          formGroupSelectOpen={formGroupSelectOpen}
+          setFormGroupSelectOpen={setFormGroupSelectOpen}
+          onSaveLocation={handleSaveLocation}
+          onCancelCreate={cancelCreate}
+          onOpenNewGroupModal={openNewGroupModal}
+          selColor={selColor}
+          selGroup={selGroup}
+          selIsDefault={selIsDefault}
+          copied={copied}
+          onOpenEditLocModal={openEditLocModal}
+          onPromptDeleteLocation={(loc) => setLocToDelete(loc)}
+          onCloseInspector={closeInspector}
+          onCopyCoords={copyCoords}
+          onSetDefaultLocation={handleSetDefaultLocation}
+          onTogglePin={handleTogglePin}
+          onUpdateLocationRadius={handleUpdateLocationRadius}
+          instances={instances}
+          targets={targets}
+          setTargets={setTargets}
+          teleporting={teleporting}
+          jobs={jobs}
+          onTeleport={teleport}
+          onResetTeleport={resetTeleport}
+          onCenterOnDefault={centerOnDefault}
+          onClearFilters={clearFilters}
+          onSelectLocation={selectLocation}
+          onHighlightLocation={(id) => mapHandleRef.current?.highlight(id)}
+        />
       </div>
 
       {/* DIÁLOGO CREAR / EDITAR GRUPO */}
-      <Dialog
+      <LocationGroupModal
         open={groupModalOpen}
         onOpenChange={(o) => {
           setGroupModalOpen(o);
           if (!o) setEditingGroup(null);
         }}
-      >
-        <DialogContent className="max-w-sm gap-0 p-0">
-          <DialogHeader className="border-b border-border p-4 pr-10">
-            <DialogTitle className="flex items-center gap-2 font-mono text-sm">
-              <Folder className="size-4 text-primary" />
-              {editingGroup ? 'Editar grupo' : 'Nuevo grupo de geolocalizaciones'}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Los grupos colorean los pines del mapa y permiten filtrar el catálogo.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSaveGroup} className="space-y-3 p-4">
-            <div>
-              <label className={fieldLabelClass} htmlFor="group-name">
-                Nombre del grupo *
-              </label>
-              <input
-                id="group-name"
-                type="text"
-                required
-                autoFocus
-                placeholder="Ej: Sedes LATAM, Zonas bancarias…"
-                value={groupNameInput}
-                onChange={(e) => setGroupNameInput(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-
-            <div>
-              <span className={fieldLabelClass}>Color distintivo</span>
-              <div className="flex flex-wrap items-center gap-2">
-                {PALETTE_COLORS.map((col) => (
-                  <button
-                    type="button"
-                    key={col}
-                    onClick={() => setGroupColorInput(col)}
-                    aria-label={`Color ${col}`}
-                    className={cn(
-                      'grid size-6 cursor-pointer place-items-center rounded-full border-2 transition-transform hover:scale-110',
-                      groupColorInput === col ? 'scale-110 border-foreground' : 'border-transparent'
-                    )}
-                    style={{ backgroundColor: col }}
-                  >
-                    {groupColorInput === col && <Check className="size-3 text-background" strokeWidth={3} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className={fieldLabelClass} htmlFor="group-desc">
-                Descripción (opcional)
-              </label>
-              <input
-                id="group-desc"
-                type="text"
-                placeholder="Objetivo o referencia del grupo…"
-                value={groupDescInput}
-                onChange={(e) => setGroupDescInput(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setGroupModalOpen(false)}
-                className="h-8 cursor-pointer rounded-md border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={savingGroup || !groupNameInput.trim()}
-                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {savingGroup && <Loader2 className="size-3.5 animate-spin" />}
-                {editingGroup ? 'Guardar cambios' : 'Crear grupo'}
-              </button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        editingGroup={editingGroup}
+        groupNameInput={groupNameInput}
+        setGroupNameInput={setGroupNameInput}
+        groupColorInput={groupColorInput}
+        setGroupColorInput={setGroupColorInput}
+        groupDescInput={groupDescInput}
+        setGroupDescInput={setGroupDescInput}
+        savingGroup={savingGroup}
+        onSaveGroup={handleSaveGroup}
+      />
 
       {/* CONFIRMAR ELIMINACIÓN DE UBICACIÓN */}
       <AlertDialog open={!!locToDelete} onOpenChange={(o) => !o && setLocToDelete(null)}>
