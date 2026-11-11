@@ -49,6 +49,7 @@ import {
 import type { Instance, FileEntry } from "../../types";
 import { api } from "../../lib/api";
 import { cn, getErrorMessage } from "../../lib/utils";
+import { IconBtn } from "../ui/IconBtn";
 
 const ROOT_NAMES = ["Download", "DCIM", "Pictures", "Movies", "Music", "Documents"] as const;
 type RootName = (typeof ROOT_NAMES)[number];
@@ -112,65 +113,6 @@ function Check({ checked, onClick }: { checked: boolean; onClick?: () => void })
       )}
     >
       {checked && <CheckIcon className="size-3 stroke-[3]" />}
-    </button>
-  );
-}
-
-function IconBtn({
-  children,
-  title,
-  onClick,
-  danger,
-}: {
-  children: React.ReactNode;
-  title: string;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className={cn(
-        "grid size-7 place-items-center rounded-md transition-colors cursor-pointer",
-        danger
-          ? "text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function BarBtn({
-  children,
-  onClick,
-  danger,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
-        danger
-          ? "text-destructive hover:bg-destructive/15"
-          : "text-foreground hover:bg-accent"
-      )}
-    >
-      {children}
     </button>
   );
 }
@@ -408,36 +350,50 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
   const rowActions = (e: FileEntry) => (
     <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
       {e.type === "file" && (isImg(e.name) || isText(e.name) || isMedia(e.name)) && (
-        <IconBtn title="Previsualizar archivo" onClick={() => setPreviewFile(e)}>
-          <Maximize2 className="size-3.5" />
-        </IconBtn>
+        <IconBtn
+          icon={Maximize2}
+          label="Previsualizar archivo"
+          size="sm"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            setPreviewFile(e);
+          }}
+        />
       )}
       {e.type === "file" && (
         <>
-          <IconBtn title="Descargar a la PC" onClick={() => download([e])}>
-            <Download className="size-3.5" />
-          </IconBtn>
           <IconBtn
-            title="Enviar a otro teléfono"
-            onClick={() => {
+            icon={Download}
+            label="Descargar a la PC"
+            size="sm"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              download([e]);
+            }}
+          />
+          <IconBtn
+            icon={Send}
+            label="Enviar a otro teléfono"
+            size="sm"
+            onClick={(ev) => {
+              ev.stopPropagation();
               setSelected([e.name]);
               setSendOpen(true);
             }}
-          >
-            <Send className="size-3.5" />
-          </IconBtn>
+          />
         </>
       )}
       <IconBtn
-        title="Eliminar"
-        danger
-        onClick={() => {
+        icon={Trash2}
+        label="Eliminar"
+        variant="danger"
+        size="sm"
+        onClick={(ev) => {
+          ev.stopPropagation();
           setSelected([e.name]);
           setDelOpen(true);
         }}
-      >
-        <Trash2 className="size-3.5" />
-      </IconBtn>
+      />
     </div>
   );
 
@@ -801,24 +757,35 @@ export function FileExplorer({ instances, preselectedInstance }: FileExplorerPro
                 {selected.length} seleccionado(s)
               </span>
               <div className="h-5 w-px bg-border" />
-              <BarBtn
+              <button
+                type="button"
                 onClick={() => download(selFiles)}
                 disabled={!selFiles.some((f) => f.type === "file")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Download className="size-3.5" /> Descargar
-              </BarBtn>
-              <BarBtn
+              </button>
+              <button
+                type="button"
                 onClick={() => setSendOpen(true)}
                 disabled={!selFiles.some((f) => f.type === "file")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Send className="size-3.5" /> Enviar a…
-              </BarBtn>
-              <BarBtn danger onClick={() => setDelOpen(true)}>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDelOpen(true)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/15 cursor-pointer"
+              >
                 <Trash2 className="size-3.5" /> Eliminar
-              </BarBtn>
-              <IconBtn title="Deseleccionar" onClick={() => setSelected([])}>
-                <X className="size-3.5" />
-              </IconBtn>
+              </button>
+              <IconBtn
+                icon={X}
+                label="Deseleccionar"
+                size="sm"
+                onClick={() => setSelected([])}
+              />
             </div>
           </div>
         )}
