@@ -1785,6 +1785,52 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 93. FEAT(DB-CORE-033) — Modernización y Unificación de Persistencia Transaccional SQLite (`instances/proteomesh.db`), Proyección Atómica a Disco y Erradicación de Archivos `.lock` (2026-11-10)
+
+* **Objetivo:** Unificar la totalidad de los almacenes de datos relacionales, catálogos y estados de runtime en una única base de datos transaccional SQLite (`instances/proteomesh.db`), eliminando el mosaico heterogéneo de archivos JSON dispersos (`custom_locations.json`, `meta.json`, `profile.json`, `usb_tether.json`), 4 bases SQLite desconectadas (`apks.db`, `ip_ledger.db`, `leases.db`, `routes.db`) y los bloqueos por archivo `.lock` (`fcntl.flock`), garantizando al mismo tiempo compatibilidad al 100% con Docker y scripts CLI mediante proyección atómica en disco.
+* **Componentes implementados:**
+  1. **Motor Transaccional y Conexión Unificada (`server/db/connection.py`):**
+     - Configuración ACID de alto rendimiento: `PRAGMA journal_mode=WAL;`, `PRAGMA synchronous=NORMAL;`, `PRAGMA foreign_keys=ON;`, `PRAGMA busy_timeout=5000;`.
+     - Context managers `get_connection()` y `transaction()` con cerrojo de escritura inmediato `BEGIN IMMEDIATE` para prevención total de condiciones de carrera TOCTOU.
+  2. **Sistema de Migraciones DDL Versionadas (`server/db/migrate.py`):**
+     - Seguimiento automático de esquemas en tabla `_schema_version`.
+     - `001_initial_locations.sql`: Tablas `locations`, `location_groups` y `location_config` con radios de referencia visuales (`radius_km`, `show_radius`).
+     - `002_instances_schema.sql`: Tablas `instances` e `instance_profiles` con columnas tipadas para atributos de consulta rápida (`latitude`, `longitude`, `adb_port`, `custom_location_id`) y borrado en cascada `ON DELETE CASCADE`.
+     - `003_usb_assignments_schema.sql`: Tabla `usb_assignments` para control de asignación módem USB -> contenedor CloudPhone.
+     - `004_consolidate_stores.sql`: Tablas `apks`, `usb_ip_ledger`, `ledger_config`, `proxy_leases` y `routes`.
+  3. **Bootstrap y Migración Automática Idempotente:**
+     - `migrate_legacy_json_locations()`: Importación transparente de `custom_locations.json` a SQLite en el primer arranque.
+     - `migrate_legacy_sqlite_stores()`: Migración en modo solo lectura (`mode=ro`) sin cerrojos cruzados desde bases `.db` preexistentes en `instances/`.
+  4. **Principio de Proyección Dual Atómica (Disk Projection):**
+     - Repositorios `instance_store.py` y `usb_store.py`: SQLite opera como fuente primaria de verdad ACID; las mutaciones se proyectan inmediatamente a `instances/<name>/meta.json`, `profile.json` y `usb_tether.json` mediante archivos `.tmp` y `os.replace` atómico POSIX, manteniendo interoperabilidad total con contenedores Docker, montajes de volumen y herramientas de shell.
+     - Auto-descubrimiento y purga bidireccional (`sync_from_disk()`): indexación instantánea de carpetas creadas por scripts CLI o tests y eliminación de registros huérfanos.
+  5. **Erradicación de Archivos de Bloqueo `.lock` y Purgado de `fcntl`:**
+     - Eliminación de archivos residuales `.lock` en disco (`meta.lock`, `custom_locations.lock`).
+     - Retiro completo de dependencias de `fcntl` en los servicios centrales de FastAPI.
+     - Incorporación de reglas preventivas en `.gitignore` para diarios WAL (`instances/*.db*`).
+* **Archivos afectados:**
+  - `server/config.py`
+  - `server/main.py`
+  - `server/db/` (`__init__.py`, `connection.py`, `migrate.py`, `instance_store.py`, `usb_store.py`, `migrations/001..004.sql`)
+  - `server/services/custom_location_service.py`
+  - `server/services/manager_bridge.py`
+  - `server/services/proxy_service.py`
+  - `server/services/usb_network_service.py`
+  - `server/services/apk_repository.py`
+  - `server/services/network/ip_ledger.py`
+  - `server/services/network/lease_registry.py`
+  - `server/services/network/route_store.py`
+  - `server/routes/routes.py`
+  - `docs/ARQUITECTURA_PERSISTENCIA_SQLITE.md`
+  - `tests/host/test_db_persistence.py`
+* **Verificación:**
+  - Suite unitaria dedicada `tests/host/test_db_persistence.py` (6 tests) cubriendo idempotencia, bootstraping, cascada referencial, mutación atómica, asignaciones USB y concurrencia de tiendas consolidadas.
+  - Suite de tests de host completa: **160 passed, 1 skipped** en 54s.
+  - Compilación de producción Vite en 377ms sin advertencias.
+* **Estado:** DB-CORE-033 **completado y validado el 2026-11-10**.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
