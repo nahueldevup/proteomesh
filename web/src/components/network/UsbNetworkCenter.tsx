@@ -34,6 +34,40 @@ import { ModemInspector } from './ModemInspector';
 import { FifoQueueBar } from './FifoQueueBar';
 import { IpLedgerTable } from './IpLedgerTable';
 
+function OfferTabBadge({ offer }: { offer: { expires_at?: number; expires_in_seconds?: number } }) {
+  const computeSeconds = () => {
+    const expiresAt = offer.expires_at
+      ? offer.expires_at * 1000
+      : Date.now() + (offer.expires_in_seconds || 5) * 1000;
+    return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  };
+
+  const [seconds, setSeconds] = useState(computeSeconds);
+  const [prevOffer, setPrevOffer] = useState(offer);
+  if (offer !== prevOffer) {
+    setPrevOffer(offer);
+    setSeconds(computeSeconds());
+  }
+
+  useEffect(() => {
+    const expiresAt = offer.expires_at
+      ? offer.expires_at * 1000
+      : Date.now() + (offer.expires_in_seconds || 5) * 1000;
+
+    const timer = window.setInterval(() => {
+      setSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [offer]);
+
+  return (
+    <span className="ml-0.5 inline-flex items-center gap-1 rounded-sm border border-border bg-background px-1.5 font-mono text-[10px] font-semibold text-primary tabular-nums">
+      <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+      {seconds}s
+    </span>
+  );
+}
+
 interface UsbNetworkCenterProps {
   instances: Instance[];
   overview?: UsbNetworkOverview | undefined;
@@ -46,7 +80,6 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
   const { data: ledger } = useIpLedger();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [pageSize, setPageSize] = useState<number>(20);
   const [page, setPage] = useState<number>(1);
   const [pageSizeOpen, setPageSizeOpen] = useState(false);
@@ -67,33 +100,6 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
     onRefresh();
     return queryClient.invalidateQueries({ queryKey: queryKeys.ipLedger });
   }, [onRefresh, queryClient]);
-
-  // Contador regresivo en vivo para la ventana de gracia de 5s (Turno pendiente)
-  useEffect(() => {
-    const offer = data?.pending_offer;
-    if (!offer) {
-      setCountdown(null);
-      return;
-    }
-
-    const expiresAt = offer.expires_at ? offer.expires_at * 1000 : (Date.now() + (offer.expires_in_seconds || 5) * 1000);
-
-    let refreshTimer: number | undefined;
-    const updateCountdown = () => {
-      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-      setCountdown(remaining);
-      if (remaining <= 0 && refreshTimer === undefined) {
-        refreshTimer = window.setTimeout(() => refresh(), 800);
-      }
-    };
-
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 250);
-    return () => {
-      window.clearInterval(timer);
-      window.clearTimeout(refreshTimer);
-    };
-  }, [data?.pending_offer, refresh]);
 
   const handleTestRotation = async (serial: string) => {
     setBusyAction(`test-${serial}`);
@@ -257,10 +263,7 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
           >
             <Router className="size-3.5" /> Módems y Cola FIFO
             {pendingOffer ? (
-              <span className="ml-0.5 inline-flex items-center gap-1 rounded-sm border border-border bg-background px-1.5 font-mono text-[10px] font-semibold text-primary tabular-nums">
-                <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-                {countdown ?? pendingOffer.expires_in_seconds}s
-              </span>
+              <OfferTabBadge offer={pendingOffer} />
             ) : summary.waiting_count > 0 ? (
               <span className="ml-0.5 rounded-sm border border-border bg-background px-1.5 font-mono text-[10px] font-semibold text-foreground tabular-nums">
                 {summary.waiting_count}
@@ -334,10 +337,10 @@ export default function UsbNetworkCenter({ instances, overview, onRefresh, onSel
               <FifoQueueBar
                 waitingQueue={waitingQueue}
                 pendingOffer={pendingOffer}
-                countdown={countdown}
                 busyAction={busyAction}
                 onClaimUsb={handleClaimUsb}
                 onDeclineOffer={handleDeclineOffer}
+                onExpire={refresh}
               />
             </section>
 

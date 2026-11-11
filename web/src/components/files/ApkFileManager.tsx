@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Package, FolderOpen } from "lucide-react";
 import type { Instance } from "../../types";
 import { cn } from "../../lib/utils";
@@ -20,13 +20,12 @@ export default function ApkFileManager({
   initialTab = "apks",
   onRefreshInstances,
 }: ApkFileManagerProps) {
-  const [tab, setTab] = useState<ApkManagerTab>(initialTab);
-
-  useEffect(() => {
-    if (preselectedInstance) {
-      setTab("files");
-    }
-  }, [preselectedInstance]);
+  const [tab, setTab] = useState<ApkManagerTab>(preselectedInstance ? "files" : initialTab);
+  const [prevPreselected, setPrevPreselected] = useState(preselectedInstance);
+  if (preselectedInstance && preselectedInstance !== prevPreselected) {
+    setPrevPreselected(preselectedInstance);
+    setTab("files");
+  }
 
   const onlineCount = instances.filter((p) => p.running).length;
 

@@ -97,25 +97,24 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
 
   // Prevención de reinicio: Inicializar SOLO una vez al pasar de cerrado a abierto
   const prevIsOpenRef = useRef(false);
-  const defaultLocationAppliedRef = useRef(false);
+  const [defaultLocationApplied, setDefaultLocationApplied] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && locCatalog?.default_location && !defaultLocationAppliedRef.current) {
-      defaultLocationAppliedRef.current = true;
-      const def = locCatalog.default_location;
-      setLatitude(def.latitude);
-      setLongitude(def.longitude);
-      setCity(def.city);
-      if (def.timezone) {
-        setTimezone(def.timezone);
-      }
-      const found = (locCatalog.locations || []).find((l: CustomLocation) => l.id === def.id);
-      if (found) setSelectedCustomLoc(found);
+  // Inicialización de ubicación predeterminada en render (sin sincronización forzada en efecto)
+  if (isOpen && locCatalog?.default_location && !defaultLocationApplied) {
+    setDefaultLocationApplied(true);
+    const def = locCatalog.default_location;
+    setLatitude(def.latitude);
+    setLongitude(def.longitude);
+    setCity(def.city);
+    if (def.timezone) {
+      setTimezone(def.timezone);
     }
-    if (!isOpen) {
-      defaultLocationAppliedRef.current = false;
-    }
-  }, [isOpen, locCatalog]);
+    const found = (locCatalog.locations || []).find((l: CustomLocation) => l.id === def.id);
+    if (found) setSelectedCustomLoc(found);
+  }
+  if (!isOpen && defaultLocationApplied) {
+    setDefaultLocationApplied(false);
+  }
 
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {

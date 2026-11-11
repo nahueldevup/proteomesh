@@ -128,19 +128,17 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const [groupToDelete, setGroupToDelete] = useState<LocationGroup | null>(null);
   const [locToDelete, setLocToDelete] = useState<CustomLocation | null>(null);
 
-  const isMapInitializedRef = useRef(false);
+  const [isMapInitialized, setIsMapInitialized] = useState(false);
 
-  // Inicializar el mapa con la ubicación predeterminada general al cargar
-  useEffect(() => {
-    if (!isMapInitializedRef.current && catalog.default_location) {
-      isMapInitializedRef.current = true;
-      setMapLat(catalog.default_location.latitude);
-      setMapLon(catalog.default_location.longitude);
-      setMapCity(catalog.default_location.city);
-      if (catalog.default_location.timezone) setLocTimezone(catalog.default_location.timezone);
-      if (catalog.default_location.altitude) setLocAltitude(catalog.default_location.altitude);
-    }
-  }, [catalog.default_location]);
+  // Inicializar el mapa con la ubicación predeterminada general al cargar (en render)
+  if (!isMapInitialized && catalog.default_location) {
+    setIsMapInitialized(true);
+    setMapLat(catalog.default_location.latitude);
+    setMapLon(catalog.default_location.longitude);
+    setMapCity(catalog.default_location.city);
+    if (catalog.default_location.timezone) setLocTimezone(catalog.default_location.timezone);
+    if (catalog.default_location.altitude) setLocAltitude(catalog.default_location.altitude);
+  }
 
   /* ── Derivados ─────────────────────────────────────────────────────────── */
 

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   Router,
@@ -9,7 +10,51 @@ import { TooltipSimple } from '../ui/tooltip';
 import { cn } from '../../lib/utils';
 import { GRACE_SECONDS } from './networkTypes';
 
-export function CountdownRing({ value, total }: { value: number; total: number }) {
+export function CountdownRing({
+  pendingOffer,
+  total = GRACE_SECONDS,
+  onExpire,
+}: {
+  pendingOffer?: { expires_at?: number; expires_in_seconds?: number } | null;
+  total?: number;
+  onExpire?: () => void;
+}) {
+  const computeRemaining = () => {
+    if (!pendingOffer) return total;
+    const expiresAt = pendingOffer.expires_at
+      ? pendingOffer.expires_at * 1000
+      : Date.now() + (pendingOffer.expires_in_seconds || 5) * 1000;
+    return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  };
+
+  const [value, setValue] = useState(computeRemaining);
+  const [prevOffer, setPrevOffer] = useState(pendingOffer);
+  if (pendingOffer !== prevOffer) {
+    setPrevOffer(pendingOffer);
+    setValue(computeRemaining());
+  }
+
+  useEffect(() => {
+    if (!pendingOffer) return;
+    const expiresAt = pendingOffer.expires_at
+      ? pendingOffer.expires_at * 1000
+      : Date.now() + (pendingOffer.expires_in_seconds || 5) * 1000;
+
+    let refreshTimer: number | undefined;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setValue(remaining);
+      if (remaining <= 0 && refreshTimer === undefined && onExpire) {
+        refreshTimer = window.setTimeout(onExpire, 800);
+      }
+    }, 250);
+
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(refreshTimer);
+    };
+  }, [pendingOffer, total, onExpire]);
+
   const r = 22;
   const c = 2 * Math.PI * r;
   const progress = Math.max(0, Math.min(1, value / total));
@@ -45,19 +90,20 @@ export interface FifoQueueBarProps {
     expires_in_seconds?: number;
     expires_at?: number;
   } | null;
-  countdown: number | null;
+  countdown?: number | null;
   busyAction: string | null;
   onClaimUsb: (instanceName: string) => void;
   onDeclineOffer: (instanceName: string) => void;
+  onExpire?: () => void;
 }
 
 export function FifoQueueBar({
   waitingQueue,
   pendingOffer,
-  countdown,
   busyAction,
   onClaimUsb,
   onDeclineOffer,
+  onExpire,
 }: FifoQueueBarProps) {
   return (
     <div className="shrink-0 border-t border-border bg-surface">
@@ -86,7 +132,7 @@ export function FifoQueueBar({
           <>
             {pendingOffer && (
               <div className="flex w-[330px] shrink-0 items-center gap-3 rounded-md border border-primary bg-card p-2.5">
-                <CountdownRing value={countdown ?? pendingOffer.expires_in_seconds ?? GRACE_SECONDS} total={GRACE_SECONDS} />
+                <CountdownRing pendingOffer={pendingOffer} onExpire={onExpire} total={GRACE_SECONDS} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="rounded-sm bg-primary px-1.5 py-px font-mono text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
