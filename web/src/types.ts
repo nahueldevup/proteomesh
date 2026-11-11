@@ -312,3 +312,78 @@ export interface InstallResult {
   status: 'ok' | 'failed' | 'skipped';
   error?: string | null;
 }
+
+// ── Contratos de mutaciones de instancia e input (HALL-10) ───────────────────
+export interface StartInstanceResult {
+  status: string;
+  instance?: string;
+  quarantined?: boolean;
+  message?: string;
+}
+
+export interface StopInstanceResult {
+  status: string;
+  message?: string;
+}
+
+export type RestartInstanceResult = StartInstanceResult;
+
+export interface DeleteInstanceResult {
+  status: string;
+  instance?: string;
+  message?: string;
+}
+
+export interface LocationMutationResponse {
+  status: string;
+  instance: string;
+  applied_live: boolean;
+  is_live_query: boolean;
+  running: boolean;
+  location: LocationData;
+}
+
+export interface BatchQuarantineItem {
+  instance: string;
+  status: 'ok' | 'error' | string;
+  state?: string;
+  error?: string;
+}
+
+export interface BatchQuarantineResponse {
+  results: BatchQuarantineItem[];
+}
+
+export interface InputTapResult {
+  status: string;
+  action: 'tap';
+  x: number;
+  y: number;
+}
+
+export interface InputSwipeResult {
+  status: string;
+  action: 'swipe';
+  from: [number, number];
+  to: [number, number];
+  duration_ms: number;
+}
+
+export interface InputKeyResult {
+  status: string;
+  action: 'key';
+  key: string;
+  keycode: string;
+}
+
+export interface InputTextResult {
+  status: string;
+  action: 'text';
+  length: number;
+}
+
+export interface LaunchUrlResult {
+  status: string;
+  action: 'launch_url';
+  url: string;
+}

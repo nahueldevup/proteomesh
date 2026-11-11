@@ -510,6 +510,7 @@ export function useScrcpyStream({
           hardwareAcceleration: 'prefer-hardware',
         } as VideoDecoderConfig;
         const supported = await VideoDecoder.isConfigSupported(prefer);
+        if (!active || decoder.state === 'closed') return;
         if (supported.supported) {
           decoder.configure(prefer);
           telemetryRef.current.decoderConfig = 'prefer-hardware';
@@ -518,6 +519,7 @@ export function useScrcpyStream({
       } catch {
         // fallthrough: el navegador no expone isConfigSupported o rechazó prefer-hardware
       }
+      if (!active || decoder.state === 'closed') return;
       try {
         const fallback: VideoDecoderConfig = { codec, optimizeForLatency: true };
         decoder.configure(fallback);

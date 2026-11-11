@@ -24,16 +24,37 @@ import type {
   ApkEntry,
   FileEntry,
   InstallResult,
+  StartInstanceResult,
+  StopInstanceResult,
+  RestartInstanceResult,
+  DeleteInstanceResult,
+  LocationMutationResponse,
+  BatchQuarantineResponse,
+  InputTapResult,
+  InputSwipeResult,
+  InputKeyResult,
+  InputTextResult,
+  LaunchUrlResult,
 } from '../types';
 
 const API_BASE = '/api/v1';
+
+const encodeName = (name: string) => encodeURIComponent(name);
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let errorDetail = `HTTP ${res.status}`;
     try {
       const data = await res.json();
-      errorDetail = data.detail || data.message || errorDetail;
+      if (Array.isArray(data.detail)) {
+        errorDetail = data.detail
+          .map((item: { msg?: string }) => item.msg || JSON.stringify(item))
+          .join(', ');
+      } else if (typeof data.detail === 'string') {
+        errorDetail = data.detail;
+      } else if (typeof data.message === 'string') {
+        errorDetail = data.message;
+      }
     } catch {
       // ignore
     }
@@ -58,28 +79,28 @@ export const api = {
     return handleResponse<Instance>(res);
   },
 
-  async startInstance(name: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/start`, { method: 'POST' });
-    return handleResponse<unknown>(res);
+  async startInstance(name: string): Promise<StartInstanceResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/start`, { method: 'POST' });
+    return handleResponse<StartInstanceResult>(res);
   },
 
-  async stopInstance(name: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/stop`, { method: 'POST' });
-    return handleResponse<unknown>(res);
+  async stopInstance(name: string): Promise<StopInstanceResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/stop`, { method: 'POST' });
+    return handleResponse<StopInstanceResult>(res);
   },
 
-  async restartInstance(name: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/restart`, { method: 'POST' });
-    return handleResponse<unknown>(res);
+  async restartInstance(name: string): Promise<RestartInstanceResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/restart`, { method: 'POST' });
+    return handleResponse<RestartInstanceResult>(res);
   },
 
-  async deleteInstance(name: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}`, { method: 'DELETE' });
-    return handleResponse<unknown>(res);
+  async deleteInstance(name: string): Promise<DeleteInstanceResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}`, { method: 'DELETE' });
+    return handleResponse<DeleteInstanceResult>(res);
   },
 
   async getHealth(name: string): Promise<{ instance_name: string; ok: boolean; reports: string[] }> {
-    const res = await fetch(`${API_BASE}/instances/${name}/health`);
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/health`);
     return handleResponse<{ instance_name: string; ok: boolean; reports: string[] }>(res);
   },
 
@@ -184,13 +205,13 @@ export const api = {
     return handleResponse<DefaultLocation>(res);
   },
 
-  async setInstanceLocation(name: string, payload: InstanceLocationPayload): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/locations/instances/${name}`, {
+  async setInstanceLocation(name: string, payload: InstanceLocationPayload): Promise<LocationMutationResponse> {
+    const res = await fetch(`${API_BASE}/locations/instances/${encodeName(name)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<LocationMutationResponse>(res);
   },
 
   // =========================================================
@@ -202,12 +223,12 @@ export const api = {
   },
 
   async getInstanceUsbNetworkState(name: string): Promise<InstanceUsbNetworkState> {
-    const res = await fetch(`${API_BASE}/instances/${name}/network/state`);
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/network/state`);
     return handleResponse<InstanceUsbNetworkState>(res);
   },
 
   async claimUsb(name: string, preferredSerial?: string, stealFrom?: string): Promise<ClaimUsbResult> {
-    const res = await fetch(`${API_BASE}/instances/${name}/network/claim-usb`, {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/network/claim-usb`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -219,7 +240,7 @@ export const api = {
   },
 
   async declineOffer(name: string, requeue: boolean = true): Promise<DeclineOfferResult> {
-    const res = await fetch(`${API_BASE}/instances/${name}/network/decline-offer`, {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/network/decline-offer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requeue }),
@@ -228,22 +249,22 @@ export const api = {
   },
 
   async quarantineInstance(name: string): Promise<QuarantineResult> {
-    const res = await fetch(`${API_BASE}/instances/${name}/network/quarantine`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/network/quarantine`, { method: 'POST' });
     return handleResponse<QuarantineResult>(res);
   },
 
   async rotateInstanceIp(name: string): Promise<RotateIpResult> {
-    const res = await fetch(`${API_BASE}/instances/${name}/network/rotate-ip`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/network/rotate-ip`, { method: 'POST' });
     return handleResponse<RotateIpResult>(res);
   },
 
-  async batchQuarantine(instances: string[]): Promise<unknown> {
+  async batchQuarantine(instances: string[]): Promise<BatchQuarantineResponse> {
     const res = await fetch(`${API_BASE}/network/batch-quarantine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instances }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<BatchQuarantineResponse>(res);
   },
 
   async testUsbRotation(serial: string): Promise<TestRotationResult> {
@@ -276,12 +297,12 @@ export const api = {
 
   // Control Interactivo y Pantalla
   async launchScrcpy(name: string): Promise<ScrcpyLaunchResult> {
-    const res = await fetch(`${API_BASE}/instances/${name}/scrcpy`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/scrcpy`, { method: 'POST' });
     return handleResponse<ScrcpyLaunchResult>(res);
   },
 
   async getStreamInfo(name: string, player: string = 'mse'): Promise<ScrcpyStreamInfo> {
-    const res = await fetch(`${API_BASE}/instances/${name}/stream-info?player=${encodeURIComponent(player)}`);
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/stream-info?player=${encodeURIComponent(player)}`);
     return handleResponse<ScrcpyStreamInfo>(res);
   },
 
@@ -294,20 +315,20 @@ export const api = {
   getScreenUrl(name: string, timestamp?: number, fresh?: boolean): string {
     const t = timestamp || Date.now();
     const freshQuery = fresh ? '&fresh=1' : '';
-    return `${API_BASE}/instances/${name}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}`;
+    return `${API_BASE}/instances/${encodeName(name)}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}`;
   },
 
-  async sendTap(name: string, x: number, y: number): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/input/tap`, {
+  async sendTap(name: string, x: number, y: number): Promise<InputTapResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/input/tap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: Math.round(x), y: Math.round(y) }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<InputTapResult>(res);
   },
 
-  async sendSwipe(name: string, x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/input/swipe`, {
+  async sendSwipe(name: string, x1: number, y1: number, x2: number, y2: number, durationMs: number = 300): Promise<InputSwipeResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/input/swipe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -318,34 +339,34 @@ export const api = {
         duration_ms: durationMs,
       }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<InputSwipeResult>(res);
   },
 
-  async sendKey(name: string, key: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/input/key`, {
+  async sendKey(name: string, key: string): Promise<InputKeyResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/input/key`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<InputKeyResult>(res);
   },
 
-  async sendText(name: string, text: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/input/text`, {
+  async sendText(name: string, text: string): Promise<InputTextResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/input/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<InputTextResult>(res);
   },
 
-  async launchUrl(name: string, url: string): Promise<unknown> {
-    const res = await fetch(`${API_BASE}/instances/${name}/launch-url`, {
+  async launchUrl(name: string, url: string): Promise<LaunchUrlResult> {
+    const res = await fetch(`${API_BASE}/instances/${encodeName(name)}/launch-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
-    return handleResponse<unknown>(res);
+    return handleResponse<LaunchUrlResult>(res);
   },
 
   // Control de Grupo (Multi-Touch)
