@@ -623,3 +623,201 @@ Dado que el runner `node:test` solo prueba `src/lib/`, antes de fusionar o avanz
 2. **Aceleración de Video en Múltiples GPUs:** La decodificación WebCodecs se auditó a nivel de API Chromium en el código fuente; no se dispuso de un banco heterogéneo de GPUs (Intel/Nvidia/AMD) para medir variaciones de latencia de decodificación de hardware.
 3. **Síntesis de Voz Real de Lectores de Pantalla:** Se auditó la estructura del DOM, el árbol de accesibilidad accesible, los roles ARIA y los topes de foco por teclado, pero no se grabaron sesiones de audio con VoiceOver o NVDA.
 
+---
+
+### 8.8 Verificación con Backend (Evidencia en Servidor, Modelos Reales y Reclasificación)
+
+En esta subsección se auditaron directamente los archivos del backend FastAPI (`server/routes/`, `server/models/schemas.py`, `server/services/manager_bridge.py`, `server/db/` y `tools/instance_manager.py`) para contrastar con evidencia de servidor las hipótesis de HALL-14 y HALL-10.
+
+---
+
+#### 1. Validación del Nombre de Instancia y Reclasificación de HALL-14
+
+##### Reglas de Validación en el Backend:
+- **Pydantic Schema (API REST):** En `server/models/schemas.py:268`, el modelo `InstanceCreateRequest` define:
+  ```python
+  name: str = Field(..., pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$", description="Nombre único en minúsculas")
+  ```
+- **CLI y Herramientas del Sistema (`instance_manager.py`):** En `tools/instance_manager.py:39` y `tools/instance_manager.py:686-693`:
+  ```python
+  INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
+
+  def validate_instance_name(name: str) -> str:
+      """Rechaza nombres que puedan escapar de instances/ o inyectar shell."""
+      if not INSTANCE_NAME_RE.fullmatch(name or ""):
+          raise SystemExit(
+              f"[!] Nombre de instancia inválido: {name!r}. "
+              "Usar solo minúsculas, números, guiones y guiones bajos (máx. 63)."
+          )
+      return name
+  ```
+- **Guarda en `manager_bridge.py`:** En `server/services/manager_bridge.py:491, 563, 836, 845, 870, 881, 892`, cada invocación de ciclo de vida o input valida el nombre contra `validate_instance_name(name)` antes de ejecutar cualquier comando.
+
+##### ¿Pueden existir instancias con `/`, `?`, `#` o espacios creadas por otra vía?
+1. **Vía API directa:** **Imposible.** Pydantic rechaza la petición con HTTP 422 Unprocessable Entity en la línea `server/models/schemas.py:268` antes de procesarla.
+2. **Vía CLI `instance_manager.py`:** **Imposible.** `validate_instance_name` aborta con `SystemExit` (`tools/instance_manager.py:688`).
+3. **Vía Docker Daemon:** **Imposible.** El daemon de Docker exige que los nombres de contenedores cumplan `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Docker rechaza de raíz espacios, slashes, `#` o `?`.
+4. **Vía Sistema de Archivos / Importación en disco (`sync_from_disk`):**
+   - En sistemas de archivos Unix/Linux (ext4), **un nombre de directorio no puede contener `/` bajo ninguna circunstancia**, ya que la barra es el delimitador de rutas del sistema operativo.
+   - Si un administrador creara manualmente en disco una carpeta con espacios (ej. `instances/phone test/`), `sync_from_disk()` (`server/db/instance_store.py:417-434`) la importaría a SQLite sin validar la regex, aunque `instance_manager.py` fallaría al intentar operarla por shell.
+
+##### Conclusión y Reclasificación de HALL-14:
+Todos los caracteres admitidos por la regex del backend (`a-z`, `0-9`, `_`, `-`) son caracteres **no reservados** (*unreserved characters*) según la especificación RFC 3986, Sección 2.3. Para todos ellos, la función de JavaScript `encodeURIComponent(name)` produce **exactamente el mismo string sin alterar un solo byte** (`encodeURIComponent("phone-1_a") === "phone-1_a"`).
+- **Veredicto:** No existe ningún escenario donde una instancia válidamente creada en ProteoMesh falle por ausencia de `encodeURIComponent`.
+- **Reclasificación de Severidad:** Se degrada de MEDIO a **BAJO / OPORTUNIDAD DEFENSIVA** (higiene defensiva en el cliente ante posibles importaciones anómalas en disco).
+
+---
+
+#### 2. Modelos Reales del Backend para las 11 Funciones `Promise<unknown>` (HALL-10)
+
+En `web/src/lib/api.ts` existen exactamente 11 funciones que devuelven `Promise<unknown>`. Al cruzar cada una con su endpoint en `server/routes/` y su implementación en `server/services/`, se identificaron los contratos de datos reales del servidor:
+
+| # | Función en `api.ts` | Endpoint Backend | Ruta en `server/routes/` | Servicio en `server/services/` | Respuesta Real en Éxito | Comportamiento en Error |
+|:---:|:---|:---|:---|:---|:---|:---|
+| 1 | `startInstance(name)` | `POST /instances/{name}/start` | `instances.py:108` | `manager_bridge.py:340-345` | `{"status": "ok", "instance": name, "quarantined": bool, "message": str}` | HTTP 400/500 con `{"detail": str}` |
+| 2 | `stopInstance(name)` | `POST /instances/{name}/stop` | `instances.py:119` | `manager_bridge.py:380` | `{"status": "ok", "message": f"Instancia '{name}' detenida"}` | HTTP 400/500 con `{"detail": str}` |
+| 3 | `restartInstance(name)` | `POST /instances/{name}/restart` | `instances.py:130` | `manager_bridge.py:389` | `{"status": "ok", "instance": name, "quarantined": bool, "message": str}` (invoca `start_instance_async`) | HTTP 400/500 con `{"detail": str}` |
+| 4 | `deleteInstance(name)` | `DELETE /instances/{name}` | `instances.py:90` | `manager_bridge.py:558` | `{"status": "ok", "instance": name, "message": "Instancia eliminada correctamente"}` | HTTP 500 con `{"detail": str}` |
+| 5 | `setInstanceLocation(name, payload)` | `POST /locations/instances/{name}` | `locations.py:176` | `schemas.py:143-150` (`LocationResponse`) | `{"status": "ok", "instance": name, "applied_live": bool, "is_live_query": bool, "running": bool, "location": LocationSchema}` | HTTP 404/422/400 con `{"detail": str}` |
+| 6 | `batchQuarantine(instances)` | `POST /network/batch-quarantine` | `network.py:170` | `network.py:172-179` | `{"results": [{"instance": str, "status": "ok"\|"error", "state"?: str, "error"?: str}]}` | Siempre 200 con resultados parciales en el array |
+| 7 | `sendTap(name, x, y)` | `POST /instances/{name}/input/tap` | `instances.py:207` | `manager_bridge.py:840` | `{"status": "ok", "action": "tap", "x": int, "y": int}` | HTTP 400 con `{"detail": str}` |
+| 8 | `sendSwipe(name, x1, y1, x2, y2, dur)` | `POST /instances/{name}/input/swipe` | `instances.py:216` | `manager_bridge.py:849` | `{"status": "ok", "action": "swipe", "from": [x1, y1], "to": [x2, y2], "duration_ms": int}` | HTTP 400 con `{"detail": str}` |
+| 9 | `sendKey(name, key)` | `POST /instances/{name}/input/key` | `instances.py:225` | `manager_bridge.py:875` | `{"status": "ok", "action": "key", "key": key, "keycode": str}` | HTTP 400 con `{"detail": str}` |
+| 10 | `sendText(name, text)` | `POST /instances/{name}/input/text` | `instances.py:234` | `manager_bridge.py:887` | `{"status": "ok", "action": "text", "length": int}` | HTTP 400 con `{"detail": str}` |
+| 11 | `launchUrl(name, url)` | `POST /instances/{name}/launch-url` | `instances.py:243` | `manager_bridge.py:902` | `{"status": "ok", "action": "launch_url", "url": clean_url}` | HTTP 400 con `{"detail": str}` |
+
+##### Definición de Tipos TypeScript Propuestos para `src/types.ts`:
+```typescript
+// Contratos de ciclo de vida (server/services/manager_bridge.py:340, 380, 558)
+export interface StartInstanceResult {
+  status: 'ok';
+  instance: string;
+  quarantined: boolean;
+  message: string;
+}
+
+export interface StopInstanceResult {
+  status: 'ok';
+  message: string;
+}
+
+export type RestartInstanceResult = StartInstanceResult;
+
+export interface DeleteInstanceResult {
+  status: 'ok';
+  instance: string;
+  message: string;
+}
+
+// Contrato de geolocalización (server/models/schemas.py:143-150)
+export interface LocationMutationResponse {
+  status: string;
+  instance: string;
+  applied_live: boolean;
+  is_live_query: boolean;
+  running: boolean;
+  location: LocationData;
+}
+
+// Contrato de cuarentena por lotes (server/routes/network.py:170-179)
+export interface BatchQuarantineItem {
+  instance: string;
+  status: 'ok' | 'error';
+  state?: string;
+  error?: string;
+}
+
+export interface BatchQuarantineResponse {
+  results: BatchQuarantineItem[];
+}
+
+// Contratos de interacción táctil y hardware (server/services/manager_bridge.py:840-902)
+export interface InputTapResult {
+  status: 'ok';
+  action: 'tap';
+  x: number;
+  y: number;
+}
+
+export interface InputSwipeResult {
+  status: 'ok';
+  action: 'swipe';
+  from: [number, number];
+  to: [number, number];
+  duration_ms: number;
+}
+
+export interface InputKeyResult {
+  status: 'ok';
+  action: 'key';
+  key: string;
+  keycode: string;
+}
+
+export interface InputTextResult {
+  status: 'ok';
+  action: 'text';
+  length: number;
+}
+
+export interface LaunchUrlResult {
+  status: 'ok';
+  action: 'launch_url';
+  url: string;
+}
+```
+
+---
+
+#### 3. Hallazgos Adicionales y Correcciones al Contrastar con el Backend
+
+Al contrastar exhaustivamente el código del servidor con el cliente, se descubrieron dos inconsistencias concretas en el frontend:
+
+##### (a) Error de serialización en excepciones HTTP 422 de FastAPI (`api.ts:31-43`):
+- **Código en `web/src/lib/api.ts:31`:**
+  ```typescript
+  async function handleResponse<T>(res: Response): Promise<T> {
+    if (!res.ok) {
+      let errorDetail = `HTTP ${res.status}`;
+      try {
+        const data = await res.json();
+        errorDetail = data.detail || data.message || errorDetail;
+      } catch {}
+      throw new Error(errorDetail);
+    }
+    return res.json();
+  }
+  ```
+- **Problema en servidor:** Cuando FastAPI lanza una validación fallida (HTTP 422), `detail` **no es un string, sino una lista de objetos JSON**: `{"detail": [{"loc": ["body", "port"], "msg": "Input should be less than or equal to 65535", "type": "less_than_equal"}]}`.
+- **Consecuencia en cliente:** `errorDetail` recibe el array de objetos. Al invocar `new Error(errorDetail)`, JavaScript convierte el array llamando a `toString()`, lo que arroja el mensaje confuso **`Error: [object Object]`** en los toasts de error del panel web.
+- **Solución recomendada:** Formatear los errores 422 en `handleResponse`:
+  ```typescript
+  if (Array.isArray(data.detail)) {
+    errorDetail = data.detail.map((e: { msg?: string; loc?: string[] }) => e.msg || JSON.stringify(e)).join(', ');
+  } else if (typeof data.detail === 'string') {
+    errorDetail = data.detail;
+  }
+  ```
+
+##### (b) Tipado incompleto de `RotateIpResult` (`types.ts:232`):
+- **Definición en frontend (`web/src/types.ts:232`):**
+  ```typescript
+  export interface RotateIpResult {
+    status?: string;
+    new_ip: string;
+  }
+  ```
+- **Respuesta real en backend (`server/services/usb_network_service.py:868-875`):**
+  ```python
+  return {
+      "status": "ok",
+      "instance": instance_name,
+      "state": "CONNECTED_USB",
+      "old_ip": old_ip,
+      "new_ip": new_ip,
+      "serial": serial,
+  }
+  ```
+- **Consecuencia:** El frontend ignoraba los campos `old_ip`, `serial`, `state` e `instance`, perdiendo información diagnóstica útil para notificaciones toast ricas tras rotar la IP.
+
+
