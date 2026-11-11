@@ -23,7 +23,7 @@ import { ConfirmDeleteModal } from '../ui/ConfirmDeleteModal';
 import { api } from '../../lib/api';
 import { useLocationsCatalog, EMPTY_CATALOG, useApkCatalog } from '../../lib/queries';
 import { cn, getErrorMessage } from '../../lib/utils';
-import type { LocationData } from '../../types';
+import type { LocationData, BatchQuarantineResponse } from '../../types';
 import { toast } from 'sonner';
 import { useExclusivePopover } from '../../lib/useExclusivePopover';
 
@@ -198,8 +198,16 @@ export default function BulkBar({
     setBusy('quarantine');
     const toastId = toast.loading(`Aislando ${count} CloudPhones y liberando módems USB...`);
     try {
-      await api.batchQuarantine(selectedNames);
-      toast.success(`${count} CloudPhones puestos en cuarentena segura`, { id: toastId });
+      const res: BatchQuarantineResponse = await api.batchQuarantine(selectedNames);
+      const results = res.results || [];
+      const errorCount = results.filter((r) => r.status === 'error').length;
+      const okCount = results.length - errorCount;
+
+      if (results.some((r) => r.status === 'error')) {
+        toast.warning(`${okCount} aislados, ${errorCount} con error`, { id: toastId });
+      } else {
+        toast.success(`${count} CloudPhones puestos en cuarentena segura`, { id: toastId });
+      }
       onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? getErrorMessage(err) : 'Error al aislar en lote', { id: toastId });
