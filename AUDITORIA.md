@@ -818,6 +818,103 @@ Al contrastar exhaustivamente el código del servidor con el cliente, se descubr
       "serial": serial,
   }
   ```
-- **Consecuencia:** El frontend ignoraba los campos `old_ip`, `serial`, `state` e `instance`, perdiendo información diagnóstica útil para notificaciones toast ricas tras rotar la IP.
+- **Consecuencia:** Nota informativa de contrato; la UI actual no consume `old_ip` ni `serial` en sus toasts.
+
+---
+
+### 8.9 Revisión Crítica de la Sección 8.8 (Tercera Pasada)
+
+En esta pasada se contrastaron las observaciones P1–P6 del revisor contra el código real del frontend y backend, verificando llamadores, contratos de respuesta y comportamiento ante fallos parciales.
+
+---
+
+#### 1. Tabla de Evaluación de Observaciones (P1 a P6)
+
+| Obs | Asunto | Veredicto | Evidencia Real (`archivo:línea`) | Razonamiento Técnico | Decisión en el Informe |
+|:---|:---|:---:|:---|:---|:---|
+| **P1** | Conclusión de HALL-14 absoluta vs carpetas en disco | **CONFIRMADO** | `server/db/instance_store.py:417-434` (`sync_from_disk` itera `d.name` sin regex); ext4 permite cualquier byte salvo `/` y `\0`. | El revisor tiene razón. La conclusión anterior decía "no existe ningún escenario", lo cual era técnicamente inexacto. Aunque la API y el CLI impiden crear nombres con espacios, `#` o `?`, un administrador puede crear carpetas manuales en `instances/` que `sync_from_disk` cargará a SQLite. En ese caso, un nombre con espacios o `#` sí rompería la URL REST en el frontend. | **CORREGIDO**: se reescribe como "improbable por la vía normal; posible con carpetas manuales en disco o migraciones". La severidad se mantiene en **BAJO / OPORTUNIDAD DEFENSIVA**. |
+| **P2** | Descarte de retornos en los 15 llamadores de HALL-10 | **CONFIRMADO** | Búsqueda exhaustiva en `src/`: 15 llamadores en `DeviceControlRail.tsx:174,177,194,207,225,356,374`, `InteractiveScreen.tsx:117,133,155,158`, `DeviceCard.tsx:136`, `FocusView.tsx:241`, `CustomLocationsManager.tsx:675`, `BulkBar.tsx:221`. | El revisor tiene razón. Los 15 llamadores ejecutan `await api.X(...)` descartando el valor de retorno. Ningún componente lee los campos devueltos por estas funciones. Por tanto, tiparlas no previene errores en el código actual (con la excepción de `batchQuarantine`, donde ignorar el retorno oculta fallos reales). | **HALL-10 RECLASIFICADO** de MEDIO a **BAJO / OPORTUNIDAD**. Se prioriza tipar únicamente lo que el frontend consume o debe validar. |
+| **P3** | Bug de falso éxito en `batchQuarantine` de `BulkBar.tsx` | **CONFIRMADO** | `server/routes/network.py:170-179` (captura excepciones por instancia y responde HTTP 200 con `results: [{"status": "error"}]`); `BulkBar.tsx:221-223` (`await api.batchQuarantine(...)` sin revisar el array). | El revisor descubrió un bug real. Si la cuarentena de 3 terminales falla en el servidor, el backend devuelve HTTP 200 con `results` conteniendo errores. Como el HTTP status es 200, el frontend no entra al `catch` y emite `toast.success("3 CloudPhones puestos en cuarentena segura")`, engañando al operador. En cambio, `handleBatchClaim` en el mismo archivo sí maneja fallos parciales. | **NUEVO HALLAZGO: HALL-17 [MEDIO]** con tipo COMPROBADO y asignación a Etapa 3 del plan de refactorización. |
+| **P4** | Fragilidad de literales `status: 'ok'` y ausencia de `response_model` | **CONFIRMADO** | `server/routes/instances.py:108,119,130,207,216,225,234,243` declaran `response_model=Dict[str, Any]`; `server/routes/network.py:170` no declara `response_model`. Solo `locations.py:176` usa `LocationResponse`. | El revisor tiene razón. Salvo `LocationResponse`, el backend no valida sus respuestas con esquemas estrictos de Pydantic. Fijar literales rígidos `status: 'ok'` o tuplas estrechas en TypeScript es frágil si el servidor amplía sus estados en el futuro. | **AJUSTADO**: se flexibilizan los tipos a `status: string` o `'ok' | string` y se documenta qué endpoints carecen de `response_model`. |
+| **P5** | Relevancia de campos extras en `RotateIpResult` | **CONFIRMADO** | `FocusView.tsx:333`, `DeviceControlRail.tsx:302`, `UsbNetworkCenter.tsx:142`: todos los consumidores hacen únicamente `${res.new_ip}`. | El revisor tiene razón. Ningún componente lee `old_ip`, `serial`, `state` ni `instance`. Agregar esos campos al tipo era un ejercicio de completitud académica sin impacto funcional. | **DEGRADADO A NOTA INFORMATIVA** sin estatus de problema en la matriz. |
+| **P6** | Actualización de matriz, asignación de etapas e IDs | **CONFIRMADO** | Revisión de IDs y cronograma de etapas. | El revisor tiene razón. El bug de parseo de errores 422 de FastAPI y el bug de cuarentena parcial deben tener IDs formales (HALL-16 y HALL-17), severidad explícita y asignación de etapa. | **ACTUALIZADO**: se formalizan HALL-16 y HALL-17 en la matriz 8.5 y se integran en las Etapas 1 y 3 del plan (ver más abajo). |
+
+---
+
+#### 2. Formalización de Nuevos Hallazgos de Backend-Frontend
+
+##### [MEDIO] HALL-16: Bug de serialización en excepciones HTTP 422 de FastAPI (`api.ts:31-40`)
+- **Archivos:** `web/src/lib/api.ts:31-40` y `server/models/schemas.py:268,278`
+- **Problema:** Cuando el backend rechaza una petición por fallo de validación de Pydantic (HTTP 422), el cuerpo JSON contiene `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}`. La función `handleResponse` hace:
+  ```typescript
+  errorDetail = data.detail || data.message || errorDetail;
+  throw new Error(errorDetail);
+  ```
+  Al ser `data.detail` un array de objetos, la conversión implícita a string en `new Error` produce **`Error: [object Object]`** en la interfaz de usuario.
+- **Consecuencia:** Si un usuario ingresa un puerto fuera de rango (ej. 70000) o un nombre inválido en la creación, el toast muestra un mensaje ininteligible en lugar de la causa real ("Input should be less than or equal to 65535").
+- **Tipo:** COMPROBADO.
+- **Esfuerzo:** Bajo (4 líneas en `api.ts`).
+- **Etapa Asignada:** **Etapa 1** (Resiliencia y Correcciones Rápidas).
+
+##### [MEDIO] HALL-17: Falso éxito en cuarentena por lotes (`BulkBar.tsx:221-223`)
+- **Archivos:** `web/src/components/grid/BulkBar.tsx:217-229` y `server/routes/network.py:170-179`
+- **Problema:** `POST /api/v1/network/batch-quarantine` procesa instancias individualmente, captura sus excepciones en un bloque `try/except` y devuelve siempre código HTTP 200 con una lista de resultados:
+  ```json
+  {"results": [{"instance": "phone-01", "status": "error", "error": "Contenedor no responde"}]}
+  ```
+  En `BulkBar.tsx:221-223`:
+  ```typescript
+  await api.batchQuarantine(selectedNames);
+  toast.success(`${count} CloudPhones puestos en cuarentena segura`, { id: toastId });
+  ```
+  Como el backend responde con HTTP 200, `api.batchQuarantine` no lanza ninguna excepción. El frontend emite un toast de éxito afirmando que todas las instancias fueron aisladas, incluso si todas fallaron en el backend.
+- **Consecuencia:** Desinformación crítica para el operador: asume que terminales con posibles fugas de IP o problemas de red quedaron aislados cuando siguen activos o en estado inconsistente.
+- **Tipo:** COMPROBADO.
+- **Esfuerzo:** Bajo (analizar el array `results` devuelto y bifurcar con `toast.warning` / `toast.error`, replicando la lógica existente en `handleBatchClaim`).
+- **Etapa Asignada:** **Etapa 3** (Saneamiento de Efectos y Acciones por Lote).
+
+---
+
+#### 3. Matriz de Hallazgos Definitiva (Post-Revisión 8.9)
+
+| ID | Hallazgo | Ubicación | Severidad | Esfuerzo | Tipo | Etapa Asignada |
+|:---|:---|:---|:---:|:---:|:---:|:---:|
+| **HALL-01** | Monolito de 2397 líneas con 47 `useState` | `CustomLocationsManager.tsx` | **ALTO** | Alto | COMPROBADO | Etapa 2 |
+| **HALL-02** | 14 casos de `set-state-in-effect` (antipatrones vs legítimos) | 12 archivos | **ALTO** | Medio | COMPROBADO | Etapa 3 |
+| **HALL-03** | 4 componentes >900 líneas con múltiples responsabilidades | `UsbNetworkCenter`, `FocusView`, `FileExplorer`, `CreateDeviceModal` | **ALTO** | Alto | COMPROBADO | Etapa 2 |
+| **HALL-04** | Elementos interactivos sin accesibilidad de teclado (desacoplar de riel) | `DeviceCard`, `PhoneScreen`, `DeviceControlRail` | **ALTO** | Medio | COMPROBADO | Etapa 4 |
+| **HALL-05** | Configuración de Oxlint subutilizada | `.oxlintrc.json` | **ALTO** | Bajo | COMPROBADO | Etapa 1 |
+| **HALL-06** | Acceso a ref en función de limpieza de `useEffect` | `MapPicker.tsx:414` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-07** | Inputs sin `<label htmlFor="...">` asociado | `CreateDeviceModal`, `UsbNetworkCenter`, etc. | **MEDIO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-08** | Duplicación de subcomponentes `IconBtn` y `BarBtn` | `FileExplorer.tsx` | **MEDIO** | Bajo | COMPROBADO | Etapa 2 |
+| **HALL-09** | ~~Supuesta obsolescencia de `InteractiveScreen`~~ | `FocusView.tsx`, `InteractiveScreen.tsx` | — | — | — | **ELIMINADO** (Decisión deliberada) |
+| **HALL-10** | Tipado `Promise<unknown>` en 11 funciones cuyos retornos se descartan | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-11** | Uso de `autoFocus` invasivo en popovers | `DeviceControlRail`, `BulkBar`, `FileExplorer` | **MEDIO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-12** | Discrepancia documental de color en README | `README.md` vs `index.css` | **BAJO** | Bajo | COMPROBADO | Etapa 4 |
+| **HALL-13** | Ausencia de Error Boundaries en raíz y rutas lazy (Pantalla blanca) | `main.tsx`, `App.tsx:345` | **ALTO** | Medio | COMPROBADO | Etapa 1 |
+| **HALL-14** | Falta de `encodeURIComponent` en rutas REST (riesgo en carpetas manuales) | `src/lib/api.ts` | **BAJO** | Bajo | OPORTUNIDAD | Etapa 1 |
+| **HALL-15** | Carrera post-`await` en `configureDecoder` de WebCodecs | `src/lib/scrcpy/useScrcpyStream.ts:514` | **MEDIO** | Bajo | COMPROBADO | Etapa 1 |
+| **HALL-16** | **NUEVO:** Parseo fallido de errores HTTP 422 de FastAPI (`[object Object]`) | `src/lib/api.ts:31-40` | **MEDIO** | Bajo | COMPROBADO | Etapa 1 |
+| **HALL-17** | **NUEVO:** Falso éxito en `batchQuarantine` ante fallos parciales del backend | `src/components/grid/BulkBar.tsx:221-223` | **MEDIO** | Bajo | COMPROBADO | Etapa 3 |
+
+---
+
+#### 4. Ajustes Concretos en el Plan de Refactorización
+
+- **En la Etapa 1 (Tooling, Tipos, Resiliencia y Correcciones Rápidas):**
+  - Se añade la corrección inmediata de `handleResponse` en `api.ts` para deserializar arrays de errores 422 de FastAPI (HALL-16).
+  - Se añade la definición flexible de contratos en `src/types.ts` (`status: string`, admitiendo evolución del backend sin literales frágiles) para las funciones de `api.ts` (HALL-10).
+  - Se mantiene la incorporación de `RootErrorBoundary` (HALL-13) y la guarda de carrera en WebCodecs (HALL-15).
+- **En la Etapa 3 (Saneamiento de Efectos y Acciones por Lote):**
+  - Se añade la corrección de `handleBatchQuarantine` en `BulkBar.tsx` (HALL-17), consumiendo el tipo `BatchQuarantineResponse` devuelto por el backend, contabilizando ítems con `status: 'error'` y mostrando `toast.warning` o `toast.error` con la cantidad exacta de fallos.
+
+---
+
+#### 5. Autocrítica del Auditor (Tercera Pasada)
+
+1. **Afirmación Dogmática de "Cero Escenarios" (P1):** Al verificar que la API REST y el CLI tenían regex estricta, se concluyó apresuradamente que era imposible tener nombres anómalos, pasando por alto que `sync_from_disk()` lee directamente carpetas del sistema de archivos sin validar contra `INSTANCE_NAME_RE`.
+2. **Evaluación de Tipos sin Mirar el Uso Real (P2):** Se clasificó el tipado de 11 funciones como severidad MEDIO sin haber comprobado antes si los llamadores usaban los valores de retorno. El hecho de que los 15 llamadores descartaran el retorno reduce el impacto a una mejora de calidad contractual (BAJO), excepto en `batchQuarantine`.
+3. **Punto Ciego de Cuarentena Parcial (P3):** Se documentó en la tabla de 8.8 que `batchQuarantine` respondía HTTP 200 con resultados mixtos, pero no se conectó ese hallazgo del servidor con el código de `BulkBar.tsx` que asumía éxito ciego. El revisor identificó correctamente ese puente entre backend y frontend.
+
 
 
