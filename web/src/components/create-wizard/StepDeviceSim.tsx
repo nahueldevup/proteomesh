@@ -47,10 +47,11 @@ export function StepDeviceSim({
       {/* Fila: Nombre, Puerto ADB, Operadora y Línea Móvil */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">
+          <label htmlFor="wizard-instance-name" className="block text-xs font-medium text-foreground mb-1">
             Nombre de la Instancia
           </label>
           <input
+            id="wizard-instance-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
@@ -61,10 +62,11 @@ export function StepDeviceSim({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">
+          <label htmlFor="wizard-adb-port" className="block text-xs font-medium text-foreground mb-1">
             Puerto ADB
           </label>
           <input
+            id="wizard-adb-port"
             type="number"
             value={port}
             onChange={(e) => setPort(Number(e.target.value))}
@@ -83,10 +85,11 @@ export function StepDeviceSim({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">
+          <label htmlFor="wizard-sim-carrier" className="block text-xs font-medium text-foreground mb-1">
             Operadora Móvil (SIM)
           </label>
           <select
+            id="wizard-sim-carrier"
             value={selectedCarrier}
             onChange={(e) => setSelectedCarrier(e.target.value)}
             className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary capitalize"
@@ -105,7 +108,7 @@ export function StepDeviceSim({
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-xs font-medium text-foreground">
+            <label htmlFor="wizard-phone-number" className="block text-xs font-medium text-foreground">
               Línea Móvil (SIM)
             </label>
             <button
@@ -119,6 +122,7 @@ export function StepDeviceSim({
             </button>
           </div>
           <input
+            id="wizard-phone-number"
             type="text"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+]/g, ''))}
@@ -133,7 +137,7 @@ export function StepDeviceSim({
       {brands.length > 0 && (
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-foreground">Fabricante</label>
+            <span className="text-xs font-medium text-foreground">Fabricante</span>
             <span className="text-[11px] font-mono text-muted-foreground">
               {currentBrandModels.length} modelos oficiales
             </span>
@@ -161,11 +165,12 @@ export function StepDeviceSim({
             {currentBrandModels.map((m) => {
               const isSelected = selectedModel === m.id;
               return (
-                <div
+                <button
                   key={m.id}
+                  type="button"
                   onClick={() => onSelectModel(m.id)}
                   className={cn(
-                    'p-2.5 rounded-md border cursor-pointer transition-all',
+                    'p-2.5 rounded-md border cursor-pointer transition-all text-left w-full',
                     isSelected
                       ? 'bg-emerald-500/10 border-primary text-foreground'
                       : 'bg-background/60 border-border hover:border-muted-foreground/40 text-muted-foreground'
@@ -179,7 +184,7 @@ export function StepDeviceSim({
                     <span>SoC: {m.soc_model}</span>
                     <span>{m.screen}</span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

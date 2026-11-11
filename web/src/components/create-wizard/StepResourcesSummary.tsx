@@ -44,9 +44,9 @@ export function StepResourcesSummary({
       {/* Asignación de Recursos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-foreground">
+          <span className="block text-xs font-medium text-foreground">
             Memoria RAM
-          </label>
+          </span>
           <div className="flex gap-1.5">
             {RAM_PRESETS.map((p) => (
               <button
@@ -70,9 +70,9 @@ export function StepResourcesSummary({
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-foreground">
+          <span className="block text-xs font-medium text-foreground">
             CPU Pinning (Aislamiento de Hilos)
-          </label>
+          </span>
           <div className="flex gap-1.5">
             {CPU_PRESETS.map((c) => (
               <button
@@ -96,8 +96,13 @@ export function StepResourcesSummary({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border bg-background/50">
+      <label
+        htmlFor="wizard-start-immediately"
+        aria-label="Iniciar contenedor inmediatamente"
+        className="flex items-center gap-2 cursor-pointer p-2 rounded-md border border-border bg-background/50"
+      >
         <input
+          id="wizard-start-immediately"
           type="checkbox"
           checked={startImmediately}
           onChange={(e) => setStartImmediately(e.target.checked)}

@@ -41,10 +41,10 @@ export function StepGpsProxy({
       {/* Mapa Interactivo Leaflet con Presets */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 text-primary" />
             <span>Geolocalización GPS & Pines</span>
-          </label>
+          </span>
           <span className="text-[11px] font-mono text-muted-foreground">
             {selectedCustomLoc ? (
               <span className="text-primary font-semibold mr-1">📍 {selectedCustomLoc.name} ·</span>
@@ -133,8 +133,9 @@ export function StepGpsProxy({
 
         <div className="grid grid-cols-3 gap-2.5 pt-1">
           <div>
-            <label className="block text-[11px] font-mono text-muted-foreground mb-1">Ciudad</label>
+            <label htmlFor="wizard-gps-city" className="block text-[11px] font-mono text-muted-foreground mb-1">Ciudad</label>
             <input
+              id="wizard-gps-city"
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
@@ -142,8 +143,9 @@ export function StepGpsProxy({
             />
           </div>
           <div>
-            <label className="block text-[11px] font-mono text-muted-foreground mb-1">Latitud</label>
+            <label htmlFor="wizard-gps-lat" className="block text-[11px] font-mono text-muted-foreground mb-1">Latitud</label>
             <input
+              id="wizard-gps-lat"
               type="number"
               step="any"
               value={latitude}
@@ -152,8 +154,9 @@ export function StepGpsProxy({
             />
           </div>
           <div>
-            <label className="block text-[11px] font-mono text-muted-foreground mb-1">Longitud</label>
+            <label htmlFor="wizard-gps-lon" className="block text-[11px] font-mono text-muted-foreground mb-1">Longitud</label>
             <input
+              id="wizard-gps-lon"
               type="number"
               step="any"
               value={longitude}
