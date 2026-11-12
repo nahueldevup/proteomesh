@@ -1831,6 +1831,58 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 94. FEAT(WEB-QUALITY-034) — Auditoría Integral de Calidad, Partición Modular y Optimización del Frontend Web (2026-11-12)
+
+* **Objetivo:** Ejecutar una auditoría técnica profunda y un plan de refactorización estructural en 4 etapas sobre el panel web (`web/`) para elevar la calidad del código a nivel de producción, resolver la hipertrofia de archivos gigantes (>900 líneas), eliminar antipatrones de efectos (`set-state-in-effect`), migrar el data-fetching a TanStack Query v5 con mutaciones optimistas e invalidación precisa, blindar la aplicación con resiliencia global (`RootErrorBoundary`), corregir el parseo de errores de FastAPI y cumplir estándares de accesibilidad semántica WCAG 2.2 sin alterar la estética ni la ergonomía de alta densidad inspirada en Lovable y GenFarmer.
+* **Componentes implementados por etapa:**
+  1. **Etapa 1 — Tooling Seguro, Resiliencia y Contratos de API:**
+     - Configuración de `web/.oxlintrc.json` activando el plugin `jsx-a11y` y la regla `react/exhaustive-deps` en nivel `"warn"` (manteniendo `react/rules-of-hooks` en `"error"`), y desactivando la regla obsoleta de React 16 `react/react-in-jsx-scope`.
+     - Implementación de `RootErrorBoundary.tsx` envolviendo `<App />` en `main.tsx` con interfaz sobria Dark Tech, acciones de reinicio y recarga ante errores de render no capturados.
+     - Sustitución de `<Suspense fallback={null}>` en `App.tsx` por `<ViewLoadingSkeleton />`, erradicando parpadeos vacíos en la carga diferida de vistas.
+     - Corrección en `handleResponse` (`web/src/lib/api.ts`) para deserializar listas de objetos de error devueltas por FastAPI en excepciones HTTP 422, erradicando el mensaje genérico `Error: [object Object]`.
+     - Guarda de seguridad `if (!active || decoder.state === 'closed') return;` en `useScrcpyStream.ts` silenciando el log espurio de consola al desmontar el streaming WebCodecs.
+     - Aplicación de `encodeName` (`encodeURIComponent`) en 19 endpoints REST y definición de contratos de respuesta estrictos en `src/types.ts` (`StartInstanceResult`, `StopInstanceResult`, `DeleteInstanceResult`, `LocationMutationResponse`, `BatchQuarantineResponse`, etc.).
+  2. **Etapa 2 — Partición Modular Mecánica (Reducción de Monolitos):**
+     - `CustomLocationsManager.tsx` (reducido de 2397 a 1488 líneas): Extracción de 5 submódulos dedicados bajo `src/components/locations/`: `LocationsMapHero.tsx`, `LocationsInspector.tsx`, `LocationGroupModal.tsx`, `BatchTeleportModal.tsx` y `locationsTypes.ts`.
+     - `UsbNetworkCenter.tsx` (reducido de 1373 a 500 líneas): Extracción de 5 submódulos bajo `src/components/network/`: `ModemInventoryTable.tsx`, `ModemInspector.tsx`, `IpLedgerTable.tsx`, `FifoQueueBar.tsx` y `networkTypes.ts`.
+     - `FocusView.tsx` (reducido de 1171 a 633 líneas): Extracción de 4 submódulos bajo `src/components/focus/`: `FocusMetadataGrid.tsx`, `FocusGpsTab.tsx`, `FocusProxyTab.tsx` y `FocusHealthTab.tsx`, preservando intacto el ciclo de vida contextual sin `key` destructivos.
+     - `CreateDeviceModal.tsx` (reducido de 911 a 531 líneas): Extracción de los 3 pasos del wizard bajo `src/components/create-wizard/`: `StepDeviceSim.tsx`, `StepGpsProxy.tsx`, `StepResourcesSummary.tsx` y `wizardTypes.ts`.
+     - `FileExplorer.tsx`: Eliminación de funciones internas duplicadas `IconBtn` y `BarBtn` (1060 → 926 líneas), sustituyéndolas por el componente canónico preexistente `src/components/ui/IconBtn.tsx`.
+  3. **Etapa 3 — Data-Fetching TanStack Query v5, Saneamiento de Estado y Acciones por Lote:**
+     - Query hooks `useApkCatalog` (`staleTime: 30_000`) y `useInstalledApks` en `src/lib/queries.ts`. Eliminación de fetch manual en `BulkBar.tsx`, `DeviceControlRail.tsx` y `ApkRepository.tsx`.
+     - Actualización optimista de caché en `ApkRepository.tsx` (`toggleDefault`) con snapshot y rollback ante error, e invalidación reactiva precisa tras subidas (`uploadApk`) y eliminaciones (`deleteApk`).
+     - Query hook `useDeviceFiles` (`staleTime: 10_000`) en `FileExplorer.tsx` con invalidación reactiva de ruta tras `mkdir`, `upload`, `delete` y `send-to`.
+     - Aislamiento de `FilePreviewModal.tsx` con carga bajo demanda vía `useQuery`, eliminando estados locales de preview.
+     - Saneamiento de 10 antipatrones de `set-state-in-effect` (advertencias de `oxlint` expresadas de 14 a 4): aislamiento del timer de oferta en `CountdownRing`, derivaciones limpias e inicialización directa en render.
+     - Corrección en `BulkBar.tsx` (`handleBatchQuarantine`): consumo de `BatchQuarantineResponse` y reporte verídico de fallos parciales (`toast.warning`) en lugar de falso éxito incondicional.
+  4. **Etapa 4 — Accesibilidad Semántica WCAG 2.2, Ergonomía y Cierre:**
+     - Enlace semántico `htmlFor` / `id` en todos los inputs, selects y switches de `StepDeviceSim.tsx`, `StepGpsProxy.tsx`, `StepResourcesSummary.tsx`, `FocusGpsTab.tsx`, `LocationsInspector.tsx`, `IpLedgerTable.tsx` y `ApkRepository.tsx`.
+     - Nombres accesibles `aria-label` en controles interactivos de tablas y encabezados de `ModemInventoryTable.tsx`, `IpLedgerTable.tsx`, `LocationsInspector.tsx`, `FocusGpsTab.tsx` y `ApkRepository.tsx`.
+     - Eliminación de atributos `autoFocus` invasivos en `DeviceControlRail.tsx`, `BulkBar.tsx`, `FileExplorer.tsx`, `LocationGroupModal.tsx` y `LocationsInspector.tsx`, delegando en `onOpenAutoFocus` de Radix UI.
+     - Reconciliación documental de tokens OKLCH en `web/README.md` (`--primary: oklch(0.74 0.14 225)`).
+     - Decisión de producto HALL-04: Mantenimiento deliberado del patrón de selección con ratón y Shift+clic en `DeviceCard.tsx` para no interferir con los atajos de teclado inyectados a Android por scrcpy ni quebrar la densidad visual.
+* **Archivos y documentos del hito (38 en total):** 37 archivos del cliente web modificados por la refactorización (20 nuevos + 17 modificados) más `AUDITORIA.md`, documento rector que originó el plan de ejecución.
+  - Documentación (2): `AUDITORIA.md` (auditoría y plan de refactorización vigente que originó el hito, consolidado en `4ba609e`) y `web/README.md` (reconciliación de tokens OKLCH en `3abc2e4`).
+  - Configuración y shell (7): `web/.oxlintrc.json`, `web/src/main.tsx`, `web/src/App.tsx`, `web/src/types.ts`, `web/src/lib/api.ts`, `web/src/lib/queries.ts`, `web/src/lib/scrcpy/useScrcpyStream.ts`.
+  - Componentes UI (1): `web/src/components/ui/RootErrorBoundary.tsx`.
+  - Riel y grilla (2): `web/src/components/grid/DeviceControlRail.tsx`, `web/src/components/grid/BulkBar.tsx`.
+  - Wizard de creación (5): `web/src/components/CreateDeviceModal.tsx`, `web/src/components/create-wizard/*` (4 archivos).
+  - Gestor de archivos y APKs (4): `web/src/components/files/ApkFileManager.tsx`, `web/src/components/files/ApkRepository.tsx`, `web/src/components/files/FileExplorer.tsx`, `web/src/components/files/FilePreviewModal.tsx`.
+  - Vista enfocada (5): `web/src/components/focus/FocusView.tsx`, `web/src/components/focus/*` (4 archivos).
+  - Ubicaciones y mapas (6): `web/src/components/locations/CustomLocationsManager.tsx`, `web/src/components/locations/*` (5 archivos).
+  - Red USB (6): `web/src/components/network/UsbNetworkCenter.tsx`, `web/src/components/network/*` (5 archivos).
+  - *Nota:* `web/src/components/ui/IconBtn.tsx` no fue modificado: es un componente canónico preexistente que la refactorización pasó a reutilizar.
+* **Verificación y Métricas:**
+  - Build de producción Vite en **328 ms** sin errores de compilador; typecheck `tsc -b` en **~3,7 s** (pipeline completo `tsc -b && vite build` en ~4,7 s).
+  - Optimización del chunk principal `dist/assets/index-*.js`: reducido de **451,26 kB a 378,73 kB** (gzip 137,15 → 116,30 kB; -72,5 kB / -16,1% de peso en bundle).
+  - Linter `oxlint`: **0 errores** (exit 0) con 30 advertencias controladas (11 `no-static-element-interactions`, 10 `click-events-have-key-events`, 4 `set-state-in-effect` preexistentes en `App.tsx`, `InteractiveScreen.tsx`, `useScrcpyStream.ts` y `FocusView.tsx`, 2 `media-has-caption`, 1 `only-export-components`, 1 `exhaustive-deps`, 1 `heading-has-content`); la línea base pre-refactor tenía 19 advertencias y 0 errores, antes de habilitar el plugin `jsx-a11y`.
+  - Tests unitarios web: **24 / 24 pasando** en `node --test`, cubriendo `src/lib/popoverStore.ts`, `src/lib/scrcpy/fps.ts` y `src/lib/scrcpy/watchdog.ts` (incluido `shouldHandleSocketClose`).
+  - Tests host globales: **159 passed, 2 skipped** en 51s (los 2 skips requieren la instancia `phone-80` en ejecución) y 73 subtests pasando.
+  - Reducción de advertencias `set-state-in-effect` de **14 a 4** (10 casos saneados) y de archivos >900 líneas de 4 a 1 (`FileExplorer.tsx` queda en 926 líneas tras la consolidación de `IconBtn`/`BarBtn`).
+* **Estado:** WEB-QUALITY-034 **completado y validado el 2026-11-12**. Fusionado a `main`.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
