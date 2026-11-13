@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +167,30 @@ class ScreenshotCacheTest(unittest.TestCase):
             j_ttl = cache.apply_ttl_jitter(base_ttl)
             self.assertGreaterEqual(j_ttl, 24.0)
             self.assertLessEqual(j_ttl, 36.0)
+
+    @patch("server.services.manager_bridge._run_input")
+    def test_interactions_invalidate_screenshot_cache(self, mock_run_input):
+        mock_run_input.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        from server.services import manager_bridge
+
+        # Poblamos la caché para phone-80 y other-phone
+        cache.capture("phone-80", "jpeg", 540, fresh=False, ttl=60, fn=lambda: b"frame-80")
+        cache.capture("other-phone", "jpeg", 540, fresh=False, ttl=60, fn=lambda: b"frame-other")
+
+        # Enviamos un tap a phone-80
+        manager_bridge.send_instance_tap("phone-80", 100, 200)
+
+        # phone-80 debe haber sido invalidado (cache miss -> reejecuta fn)
+        calls_80 = []
+        res_80 = cache.capture("phone-80", "jpeg", 540, fresh=False, ttl=60, fn=lambda: (calls_80.append(1), b"new-frame")[1])
+        self.assertEqual(len(calls_80), 1)
+        self.assertEqual(res_80, b"new-frame")
+
+        # other-phone NO debe haber sido invalidado (conserva su entrada en caché)
+        calls_other = []
+        res_other = cache.capture("other-phone", "jpeg", 540, fresh=False, ttl=60, fn=lambda: (calls_other.append(1), b"fail")[1])
+        self.assertEqual(len(calls_other), 0)
+        self.assertEqual(res_other, b"frame-other")
 
 
 if __name__ == "__main__":

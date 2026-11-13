@@ -886,6 +886,11 @@ def send_instance_tap(name: str, x: int, y: int) -> Dict[str, Any]:
     res = _run_input(inst_name, "tap", [str(x), str(y)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar tap a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "tap", "x": x, "y": y}
 
 
@@ -895,6 +900,11 @@ def send_instance_swipe(name: str, x1: int, y1: int, x2: int, y2: int, duration_
     res = _run_input(inst_name, "swipe", [str(x1), str(y1), str(x2), str(y2), str(duration_ms)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar swipe a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "swipe", "from": [x1, y1], "to": [x2, y2], "duration_ms": duration_ms}
 
 
@@ -921,6 +931,11 @@ def send_instance_key(name: str, key: str) -> Dict[str, Any]:
     res = _run_input(inst_name, "keyevent", [keycode])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar keyevent '{key}' a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "key", "key": key, "keycode": keycode}
 
 
@@ -933,6 +948,11 @@ def send_instance_text(name: str, text: str) -> Dict[str, Any]:
     res = _run_input(inst_name, "text", [escaped])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar texto a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "text", "length": len(text)}
 
 
