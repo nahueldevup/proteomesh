@@ -178,16 +178,18 @@ def get_screen(
     format: str = Query("jpeg", description="Formato de imagen ('jpeg' o 'png')"),
     max_width: int = Query(540, description="Ancho máximo para optimizar ancho de banda"),
     fresh: bool = Query(False, description="Si es true, salta la caché y captura ahora"),
+    ttl: Optional[float] = Query(None, description="TTL personalizado en segundos para la caché"),
 ):
     """Retorna un frame de pantalla del CloudPhone para visualización interactiva en navegador."""
     fmt = format.lower()
+    effective_ttl = ttl if ttl is not None else screenshot_cache.DEFAULT_IDLE_TTL
     try:
         img_bytes = screenshot_cache.capture(
             name,
             fmt,
             max_width,
             fresh=fresh,
-            ttl=screenshot_cache.DEFAULT_TTL,
+            ttl=effective_ttl,
             fn=lambda: get_instance_screenshot(name, format=fmt, max_width=max_width),
         )
         media_type = "image/jpeg" if fmt in ("jpeg", "jpg") else "image/png"

@@ -312,10 +312,11 @@ export const api = {
     return res.blob();
   },
 
-  getScreenUrl(name: string, timestamp?: number, fresh?: boolean): string {
+  getScreenUrl(name: string, timestamp?: number, fresh?: boolean, ttl?: number): string {
     const t = timestamp || Date.now();
     const freshQuery = fresh ? '&fresh=1' : '';
-    return `${API_BASE}/instances/${encodeName(name)}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}`;
+    const ttlQuery = ttl !== undefined ? `&ttl=${ttl}` : '';
+    return `${API_BASE}/instances/${encodeName(name)}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}${ttlQuery}`;
   },
 
   async sendTap(name: string, x: number, y: number): Promise<InputTapResult> {
