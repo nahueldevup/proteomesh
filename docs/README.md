@@ -15,7 +15,7 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
    * Detalle de componentes: bibliotecas nativas C, módulo `FakeWifiPixel`, Zygisk, NativeBridge y emulación de sensores.
    * Ciclo de vida y flujo de arranque determinista del contenedor.
 
-3. **[CONTEXTO_AUDITORIA.md](./CONTEXTO_AUDITORIA.md)** *(Enlace raíz: `contexto.md`)*
+3. **[CONTEXTO_AUDITORIA.md](./CONTEXTO_AUDITORIA.md)**
    * **Auditoría técnica de no-regresión:** Certificación de que ninguna regla sensible de hardening (Magisk 30.6, Zygisk, Shamiko, DenyList, plantillas oficiales) fue alterada.
    * Detalle exhaustivo del flujo de aprovisionamiento en 3 pasos, bypass de SetupWizard, pre-inyección de claves públicas ADB (`adbkey.pub`) y purga segura en disco mediante contenedor Alpine root.
    * Diagnóstico y calibración del streaming scrcpy de baja latencia (<20ms a 30 FPS).
@@ -43,7 +43,10 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
    * Tokens de diseño OKLCH (modo oscuro técnico y modo claro de alta legibilidad).
    * Integración same-origin `/ws-scrcpy` y pipeline de interacción táctil directa por WebSocket.
 
-9. **[USB_MOBILE_TRANSPORT_ROADMAP.md](./USB_MOBILE_TRANSPORT_ROADMAP.md)**
+9. **[AUDITORIA_FRONTEND_WEB.md](./AUDITORIA_FRONTEND_WEB.md)**
+   * Auditoría integral de calidad del frontend web, modularización de componentes monolíticos y optimización con TanStack Query v5.
+
+10. **[USB_MOBILE_TRANSPORT_ROADMAP.md](./USB_MOBILE_TRANSPORT_ROADMAP.md)**
    * Diseño de Fase 2 para usar teléfonos físicos por USB como módems de datos móviles.
    * Reutilización de `Transport(ABC)` e `IpLeaseRegistry`, rotación de IP por modo avión y enrutamiento por `usbX`.
 

@@ -22,10 +22,12 @@ build_gapps/
 *.bak
 *.orig
 *.lock
+!modules.lock
 __pycache__/
 *.py[cod]
 .cache/
 .probe/
+**/.pytest_cache/
 build/tests/
 
 # Sonda ashmem on-device (salidas de build)
@@ -48,6 +50,8 @@ tests/archprobe/device/tools/
 web/node_modules/
 web/dist/
 web/.vite/
+pnpm-workspace.yaml
+pnpm-lock.yaml
 
 # IDE and OS metadata
 .DS_Store

@@ -1881,6 +1881,28 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Reducción de advertencias `set-state-in-effect` de **14 a 4** (10 casos saneados) y de archivos >900 líneas de 4 a 1 (`FileExplorer.tsx` queda en 926 líneas tras la consolidación de `IconBtn`/`BarBtn`).
 * **Estado:** WEB-QUALITY-034 **completado y validado el 2026-11-12**. Fusionado a `main`.
 
+### 95. Saneamiento Integral del Repositorio, Erradicación de Residuos Muertos y Blindaje de Gitignore (REPO-HYGIENE-035 — 2026-11-12)
+* **Objetivo:** Ejecutar una auditoría exhaustiva del repositorio para erradicar residuos de desarrollo, backups muertos de `/data` con permisos especiales de Android, archivos de configuración huérfanos de IA, artefactos de armado obsoletos de GApps y perfiles estáticos superados por el motor determinista, liberando más de 2.7 GB de disco y garantizando que la estructura del árbol de trabajo sea estrictamente canónica y reproducible.
+* **Componentes saneados y eliminados:**
+  1. **Artefactos pesados y backups de `/data` (~2.7 GB liberados):**
+     - Eliminación de `apk/` (374.9 MB) y `build_gapps/` (197 MB), insumos históricos de armado superados por la imagen base oficial `redroid:13.0.0_mindthegapps_magisk_widevine` que ya integra GApps de origen y `data-clean/` optimizado.
+     - Purgado seguro mediante contenedor root Alpine de `data-clean.backup-before-darkmode/` (985.5 MB) y `data-clean.backup-testapps/` (1.13 GB), eliminando nodos con UIDs Android sin errores de permisos.
+  2. **Archivos obsoletos trackeados retirados del repositorio (`git rm`):**
+     - `pnpm-workspace.yaml`: Configuración autogenerada residual (el proyecto web usa exclusivamente `npm`).
+     - `build.prop`, `media_codecs.xml`, `proc/` (`boot_id`, `cmdline`, `cpuinfo`, `version`) y `props/` (`product_build.prop`, `system_build.prop`, `system_ext_build.prop`, `vendor_build.prop`): Remanentes del prototipo inicial ReDroid 14 superados por la generación dinámica de `profile-loader` y montajes en memoria Bionic.
+     - `docker-compose.bindmounts.yml`: Compose obsoleto con referencias a rutas locales inexistentes.
+     - `bin/generar-reportes-redroid.sh`: Script personal con rutas absolutas cableadas al escritorio (preservando intacto `bin/resetprop` requerido por el `Dockerfile`).
+     - `contexto.md`: Symlink redundante en la raíz eliminado en favor de la ruta directa `docs/CONTEXTO_AUDITORIA.md`.
+  3. **Reorganización documental y reglas de saneamiento:**
+     - Reubicación canónica de `AUDITORIA.md` a `docs/AUDITORIA_FRONTEND_WEB.md`.
+     - Actualización de `docs/README.md` retirando la cita al symlink extinto y registrando el documento de auditoría web.
+     - Refuerzo de `.gitignore` con exclusiones para `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `**/.pytest_cache/` y preservación explícita `!modules.lock`.
+* **Verificación:**
+  - Suite de tests del host: **159 pasados**, 2 saltados (100% verde).
+  - Suite de tests unitarios del frontend web: **24 pasados**, 0 fallidos (100% verde).
+  - Pipeline de compilación web: `tsc -b && vite build` completado limpiamente en **441 ms**.
+* **Estado:** REPO-HYGIENE-035 **completado y validado el 2026-11-12** en rama `chore/cleanup-residuos`.
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
