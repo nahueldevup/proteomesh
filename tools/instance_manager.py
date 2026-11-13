@@ -802,6 +802,23 @@ def validate_bundle(inst_dir: Path) -> tuple[dict, dict]:
     return validated_profile, manifest
 
 
+def filter_clone_stderr(stderr_bytes: bytes) -> list[str]:
+    """Filtra advertencias esperadas de ENOKEY en fuentes fscrypt de Android."""
+    if not stderr_bytes:
+        return []
+    lines = stderr_bytes.decode("utf-8", errors="replace").splitlines()
+    unexpected = []
+    for line in lines:
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        # Ignorar errores esperados de ENOKEY en fuentes fscrypt del guest Android
+        if "Required key not available" in line_clean or "fonts/files/" in line_clean:
+            continue
+        unexpected.append(line_clean)
+    return unexpected
+
+
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
     inst_name = validate_instance_name(args.name)
@@ -965,7 +982,7 @@ def cmd_create_instance(args):
         )
 
         # 1. Intentar clonado CoW acelerado con proteomesh-helper (GNU coreutils cp --reflink=auto)
-        reflink_sh = f"cp -a --reflink=auto /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && {cleanup_sh}"
+        reflink_sh = f"cp -a --reflink=auto /lab/data-clean/* /lab/instances/{safe_name}/data/ || true; {cleanup_sh}"
         clone_cmd = [
             "docker", "run", "--rm",
             "-v", f"{BASE_DIR}:/lab",
@@ -976,7 +993,9 @@ def cmd_create_instance(args):
 
         # 2. Fallback seguro a contenedor alpine tradicional si proteomesh-helper no existe o falla
         if res.returncode != 0:
-            fallback_sh = f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && {cleanup_sh}"
+            print("[!] Aviso: 'proteomesh-helper:latest' no está disponible o falló. Usando fallback tradicional con alpine (sin CoW).")
+            print("[!] Para habilitar clonado instantáneo CoW (reflink), ejecutá: bash tools/helper/build.sh")
+            fallback_sh = f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ || true; {cleanup_sh}"
             fallback_cmd = [
                 "docker", "run", "--rm",
                 "-v", f"{BASE_DIR}:/lab",
@@ -984,10 +1003,17 @@ def cmd_create_instance(args):
                 fallback_sh
             ]
             res = subprocess.run(fallback_cmd, capture_output=True)
+
+        err_lines = filter_clone_stderr(res.stderr)
+        if err_lines:
+            print("[!] Advertencias detectadas al clonar data:")
+            for el in err_lines:
+                print(f"  • {el}")
+
         if res.returncode == 0:
             print("[✓] Entorno /data base (Magisk, LSPosed, llaves ADB) clonado y sanitizado sin rastros previos.")
         else:
-            print(f"[!] Aviso al clonar data: {res.stderr.decode().strip()}")
+            print(f"[!] Fallo crítico al clonar data (código {res.returncode}): {res.stderr.decode('utf-8', errors='replace').strip()}")
 
     # Configurar geoubicación inicial (en frío)
     loc_arg = getattr(args, "location", None)

@@ -17,6 +17,7 @@ from instance_manager import (
     cmd_start_instance,
     calc_luhn,
     BUNDLE_FORMAT_VERSION,
+    filter_clone_stderr,
 )
 
 
@@ -176,6 +177,32 @@ class FailFastStartTest(unittest.TestCase):
             self.assertIn("generated_identity", str(ctx.exception))
         finally:
             shutil.rmtree(temp_inst, ignore_errors=True)
+
+
+class CloneStderrFilteringTest(unittest.TestCase):
+    def test_filter_ignores_enokey_fscrypt_fonts(self):
+        sample_stderr = (
+            b"cp: cannot open '/lab/data-clean/fonts/files/~~qubg-FCrVbsovkg_R_ZqMg==/NotoColorEmoji.ttf': Required key not available\n"
+            b"cp: cannot open '/lab/data-clean/fonts/files/~~ClKjBZRY6zSHP4JaBt1Dug==/GoogleSans-Regular.ttf': Required key not available\n"
+            b"cp: can't open '/lab/data-clean/fonts/files/~~8c3o1-5d0CJl5hgN-X9rXg==/GoogleSans-Bold.ttf': Required key not available\n"
+        )
+        filtered = filter_clone_stderr(sample_stderr)
+        self.assertEqual(filtered, [])
+
+    def test_filter_captures_unexpected_errors(self):
+        mixed_stderr = (
+            b"cp: cannot open '/lab/data-clean/fonts/files/~~qubg-FCrVbsovkg_R_ZqMg==/NotoColorEmoji.ttf': Required key not available\n"
+            b"cp: cannot create regular file '/lab/instances/test/data/corrupted': No space left on device\n"
+            b"cp: cannot open '/lab/data-clean/system/users/0/bad': Permission denied\n"
+        )
+        filtered = filter_clone_stderr(mixed_stderr)
+        self.assertEqual(len(filtered), 2)
+        self.assertIn("No space left on device", filtered[0])
+        self.assertIn("Permission denied", filtered[1])
+
+    def test_filter_empty_or_none(self):
+        self.assertEqual(filter_clone_stderr(b""), [])
+        self.assertEqual(filter_clone_stderr(None), [])
 
 
 if __name__ == "__main__":

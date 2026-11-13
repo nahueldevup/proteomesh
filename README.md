@@ -136,7 +136,14 @@ bash src/lsposed_module/build_apk.sh
 
 # Construir la imagen golden unificada
 DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .
+
+# Construir imagen auxiliar para clonado CoW ultra-rápido (reflink en Btrfs/XFS)
+bash tools/helper/build.sh
 ```
+
+> **Nota de Almacenamiento y CoW (Btrfs):**
+> ProteoMesh utiliza clonado con Copy-on-Write (`cp -a --reflink=auto`) mediante el contenedor auxiliar `proteomesh-helper:latest`, reduciendo la creación de instancias a <1.5 s y 0 bytes físicos iniciales al compartir extents con `data-clean`.
+> **ADVERTENCIA:** **NO ejecutar `btrfs filesystem defragment`** sobre el directorio `data-clean` ni sobre `instances/`. La desfragmentación en Btrfs desenlaza los extents compartidos por reflink, duplicando físicamente el espacio en disco (~1 GB por instancia) y destruyendo el beneficio de CoW.
 
 ### 2. Verificar Dependencias y `data-clean`
 ```bash
