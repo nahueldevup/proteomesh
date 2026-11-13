@@ -955,8 +955,7 @@ def cmd_create_instance(args):
             except Exception:
                 pass
 
-        sanitize_sh = (
-            f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && "
+        cleanup_sh = (
             f"rm -f /lab/instances/{safe_name}/data/property/persistent_properties && "
             f"rm -rf /lab/instances/{safe_name}/data/system/dropbox/* && "
             f"rm -f /lab/instances/{safe_name}/data/system/users/0/settings_ssaid.xml* && "
@@ -964,13 +963,27 @@ def cmd_create_instance(args):
             f"rm -rf /lab/instances/{safe_name}/data/misc/bluedroid/*"
             f"{pub_key_cmd}"
         )
+
+        # 1. Intentar clonado CoW acelerado con proteomesh-helper (GNU coreutils cp --reflink=auto)
+        reflink_sh = f"cp -a --reflink=auto /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && {cleanup_sh}"
         clone_cmd = [
             "docker", "run", "--rm",
             "-v", f"{BASE_DIR}:/lab",
-            "alpine", "sh", "-c",
-            sanitize_sh
+            "proteomesh-helper:latest", "sh", "-c",
+            reflink_sh
         ]
         res = subprocess.run(clone_cmd, capture_output=True)
+
+        # 2. Fallback seguro a contenedor alpine tradicional si proteomesh-helper no existe o falla
+        if res.returncode != 0:
+            fallback_sh = f"cp -a /lab/data-clean/* /lab/instances/{safe_name}/data/ 2>/dev/null || true && {cleanup_sh}"
+            fallback_cmd = [
+                "docker", "run", "--rm",
+                "-v", f"{BASE_DIR}:/lab",
+                "alpine", "sh", "-c",
+                fallback_sh
+            ]
+            res = subprocess.run(fallback_cmd, capture_output=True)
         if res.returncode == 0:
             print("[✓] Entorno /data base (Magisk, LSPosed, llaves ADB) clonado y sanitizado sin rastros previos.")
         else:
