@@ -161,8 +161,10 @@ Cada invocación genera un IMEI (Luhn válido), MAC Wi-Fi, MAC Bluetooth, Serial
 python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 
-# 2. Crear una nueva instancia con identidad única y límites de recursos (RAM, CPUs, PIDs)
-python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 4g --cpus 2.0 --pids-limit 2048 --start
+# 2. Crear una nueva instancia con identidad única y límites de recursos (RAM por defecto: 2560m / 2.5 GiB)
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --start
+# O especificando límites explícitos (RAM, CPUs, PIDs):
+python3 tools/instance_manager.py create --name mi-a54-02 --template samsung/a54x --carrier ar_personal --port 5585 --memory 4g --cpus 2.0 --pids-limit 2048 --start
 ```
 
 #### Modo B: Congelamiento de Hardware y Migración sin Alertas de Fraude (`--from-bundle`)

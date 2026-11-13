@@ -151,6 +151,55 @@ class CreateFromBundleTest(unittest.TestCase):
             prof = json.loads(profile_file.read_text())
             self.assertEqual(prof["instance"]["name"], test_inst_name)
 
+    def test_create_applies_default_memory_when_omitted(self):
+        test_inst_name = "test-default-mem"
+        inst_target = self.temp_dir / test_inst_name
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            args = type("Args", (), {
+                "name": test_inst_name,
+                "from_bundle": str(self.golden_bundle),
+                "template": None,
+                "port": 5592,
+                "memory": None,
+                "cpus": None,
+                "pids_limit": None,
+                "seed": None,
+                "start": False,
+            })()
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stderr=b"")
+                cmd_create_instance(args)
+
+            meta_file = inst_target / "meta.json"
+            self.assertTrue(meta_file.exists())
+            meta = json.loads(meta_file.read_text())
+            self.assertEqual(meta["limits"]["memory"], "2560m")
+
+    def test_create_respects_custom_default_memory_env(self):
+        test_inst_name = "test-env-mem"
+        inst_target = self.temp_dir / test_inst_name
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            with patch.dict("os.environ", {"PROTEOMESH_DEFAULT_MEMORY": "3072m"}):
+                args = type("Args", (), {
+                    "name": test_inst_name,
+                    "from_bundle": str(self.golden_bundle),
+                    "template": None,
+                    "port": 5592,
+                    "memory": None,
+                    "cpus": None,
+                    "pids_limit": None,
+                    "seed": None,
+                    "start": False,
+                })()
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr=b"")
+                    cmd_create_instance(args)
+
+                meta_file = inst_target / "meta.json"
+                self.assertTrue(meta_file.exists())
+                meta = json.loads(meta_file.read_text())
+                self.assertEqual(meta["limits"]["memory"], "3072m")
+
 
 class StartWithLimitsTest(unittest.TestCase):
     def setUp(self):
@@ -195,6 +244,38 @@ class StartWithLimitsTest(unittest.TestCase):
                 self.assertEqual(cmd_args[cmd_args.index("--cpuset-cpus") + 1], "0-3")
                 self.assertIn("--pids-limit", cmd_args)
                 self.assertEqual(cmd_args[cmd_args.index("--pids-limit") + 1], "4096")
+
+    def test_start_applies_default_memory_if_missing_in_meta(self):
+        temp_inst = self.temp_dir / "f3-start-nomem"
+        temp_inst.mkdir(parents=True, exist_ok=True)
+        golden = REPO_ROOT / "tests" / "golden" / "bundles" / "a54x_personal_seed42"
+        shutil.copy(golden / "profile.json", temp_inst / "profile.json")
+        shutil.copy(golden / "manifest.json", temp_inst / "manifest.json")
+        (temp_inst / "meta.json").write_text(json.dumps({
+            "adb_port": 5593,
+            "display": {"width": 1080, "height": 2340, "dpi": 450, "fps": 90},
+            "limits": {}
+        }))
+
+        args = type("Args", (), {
+            "name": "f3-start-nomem",
+            "memory": None,
+            "cpus": None,
+            "pids_limit": None,
+            "verify_health": False,
+        })()
+
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=1, stderr="stop test")
+                cmd_start_instance(args)
+
+                docker_calls = [call for call in mock_run.call_args_list if "docker" in call[0][0]]
+                run_call = [call for call in docker_calls if "run" in call[0][0]][0]
+                cmd_args = run_call[0][0]
+
+                self.assertIn("--memory", cmd_args)
+                self.assertEqual(cmd_args[cmd_args.index("--memory") + 1], "2560m")
 
 
 class VerifyHealthTest(unittest.TestCase):

@@ -42,6 +42,7 @@ RESOURCE_MEM_RE = re.compile(r"^\d+[bkmgBKMG]$")
 RESOURCE_CPUS_RE = re.compile(r"^(\d+(\.\d+)?|\d+-\d+(,\d+-\d+)*)$")
 BUNDLE_FORMAT_VERSION = 1
 RUNTIME_VERSION = "1.0"
+DEFAULT_INSTANCE_MEMORY = os.getenv("PROTEOMESH_DEFAULT_MEMORY", "2560m")
 
 
 def validate_limits(
@@ -805,8 +806,9 @@ def validate_bundle(inst_dir: Path) -> tuple[dict, dict]:
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
     inst_name = validate_instance_name(args.name)
+    mem_arg = getattr(args, "memory", None) or os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
     limits = validate_limits(
-        getattr(args, "memory", None),
+        mem_arg,
         getattr(args, "cpus", None),
         getattr(args, "pids_limit", None)
     )
@@ -1223,6 +1225,8 @@ def cmd_start_instance(args):
         getattr(args, "pids_limit", None)
     )
     limits.update(cli_limits)
+    if not limits.get("memory"):
+        limits["memory"] = os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
 
     print(f"[*] Iniciando contenedor '{inst_name}' en puerto {port}...")
     run_cmd = [
@@ -2079,7 +2083,10 @@ def main():
     sub.add_argument("--location", "-l", required=False, help="Ubicación GPS: preset (ej: cordoba, miami) o 'lat,lon[,alt]'")
     sub.add_argument("--port", "-p", type=int, default=5580, help="Puerto ADB para mapear al host (default: 5580)")
     sub.add_argument("--seed", "-s", type=int, required=False, help="Semilla numérica para generación determinista")
-    sub.add_argument("--memory", "-m", required=False, help="Límite de memoria RAM para el contenedor (ej: 4g, 3072m)")
+    sub.add_argument(
+        "--memory", "-m", required=False,
+        help=f"Límite de memoria RAM para el contenedor (default: {DEFAULT_INSTANCE_MEMORY}, configurable vía PROTEOMESH_DEFAULT_MEMORY; ej: 4g, 2048m)"
+    )
     sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 0-3 para pinning, o 2.0)")
     sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs (ej: 4096 o sin límite; evitar <3000 para no agotar hilos en Android 13)")
     sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
