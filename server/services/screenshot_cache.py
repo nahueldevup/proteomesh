@@ -11,18 +11,53 @@ max_width comparten la misma entrada.
 """
 from __future__ import annotations
 
+import math
 import os
+import random
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 # TTL por defecto para tarjetas en reposo (dashboard/DeviceCard): 30-60 s configurable.
 DEFAULT_IDLE_TTL = float(os.getenv("SCREENSHOT_IDLE_TTL", "30.0"))
 # TTL para el camino interactivo (FocusView / InteractiveScreen): ~0.5s - 1.0s
 INTERACTIVE_TTL = float(os.getenv("SCREENSHOT_INTERACTIVE_TTL", "0.5"))
 
+MIN_TTL = 0.1
+MAX_TTL = 300.0
+
 DEFAULT_TTL = DEFAULT_IDLE_TTL
 MAX_ENTRIES = 128
+
+
+def sanitize_ttl(ttl: Any) -> float:
+    """Normaliza y acota el TTL a un rango seguro [MIN_TTL, MAX_TTL].
+
+    Valores None, no numéricos, NaN, <= 0 o fuera de rango retornan DEFAULT_IDLE_TTL.
+    """
+    if ttl is None:
+        return DEFAULT_IDLE_TTL
+    try:
+        val = float(ttl)
+        if math.isnan(val) or math.isinf(val):
+            return DEFAULT_IDLE_TTL
+        if val < MIN_TTL or val > MAX_TTL:
+            return DEFAULT_IDLE_TTL
+        return val
+    except (ValueError, TypeError):
+        return DEFAULT_IDLE_TTL
+
+
+def apply_ttl_jitter(ttl: float, jitter_pct: float = 0.20) -> float:
+    """Aplica jitter aleatorio de ±jitter_pct (por defecto ±20%) sobre el TTL de reposo.
+
+    Evita que múltiples tarjetas en reposo sincronicen sus vencimientos de caché.
+    No aplica jitter a TTLs cortos del camino interactivo (< 5.0 s).
+    """
+    if ttl < 5.0:
+        return ttl
+    factor = random.uniform(1.0 - jitter_pct, 1.0 + jitter_pct)
+    return max(MIN_TTL, round(ttl * factor, 2))
 
 # entry -> (expires_at_monotonic, bytes)
 _cache: Dict[str, Tuple[float, bytes]] = {}
@@ -126,5 +161,6 @@ def capture(
             if cached is not None:
                 return cached
         data = fn()
-        _set(key, data, ttl)
+        actual_ttl = apply_ttl_jitter(ttl)
+        _set(key, data, actual_ttl)
         return data

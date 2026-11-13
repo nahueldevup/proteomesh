@@ -9,6 +9,7 @@ import shlex
 import asyncio
 import logging
 import subprocess
+import threading
 from pathlib import Path
 from urllib.parse import urlparse, urlencode
 from typing import Dict, List, Any, Optional
@@ -770,6 +771,12 @@ def launch_native_scrcpy(name: str) -> Dict[str, Any]:
         raise RuntimeError(f"Error al lanzar scrcpy: {e}")
 
 
+# Semáforo global para limitar volcados crudos de screencap concurrentes (~9.6 MB de payload en RAM cada uno)
+# Configurable mediante SCREENSHOT_MAX_CONCURRENT (por defecto 3)
+SCREENSHOT_MAX_CONCURRENT = int(os.getenv("SCREENSHOT_MAX_CONCURRENT", "3"))
+_raw_capture_semaphore = threading.BoundedSemaphore(SCREENSHOT_MAX_CONCURRENT)
+
+
 def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 540) -> bytes:
     """Captura el frame actual de la pantalla de una instancia en ejecución."""
     inst_name = validate_instance_name(name)
@@ -783,8 +790,14 @@ def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 54
     fmt_lower = format.lower()
 
     # 1. Intentar volcado raw eficiente sin compresión PNG en el guest
-    raw_res = subprocess.run(["docker", "exec", inst_name, "screencap"], capture_output=True)
-    if raw_res.returncode == 0 and raw_res.stdout:
+    raw_res = None
+    try:
+        with _raw_capture_semaphore:
+            raw_res = subprocess.run(["docker", "exec", inst_name, "screencap"], capture_output=True)
+    except Exception:
+        pass
+
+    if raw_res and raw_res.returncode == 0 and raw_res.stdout:
         try:
             from server.services.screencap_parser import parse_screencap_raw
             w, h, pixels = parse_screencap_raw(raw_res.stdout)

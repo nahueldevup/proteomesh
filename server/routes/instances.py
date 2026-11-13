@@ -182,7 +182,7 @@ def get_screen(
 ):
     """Retorna un frame de pantalla del CloudPhone para visualización interactiva en navegador."""
     fmt = format.lower()
-    effective_ttl = ttl if ttl is not None else screenshot_cache.DEFAULT_IDLE_TTL
+    effective_ttl = screenshot_cache.sanitize_ttl(ttl)
     try:
         img_bytes = screenshot_cache.capture(
             name,
