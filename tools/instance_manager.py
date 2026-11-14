@@ -1232,48 +1232,108 @@ def wait_for_boot(inst_name: str, attempts: int = 150) -> bool:
     return False
 
 
-def apply_runtime_defaults(adb_s, meta):
-    """Reaplica overrides de pantalla y límites que se pierden al reiniciar."""
+def get_disabled_packages(adb_s: str) -> set[str]:
+    """Obtiene la lista de paquetes actualmente deshabilitados en el usuario 0."""
+    res = _run(["adb", "-s", adb_s, "shell", "pm", "list", "packages", "-d"],
+               timeout=15, capture_output=True, text=True)
+    disabled = set()
+    if res.stdout:
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("package:"):
+                disabled.add(line[len("package:"):].strip())
+    return disabled
+
+
+def apply_runtime_defaults(adb_s, meta, read_only_verify: bool = False):
+    """Reaplica overrides de pantalla y límites que se pierden al reiniciar.
+
+    Si read_only_verify=True, ejecuta una verificación no destructiva de solo lectura,
+    evitando comandos redundantes de modificación.
+    """
     disp = meta.get("display", {})
     w = disp.get("width", 1080)
     h = disp.get("height", 2340)
     dpi = disp.get("dpi", 440)
     display_ok = False
-    for _ in range(5):
-        _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
-             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
-             timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # 1. Comprobar / aplicar overrides de pantalla
+    if read_only_verify:
         size_check = _run(["adb", "-s", adb_s, "shell", "wm", "size"],
-                          timeout=20, capture_output=True, text=True)
+                          timeout=10, capture_output=True, text=True)
         density_check = _run(["adb", "-s", adb_s, "shell", "wm", "density"],
-                             timeout=20, capture_output=True, text=True)
+                             timeout=10, capture_output=True, text=True)
         if (f"Override size: {w}x{h}" in (size_check.stdout or "")
                 and f"Override density: {dpi}" in (density_check.stdout or "")):
             display_ok = True
-            break
-        time.sleep(2)
+        else:
+            for _ in range(3):
+                _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+                     timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+                     timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                sc = _run(["adb", "-s", adb_s, "shell", "wm", "size"], timeout=10, capture_output=True, text=True)
+                dc = _run(["adb", "-s", adb_s, "shell", "wm", "density"], timeout=10, capture_output=True, text=True)
+                if (f"Override size: {w}x{h}" in (sc.stdout or "") and f"Override density: {dpi}" in (dc.stdout or "")):
+                    display_ok = True
+                    break
+                time.sleep(1)
+    else:
+        for _ in range(5):
+            _run(["adb", "-s", adb_s, "shell", "wm", "size", f"{w}x{h}"],
+                 timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _run(["adb", "-s", adb_s, "shell", "wm", "density", str(dpi)],
+                 timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            size_check = _run(["adb", "-s", adb_s, "shell", "wm", "size"],
+                              timeout=20, capture_output=True, text=True)
+            density_check = _run(["adb", "-s", adb_s, "shell", "wm", "density"],
+                                 timeout=20, capture_output=True, text=True)
+            if (f"Override size: {w}x{h}" in (size_check.stdout or "")
+                    and f"Override density: {dpi}" in (density_check.stdout or "")):
+                display_ok = True
+                break
+            time.sleep(2)
+
     if not display_ok:
         print("[!] No se pudo confirmar el override de pantalla; revisar 'wm size' y 'wm density'.")
-    disabled_count = 0
-    for pkg in DISABLE_PACKAGES:
+
+    # 2. Desactivación optimizada de paquetes mediante consulta única
+    target_pkgs = list(DISABLE_PACKAGES)
+    extra_pkgs = ["com.android.provision"]
+
+    currently_disabled = get_disabled_packages(adb_s)
+
+    if read_only_verify:
+        # Segunda pasada: verificación de solo lectura (sin comandos destructivos si ya están desactivados)
+        missing = [p for p in target_pkgs + extra_pkgs if p not in currently_disabled]
+        for pkg in missing:
+            _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
+                 timeout=15, capture_output=True, text=True)
+            currently_disabled.add(pkg)
+        disabled_count = len([p for p in target_pkgs if p in currently_disabled])
+        return w, h, dpi, disabled_count, display_ok
+
+    # Primera pasada: deshabilitar únicamente los paquetes que aún falten
+    all_targets = target_pkgs + extra_pkgs
+    needed_disable = [pkg for pkg in all_targets if pkg not in currently_disabled]
+    for pkg in needed_disable:
         res = _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
                    timeout=20, capture_output=True, text=True)
         if "disabled" in res.stdout.lower() or "new state" in res.stdout.lower():
-            disabled_count += 1
+            currently_disabled.add(pkg)
+
+    disabled_count = len([p for p in target_pkgs if p in currently_disabled])
+
     for setting_cmd, value in BG_PROCESS_SETTINGS.items():
         _run(["adb", "-s", adb_s, "shell"] + setting_cmd.split() + [value],
              timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Forzar aprovisionamiento completado y desactivar SetupWizard para garantizar que el launcher cargue inmediatamente
+    # Forzar aprovisionamiento completado y SetupWizard
     _run(["adb", "-s", adb_s, "shell", "settings", "put", "global", "device_provisioned", "1"],
          timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _run(["adb", "-s", adb_s, "shell", "settings", "put", "secure", "user_setup_complete", "1"],
          timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", "com.google.android.setupwizard"],
-         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", "com.android.provision"],
-         timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     _run(["adb", "-s", adb_s, "shell", "am", "start", "-c", "android.intent.category.HOME", "-a", "android.intent.action.MAIN"],
          timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -1615,9 +1675,8 @@ def cmd_start_instance(args):
         post_boot()
         print("[✓] Módulo/scope LSPosed recargados desde el arranque.")
 
-    # Verificación final: un reinicio tardío de WindowManager puede descartar
-    # el override aplicado en post_boot. Reaplicarlo antes de devolver el control.
-    _, _, _, _, display_ok = apply_runtime_defaults(adb_s, meta)
+    # Verificación final: confirmación de solo lectura sin reaplicar bucles redundantes
+    _, _, _, _, display_ok = apply_runtime_defaults(adb_s, meta, read_only_verify=True)
     if display_ok:
         print("[✓] Overrides finales de pantalla verificados.")
 

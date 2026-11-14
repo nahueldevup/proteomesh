@@ -949,11 +949,28 @@ async def group_key_async(names: List[str], key: str) -> Dict[str, Any]:
     return _summarize("key", await _run_input_batch(names, "keyevent", [keycode]))
 
 
+# Semáforo para limitar arranques masivos simultáneos (evita contención de I/O y saturación de CPU)
+# Configurable mediante GROUP_START_CONCURRENCY (default: 2)
+GROUP_START_CONCURRENCY = int(os.getenv("GROUP_START_CONCURRENCY", "2"))
+_group_start_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def get_group_start_semaphore() -> asyncio.Semaphore:
+    global _group_start_semaphore
+    if _group_start_semaphore is None:
+        concurrency = int(os.getenv("GROUP_START_CONCURRENCY", "2"))
+        _group_start_semaphore = asyncio.Semaphore(concurrency)
+    return _group_start_semaphore
+
+
 async def _run_lifecycle(names: List[str], op: str) -> List[Dict[str, Any]]:
+    start_sem = get_group_start_semaphore()
+
     async def _one(inst: str) -> Dict[str, Any]:
         try:
             if op == "start":
-                await start_instance_async(inst)
+                async with start_sem:
+                    await start_instance_async(inst)
             elif op == "stop":
                 await stop_instance_async(inst)
             elif op == "restart":
@@ -961,7 +978,8 @@ async def _run_lifecycle(names: List[str], op: str) -> List[Dict[str, Any]]:
                     await stop_instance_async(inst)
                 except Exception:
                     pass
-                await start_instance_async(inst)
+                async with start_sem:
+                    await start_instance_async(inst)
             elif op == "delete":
                 await delete_instance_async(inst)
             return {"instance": inst, "ok": True, "error": None}
