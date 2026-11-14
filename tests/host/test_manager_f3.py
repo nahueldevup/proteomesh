@@ -26,9 +26,14 @@ class ResourceLimitsTest(unittest.TestCase):
         self.assertEqual(validate_limits(memory="4g"), {"memory": "4g"})
         self.assertEqual(validate_limits(memory="2048m"), {"memory": "2048m"})
         self.assertEqual(validate_limits(memory="512M"), {"memory": "512m"})
+        self.assertEqual(validate_limits(memory="2.5g"), {"memory": "2560m"})
+        self.assertEqual(validate_limits(memory="2.0g"), {"memory": "2g"})
+        self.assertEqual(validate_limits(memory="3.0g"), {"memory": "3g"})
+        self.assertEqual(validate_limits(memory="4.0g"), {"memory": "4g"})
+        self.assertEqual(validate_limits(memory="512m"), {"memory": "512m"})
 
     def test_rejects_invalid_memory(self):
-        for bad in ("4gb", "invalid", "-1g", "4 g", ""):
+        for bad in ("4gb", "invalid", "-1g", "4 g", "2..5g", "2.5.5g", ".5g", "g", "2.g", ""):
             with self.subTest(bad=bad):
                 if bad == "":
                     self.assertEqual(validate_limits(memory=bad), {})
@@ -65,9 +70,12 @@ class ResourceLimitsTest(unittest.TestCase):
         self.assertEqual(validate_limits(swap="700m"), {"swap": "700m"})
         self.assertEqual(validate_limits(swap="1g"), {"swap": "1g"})
         self.assertEqual(validate_limits(swap="512M"), {"swap": "512m"})
+        self.assertEqual(validate_limits(swap="2.5g"), {"swap": "2560m"})
+        self.assertEqual(validate_limits(swap="2.0g"), {"swap": "2g"})
+        self.assertEqual(validate_limits(swap="0.5g"), {"swap": "512m"})
 
     def test_rejects_invalid_swap(self):
-        for bad in ("700mb", "invalid", "-1m", "512 m"):
+        for bad in ("700mb", "invalid", "-1m", "512 m", "1..5g", ".5g", "m", "1.m"):
             with self.subTest(bad=bad):
                 with self.assertRaises(SystemExit) as ctx:
                     validate_limits(swap=bad)
@@ -77,6 +85,9 @@ class ResourceLimitsTest(unittest.TestCase):
         self.assertEqual(compute_total_memory_swap("2560m", "700m"), "3260m")
         self.assertEqual(compute_total_memory_swap("4g", "1g"), "5120m")
         self.assertEqual(compute_total_memory_swap("2.5g", "512m"), "3072m")
+        self.assertEqual(compute_total_memory_swap("2.5g", "700m"), "3260m")
+        self.assertEqual(compute_total_memory_swap("2.0g", "0.5g"), "2560m")
+        self.assertEqual(compute_total_memory_swap("512m", "256m"), "768m")
 
 
 class CreateFromBundleTest(unittest.TestCase):

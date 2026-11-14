@@ -82,7 +82,7 @@ def validate_limits(
     if memory:
         mem = str(memory).strip().lower()
         # Normalizar decimales (ej: 2.5g -> 2560m) sin permitir espacios internos
-        dec_match = re.match(r"^(\d+(?:\\.\d+)?)([bkmg])$", mem)
+        dec_match = re.match(r"^(\d+(?:\.\d+)?)([bkmg])$", mem)
         if dec_match:
             val, unit = float(dec_match.group(1)), dec_match.group(2)
             if unit == "g":
@@ -105,7 +105,7 @@ def validate_limits(
 
     if swap:
         sw = str(swap).strip().lower()
-        dec_match = re.match(r"^(\d+(?:\\.\d+)?)([bkmg])$", sw)
+        dec_match = re.match(r"^(\d+(?:\.\d+)?)([bkmg])$", sw)
         if dec_match:
             val, unit = float(dec_match.group(1)), dec_match.group(2)
             if unit == "g":
