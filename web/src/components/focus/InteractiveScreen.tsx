@@ -31,7 +31,7 @@ export function InteractiveScreen({
   const loadFrame = useCallback(() => {
     if (!instance.running || frameInFlightRef.current) return;
     frameInFlightRef.current = true;
-    const url = api.getScreenUrl(instance.instance_name, Date.now());
+    const url = api.getScreenUrl(instance.instance_name, Date.now(), false, 0.5);
     const img = new Image();
     const safetyTimeout = window.setTimeout(() => {
       frameInFlightRef.current = false;

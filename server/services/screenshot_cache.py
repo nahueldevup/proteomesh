@@ -11,14 +11,53 @@ max_width comparten la misma entrada.
 """
 from __future__ import annotations
 
+import math
+import os
+import random
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
-# TTL ligeramente menor que el intervalo de polling del frontend (10-15 s) para
-# que cada ciclo traiga un frame fresco.
-DEFAULT_TTL = 8.0
+# TTL por defecto para tarjetas en reposo (dashboard/DeviceCard): 30-60 s configurable.
+DEFAULT_IDLE_TTL = float(os.getenv("SCREENSHOT_IDLE_TTL", "30.0"))
+# TTL para el camino interactivo (FocusView / InteractiveScreen): ~0.5s - 1.0s
+INTERACTIVE_TTL = float(os.getenv("SCREENSHOT_INTERACTIVE_TTL", "0.5"))
+
+MIN_TTL = 0.1
+MAX_TTL = 300.0
+
+DEFAULT_TTL = DEFAULT_IDLE_TTL
 MAX_ENTRIES = 128
+
+
+def sanitize_ttl(ttl: Any) -> float:
+    """Normaliza y acota el TTL a un rango seguro [MIN_TTL, MAX_TTL].
+
+    Valores None, no numéricos, NaN, <= 0 o fuera de rango retornan DEFAULT_IDLE_TTL.
+    """
+    if ttl is None:
+        return DEFAULT_IDLE_TTL
+    try:
+        val = float(ttl)
+        if math.isnan(val) or math.isinf(val):
+            return DEFAULT_IDLE_TTL
+        if val < MIN_TTL or val > MAX_TTL:
+            return DEFAULT_IDLE_TTL
+        return val
+    except (ValueError, TypeError):
+        return DEFAULT_IDLE_TTL
+
+
+def apply_ttl_jitter(ttl: float, jitter_pct: float = 0.20) -> float:
+    """Aplica jitter aleatorio de ±jitter_pct (por defecto ±20%) sobre el TTL de reposo.
+
+    Evita que múltiples tarjetas en reposo sincronicen sus vencimientos de caché.
+    No aplica jitter a TTLs cortos del camino interactivo (< 5.0 s).
+    """
+    if ttl < 5.0:
+        return ttl
+    factor = random.uniform(1.0 - jitter_pct, 1.0 + jitter_pct)
+    return max(MIN_TTL, round(ttl * factor, 2))
 
 # entry -> (expires_at_monotonic, bytes)
 _cache: Dict[str, Tuple[float, bytes]] = {}
@@ -29,7 +68,10 @@ _locks: Dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
 
-def _key(name: str, fmt: str, max_width: int) -> str:
+def _key(name: str, fmt: str, max_width: int, ttl: float = 30.0) -> str:
+    # Aísla el canal interactivo si el TTL solicitado es corto (<= 2s)
+    if ttl <= 2.0:
+        return f"{name}:{fmt}:{max_width}:interactive"
     return f"{name}:{fmt}:{max_width}"
 
 
@@ -42,8 +84,7 @@ def _get_lock(key: str) -> threading.Lock:
         return lock
 
 
-def _get(name: str, fmt: str, max_width: int) -> Optional[bytes]:
-    key = _key(name, fmt, max_width)
+def _get(key: str) -> Optional[bytes]:
     with _cache_guard:
         entry = _cache.get(key)
         if entry is None:
@@ -55,8 +96,7 @@ def _get(name: str, fmt: str, max_width: int) -> Optional[bytes]:
         return data
 
 
-def _set(name: str, fmt: str, max_width: int, data: bytes, ttl: float) -> None:
-    key = _key(name, fmt, max_width)
+def _set(key: str, data: bytes, ttl: float) -> None:
     with _cache_guard:
         if len(_cache) >= MAX_ENTRIES and key not in _cache:
             _evict_some_locked()
@@ -107,19 +147,20 @@ def capture(
     - Si `fn` lanza una excepción, no se cachea el error y se propaga,
       liberando el candado para que el siguiente llamador reintente.
     """
+    key = _key(name, fmt, max_width, ttl=ttl)
     if not fresh:
-        cached = _get(name, fmt, max_width)
+        cached = _get(key)
         if cached is not None:
             return cached
 
-    key = _key(name, fmt, max_width)
     lock = _get_lock(key)
     with lock:
         # Re-verificar dentro del candado: otro hilo pudo capturar mientras esperábamos.
         if not fresh:
-            cached = _get(name, fmt, max_width)
+            cached = _get(key)
             if cached is not None:
                 return cached
         data = fn()
-        _set(name, fmt, max_width, data, ttl)
+        actual_ttl = apply_ttl_jitter(ttl)
+        _set(key, data, actual_ttl)
         return data

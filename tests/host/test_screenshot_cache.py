@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -137,6 +138,59 @@ class ScreenshotCacheTest(unittest.TestCase):
         result = cache.capture("phone-80", "jpeg", 540, fresh=False, ttl=60, fn=fn)
         self.assertEqual(result, b"ok")
         self.assertEqual(len(calls), 2)
+
+    def test_sanitize_ttl_valid_and_bounds(self):
+        # Valores válidos dentro del rango
+        self.assertEqual(cache.sanitize_ttl(15.0), 15.0)
+        self.assertEqual(cache.sanitize_ttl(0.5), 0.5)
+        self.assertEqual(cache.sanitize_ttl("10.0"), 10.0)
+
+        # None -> default
+        self.assertEqual(cache.sanitize_ttl(None), cache.DEFAULT_IDLE_TTL)
+
+        # Fuera de rango o inválidos -> default
+        self.assertEqual(cache.sanitize_ttl(0), cache.DEFAULT_IDLE_TTL)
+        self.assertEqual(cache.sanitize_ttl(-5.0), cache.DEFAULT_IDLE_TTL)
+        self.assertEqual(cache.sanitize_ttl(999.0), cache.DEFAULT_IDLE_TTL)
+        self.assertEqual(cache.sanitize_ttl(float("nan")), cache.DEFAULT_IDLE_TTL)
+        self.assertEqual(cache.sanitize_ttl(float("inf")), cache.DEFAULT_IDLE_TTL)
+        self.assertEqual(cache.sanitize_ttl("no-es-numero"), cache.DEFAULT_IDLE_TTL)
+
+    def test_apply_ttl_jitter_idle_vs_interactive(self):
+        # Camino interactivo (< 5.0s): sin jitter para respetar cadencia exacta
+        self.assertEqual(cache.apply_ttl_jitter(0.5), 0.5)
+        self.assertEqual(cache.apply_ttl_jitter(1.0), 1.0)
+
+        # Camino reposo (>= 5.0s): jitter de ±20%
+        base_ttl = 30.0
+        for _ in range(20):
+            j_ttl = cache.apply_ttl_jitter(base_ttl)
+            self.assertGreaterEqual(j_ttl, 24.0)
+            self.assertLessEqual(j_ttl, 36.0)
+
+    @patch("server.services.manager_bridge._run_input")
+    def test_interactions_invalidate_screenshot_cache(self, mock_run_input):
+        mock_run_input.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        from server.services import manager_bridge
+
+        # Poblamos la caché para phone-80 y other-phone
+        cache.capture("phone-80", "jpeg", 540, fresh=False, ttl=60, fn=lambda: b"frame-80")
+        cache.capture("other-phone", "jpeg", 540, fresh=False, ttl=60, fn=lambda: b"frame-other")
+
+        # Enviamos un tap a phone-80
+        manager_bridge.send_instance_tap("phone-80", 100, 200)
+
+        # phone-80 debe haber sido invalidado (cache miss -> reejecuta fn)
+        calls_80 = []
+        res_80 = cache.capture("phone-80", "jpeg", 540, fresh=False, ttl=60, fn=lambda: (calls_80.append(1), b"new-frame")[1])
+        self.assertEqual(len(calls_80), 1)
+        self.assertEqual(res_80, b"new-frame")
+
+        # other-phone NO debe haber sido invalidado (conserva su entrada en caché)
+        calls_other = []
+        res_other = cache.capture("other-phone", "jpeg", 540, fresh=False, ttl=60, fn=lambda: (calls_other.append(1), b"fail")[1])
+        self.assertEqual(len(calls_other), 0)
+        self.assertEqual(res_other, b"frame-other")
 
 
 if __name__ == "__main__":

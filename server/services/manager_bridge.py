@@ -9,6 +9,7 @@ import shlex
 import asyncio
 import logging
 import subprocess
+import threading
 from pathlib import Path
 from urllib.parse import urlparse, urlencode
 from typing import Dict, List, Any, Optional
@@ -770,6 +771,12 @@ def launch_native_scrcpy(name: str) -> Dict[str, Any]:
         raise RuntimeError(f"Error al lanzar scrcpy: {e}")
 
 
+# Semáforo global para limitar volcados crudos de screencap concurrentes (~9.6 MB de payload en RAM cada uno)
+# Configurable mediante SCREENSHOT_MAX_CONCURRENT (por defecto 3)
+SCREENSHOT_MAX_CONCURRENT = int(os.getenv("SCREENSHOT_MAX_CONCURRENT", "3"))
+_raw_capture_semaphore = threading.BoundedSemaphore(SCREENSHOT_MAX_CONCURRENT)
+
+
 def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 540) -> bytes:
     """Captura el frame actual de la pantalla de una instancia en ejecución."""
     inst_name = validate_instance_name(name)
@@ -780,12 +787,54 @@ def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 54
     if not cid:
         raise RuntimeError(f"Instancia '{inst_name}' no está en ejecución.")
 
+    fmt_lower = format.lower()
+
+    # 1. Intentar volcado raw eficiente sin compresión PNG en el guest
+    raw_res = None
+    try:
+        with _raw_capture_semaphore:
+            raw_res = subprocess.run(["docker", "exec", inst_name, "screencap"], capture_output=True)
+    except Exception:
+        pass
+
+    if raw_res and raw_res.returncode == 0 and raw_res.stdout:
+        try:
+            from server.services.screencap_parser import parse_screencap_raw
+            w, h, pixels = parse_screencap_raw(raw_res.stdout)
+            import io
+            from PIL import Image
+
+            im = Image.frombuffer("RGBA", (w, h), pixels, "raw", "RGBA", 0, 1)
+            if fmt_lower in ("jpeg", "jpg"):
+                im = im.convert("RGB")
+                if max_width and im.width > max_width:
+                    aspect = im.height / im.width
+                    new_h = int(max_width * aspect)
+                    im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=75, optimize=True)
+                return buf.getvalue()
+            elif fmt_lower == "png":
+                if max_width and im.width > max_width:
+                    aspect = im.height / im.width
+                    new_h = int(max_width * aspect)
+                    im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format="PNG")
+                return buf.getvalue()
+            else:
+                return raw_res.stdout
+        except Exception:
+            # Fallback al camino tradicional con 'screencap -p'
+            pass
+
+    # 2. Fallback al camino tradicional con 'screencap -p' (PNG nativo de Android)
     res = subprocess.run(["docker", "exec", inst_name, "screencap", "-p"], capture_output=True)
     if res.returncode != 0 or not res.stdout:
         raise RuntimeError(f"Error al capturar pantalla de '{inst_name}': {res.stderr.decode().strip()}")
 
     raw_png = res.stdout
-    if format.lower() in ("jpeg", "jpg"):
+    if fmt_lower in ("jpeg", "jpg"):
         try:
             import io
             from PIL import Image
@@ -837,6 +886,11 @@ def send_instance_tap(name: str, x: int, y: int) -> Dict[str, Any]:
     res = _run_input(inst_name, "tap", [str(x), str(y)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar tap a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "tap", "x": x, "y": y}
 
 
@@ -846,6 +900,11 @@ def send_instance_swipe(name: str, x1: int, y1: int, x2: int, y2: int, duration_
     res = _run_input(inst_name, "swipe", [str(x1), str(y1), str(x2), str(y2), str(duration_ms)])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar swipe a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "swipe", "from": [x1, y1], "to": [x2, y2], "duration_ms": duration_ms}
 
 
@@ -872,6 +931,11 @@ def send_instance_key(name: str, key: str) -> Dict[str, Any]:
     res = _run_input(inst_name, "keyevent", [keycode])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar keyevent '{key}' a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "key", "key": key, "keycode": keycode}
 
 
@@ -884,6 +948,11 @@ def send_instance_text(name: str, text: str) -> Dict[str, Any]:
     res = _run_input(inst_name, "text", [escaped])
     if res.returncode != 0:
         raise RuntimeError(f"Error al enviar texto a '{inst_name}': {res.stderr.strip()}")
+    try:
+        from server.services import screenshot_cache
+        screenshot_cache.invalidate_instance(inst_name)
+    except Exception:
+        pass
     return {"status": "ok", "action": "text", "length": len(text)}
 
 
