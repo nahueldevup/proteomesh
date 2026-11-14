@@ -43,19 +43,46 @@ RESOURCE_CPUS_RE = re.compile(r"^(\d+(\.\d+)?|\d+-\d+(,\d+-\d+)*)$")
 BUNDLE_FORMAT_VERSION = 1
 RUNTIME_VERSION = "1.0"
 DEFAULT_INSTANCE_MEMORY = os.getenv("PROTEOMESH_DEFAULT_MEMORY", "2560m")
+DEFAULT_INSTANCE_SWAP = os.getenv("PROTEOMESH_DEFAULT_SWAP", "700m")
+
+
+def parse_mem_to_mb(mem_str: str) -> int:
+    """Convierte una cadena de memoria (ej: 2560m, 4g, 2.5g) a megabytes enteros."""
+    m = str(mem_str).strip().lower()
+    match = re.match(r"^(\d+(?:\.\d+)?)([bkmg])$", m)
+    if not match:
+        raise ValueError(f"Formato inválido de memoria: {mem_str}")
+    val, unit = float(match.group(1)), match.group(2)
+    if unit == "g":
+        return int(val * 1024)
+    elif unit == "m":
+        return int(val)
+    elif unit == "k":
+        return max(1, int(val / 1024))
+    elif unit == "b":
+        return max(1, int(val / (1024 * 1024)))
+    return int(val)
+
+
+def compute_total_memory_swap(memory_str: str, swap_str: str) -> str:
+    """Calcula el total para Docker --memory-swap (memoria RAM + swap adicional) en megabytes."""
+    mem_mb = parse_mem_to_mb(memory_str)
+    swap_mb = parse_mem_to_mb(swap_str)
+    return f"{mem_mb + swap_mb}m"
 
 
 def validate_limits(
     memory: Optional[str] = None,
     cpus: Optional[str] = None,
-    pids_limit: Optional[int] = None
+    pids_limit: Optional[int] = None,
+    swap: Optional[str] = None,
 ) -> dict:
     """Valida y normaliza los límites de recursos de Docker (ADR-001 Fase 3)."""
     limits = {}
     if memory:
         mem = str(memory).strip().lower()
         # Normalizar decimales (ej: 2.5g -> 2560m) sin permitir espacios internos
-        dec_match = re.match(r"^(\d+(?:\.\d+)?)([bkmg])$", mem)
+        dec_match = re.match(r"^(\d+(?:\\.\d+)?)([bkmg])$", mem)
         if dec_match:
             val, unit = float(dec_match.group(1)), dec_match.group(2)
             if unit == "g":
@@ -75,6 +102,29 @@ def validate_limits(
                 "(ejemplos válidos: 4g, 2048m, 2.5g, 512m)."
             )
         limits["memory"] = mem
+
+    if swap:
+        sw = str(swap).strip().lower()
+        dec_match = re.match(r"^(\d+(?:\\.\d+)?)([bkmg])$", sw)
+        if dec_match:
+            val, unit = float(dec_match.group(1)), dec_match.group(2)
+            if unit == "g":
+                if val.is_integer():
+                    sw = f"{int(val)}g"
+                else:
+                    sw = f"{int(val * 1024)}m"
+            elif unit == "m":
+                sw = f"{int(val)}m"
+            elif unit == "k":
+                sw = f"{int(val)}k"
+            elif unit == "b":
+                sw = f"{int(val)}b"
+        if not RESOURCE_MEM_RE.fullmatch(sw):
+            raise SystemExit(
+                f"[!] Error: Formato de --swap inválido: {swap!r} "
+                "(ejemplos válidos: 512m, 700m, 1g)."
+            )
+        limits["swap"] = sw
 
     if cpus:
         c = str(cpus).strip()
@@ -807,10 +857,12 @@ def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
     inst_name = validate_instance_name(args.name)
     mem_arg = getattr(args, "memory", None) or os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
+    swap_arg = getattr(args, "swap", None) or os.getenv("PROTEOMESH_DEFAULT_SWAP", DEFAULT_INSTANCE_SWAP)
     limits = validate_limits(
         mem_arg,
         getattr(args, "cpus", None),
-        getattr(args, "pids_limit", None)
+        getattr(args, "pids_limit", None),
+        swap=swap_arg,
     )
 
     from_bundle_path = getattr(args, "from_bundle", None)
@@ -1222,11 +1274,14 @@ def cmd_start_instance(args):
     cli_limits = validate_limits(
         getattr(args, "memory", None),
         getattr(args, "cpus", None),
-        getattr(args, "pids_limit", None)
+        getattr(args, "pids_limit", None),
+        swap=getattr(args, "swap", None),
     )
     limits.update(cli_limits)
     if not limits.get("memory"):
         limits["memory"] = os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
+    if not limits.get("swap"):
+        limits["swap"] = os.getenv("PROTEOMESH_DEFAULT_SWAP", DEFAULT_INSTANCE_SWAP)
 
     print(f"[*] Iniciando contenedor '{inst_name}' en puerto {port}...")
     run_cmd = [
@@ -1239,6 +1294,9 @@ def cmd_start_instance(args):
 
     if limits.get("memory"):
         run_cmd.extend(["--memory", limits["memory"]])
+        if limits.get("swap"):
+            tot_swap = compute_total_memory_swap(limits["memory"], limits["swap"])
+            run_cmd.extend(["--memory-swap", tot_swap])
     if limits.get("cpus"):
         cpus_val = str(limits["cpus"])
         if "-" in cpus_val or "," in cpus_val:
@@ -2087,6 +2145,10 @@ def main():
         "--memory", "-m", required=False,
         help=f"Límite de memoria RAM para el contenedor (default: {DEFAULT_INSTANCE_MEMORY}, configurable vía PROTEOMESH_DEFAULT_MEMORY; ej: 4g, 2048m)"
     )
+    sub.add_argument(
+        "--swap", required=False,
+        help=f"Límite de swap adicional para el contenedor (default: {DEFAULT_INSTANCE_SWAP}, configurable vía PROTEOMESH_DEFAULT_SWAP; ej: 512m, 1g)"
+    )
     sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 0-3 para pinning, o 2.0)")
     sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs (ej: 4096 o sin límite; evitar <3000 para no agotar hilos en Android 13)")
     sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
@@ -2107,6 +2169,7 @@ def main():
     sub = subparsers.add_parser("start", help="Inicia una instancia existente con sus parámetros de hardware")
     sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
     sub.add_argument("--memory", "-m", required=False, help="Override temporal de memoria RAM (ej: 4g)")
+    sub.add_argument("--swap", required=False, help="Override temporal de swap adicional (ej: 1g)")
     sub.add_argument("--cpus", required=False, help="Override temporal de CPU (ej: 2.0, 0-3)")
     sub.add_argument("--pids-limit", type=int, required=False, help="Override temporal de PIDs")
     sub.add_argument("--verify-health", action="store_true", help="Ejecuta protocolo de salud post-arranque")
