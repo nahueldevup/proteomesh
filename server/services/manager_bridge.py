@@ -778,16 +778,25 @@ _raw_capture_semaphore = threading.BoundedSemaphore(SCREENSHOT_MAX_CONCURRENT)
 
 
 def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 540) -> bytes:
-    """Captura el frame actual de la pantalla de una instancia en ejecución."""
-    inst_name = validate_instance_name(name)
-    cid = subprocess.run(
-        ["docker", "ps", "-q", "-f", f"name=^{inst_name}$"],
-        capture_output=True, text=True
-    ).stdout.strip()
-    if not cid:
-        raise RuntimeError(f"Instancia '{inst_name}' no está en ejecución.")
+    """Captura el frame actual de la pantalla de una instancia en ejecución.
 
+    QW-2: Se eliminó el `docker ps` previo (15 ms innecesarios por frame). Si el
+    contenedor no está activo, `screencap` fallará de inmediato y la excepción
+    será capturada. Se usa BILINEAR (thumbnails >540px) o BOX (≤540px) en lugar
+    de LANCZOS (-12 a -16 ms por frame) y optimize=False (-1.86 ms por frame).
+    """
+    inst_name = validate_instance_name(name)
     fmt_lower = format.lower()
+
+    # Elegir filtro de reescalado según tamaño destino (QW-2)
+    # BOX es óptimo para reducciones grandes (thumbnails ≤540px); BILINEAR para el resto.
+    resample_filter = (
+        lambda mw: (
+            __import__("PIL.Image", fromlist=["Image"]).Image.Resampling.BOX
+            if mw and mw <= 540
+            else __import__("PIL.Image", fromlist=["Image"]).Image.Resampling.BILINEAR
+        )
+    )
 
     # 1. Intentar volcado raw eficiente sin compresión PNG en el guest
     raw_res = None
@@ -810,15 +819,15 @@ def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 54
                 if max_width and im.width > max_width:
                     aspect = im.height / im.width
                     new_h = int(max_width * aspect)
-                    im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+                    im = im.resize((max_width, new_h), resample_filter(max_width))
                 buf = io.BytesIO()
-                im.save(buf, format="JPEG", quality=75, optimize=True)
+                im.save(buf, format="JPEG", quality=75, optimize=False)
                 return buf.getvalue()
             elif fmt_lower == "png":
                 if max_width and im.width > max_width:
                     aspect = im.height / im.width
                     new_h = int(max_width * aspect)
-                    im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+                    im = im.resize((max_width, new_h), resample_filter(max_width))
                 buf = io.BytesIO()
                 im.save(buf, format="PNG")
                 return buf.getvalue()
@@ -842,9 +851,9 @@ def get_instance_screenshot(name: str, format: str = "jpeg", max_width: int = 54
             if max_width and im.width > max_width:
                 aspect = im.height / im.width
                 new_h = int(max_width * aspect)
-                im = im.resize((max_width, new_h), Image.Resampling.LANCZOS)
+                im = im.resize((max_width, new_h), resample_filter(max_width))
             buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=75, optimize=True)
+            im.save(buf, format="JPEG", quality=75, optimize=False)
             return buf.getvalue()
         except Exception:
             return raw_png

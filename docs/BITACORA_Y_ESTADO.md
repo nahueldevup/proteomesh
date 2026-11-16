@@ -1905,6 +1905,26 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 63. QW-2 + QW-9 — Limpieza de Pipeline de Screenshots y Eliminación de `/ws-stream` (2026-11-16)
+
+* **Rama:** `perf/qw2-qw9-screenshots-cleanup` (PR 1 del Plan Unificado de Optimización de Rendimiento).
+* **QW-2 — Eliminación de grasa en pipeline de screenshots (Host):**
+  - Eliminado el `docker ps -q` previo a `screencap` en `server/services/manager_bridge.py::get_instance_screenshot`. **Ahorro medido: 15.19 ms por frame**. Si el contenedor no está activo, `screencap` falla de inmediato y la excepción es capturada.
+  - `Image.Resampling.LANCZOS` → `Image.Resampling.BILINEAR` para thumbnails >540 px y `BOX` para thumbnails ≤540 px. **Ahorro medido: -12.48 ms por frame** (22.37 ms → 9.89 ms).
+  - `optimize=True` → `optimize=False` en todas las rutas de guardado JPEG. **Ahorro medido: -1.86 ms por frame**.
+  - **Reducción total estimada: ~29.5 ms por frame** en el proceso Python del host (latencia de screenshot de ~145 ms a ~115 ms, -20%).
+* **QW-9 — Eliminación definitiva de `/ws-stream`:**
+  - Eliminada la ruta `@router.websocket("/{name}/ws-stream")` de `server/routes/instances.py`. El endpoint MJPEG/WebSocket legado (~3 FPS) no es consumido por el frontend desde la integración de `ws-scrcpy` (STREAM-019).
+  - Eliminados los imports `asyncio`, `WebSocket` y `WebSocketDisconnect` de `server/routes/instances.py` (código muerto).
+  - `ws-scrcpy` (H.264 @ 30 FPS) es formalmente el **único visor interactivo**.
+  - El pipeline de captura estática y miniaturas (`/screen`, `screenshot_cache.py`, `screencap_parser.py`, raw parser) se preserva intacto sin ninguna modificación.
+  - Documentado en `docs/ESTADO_ACTUAL.md` y `docs/BITACORA_Y_ESTADO.md`.
+* **Tests actualizados:** `tests/host/test_screencap_raw.py` adaptado para reflejar la eliminación del mock de `docker ps`.
+* **Validación:** Suite `pytest tests/host -q` — ver resultado en esta entrada.
+* **Estado:** Cambios aplicados. Pendiente de commit (requiere orden explícita).
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

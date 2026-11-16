@@ -82,12 +82,10 @@ class ScreencapFallbackTest(unittest.TestCase):
 
     @patch("server.services.manager_bridge.subprocess.run")
     def test_fallback_to_png_when_raw_fails(self, mock_run):
-        # First call: docker ps -> returns cid "cid123"
-        # Second call: screencap raw -> fails with returncode 1
-        # Third call: screencap -p -> succeeds with valid PNG
+        # QW-2: docker ps eliminado — el pipeline arranca directamente con screencap raw.
+        # Primera llamada: screencap raw -> falla con returncode 1
+        # Segunda llamada: screencap -p -> exitosa con PNG válido
         def fake_run(cmd, *args, **kwargs):
-            if "ps" in cmd:
-                return MagicMock(returncode=0, stdout="cid123\n", stderr="")
             if cmd == ["docker", "exec", "phone-80", "screencap"]:
                 return MagicMock(returncode=1, stdout=b"", stderr="error raw")
             if cmd == ["docker", "exec", "phone-80", "screencap", "-p"]:
@@ -98,36 +96,38 @@ class ScreencapFallbackTest(unittest.TestCase):
 
         data = get_instance_screenshot("phone-80", format="jpeg", max_width=540)
         self.assertTrue(len(data) > 0)
-        # Verify both commands were executed (raw attempted, then -p called)
+        # Verificar que se intentó raw y luego se cayó a -p
         called_cmds = [c[0][0] for c in mock_run.call_args_list]
         self.assertIn(["docker", "exec", "phone-80", "screencap"], called_cmds)
         self.assertIn(["docker", "exec", "phone-80", "screencap", "-p"], called_cmds)
+        # Confirmar que NO se invocó docker ps (QW-2)
+        self.assertNotIn(["docker", "ps", "-q", "-f", "name=^phone-80$"], called_cmds)
 
     @patch("server.services.manager_bridge.subprocess.run")
     def test_raw_fast_path_avoids_png_fallback(self, mock_run):
-        # Raw buffer of 4x4 RGBA image
+        # QW-2: docker ps eliminado — el pipeline arranca directamente con screencap raw.
         w, h = 4, 4
         header = struct.pack("<IIII", w, h, HAL_PIXEL_FORMAT_RGBA_8888, 1)
         pixels = b"\x00\xff\x00\xff" * (w * h)
         raw_payload = header + pixels
 
         def fake_run(cmd, *args, **kwargs):
-            if "ps" in cmd:
-                return MagicMock(returncode=0, stdout="cid123\n", stderr="")
             if cmd == ["docker", "exec", "phone-80", "screencap"]:
                 return MagicMock(returncode=0, stdout=raw_payload, stderr="")
             if cmd == ["docker", "exec", "phone-80", "screencap", "-p"]:
-                raise AssertionError("screencap -p should NOT have been called in fast path!")
+                raise AssertionError("screencap -p NO debería llamarse en el fast path!")
             return MagicMock(returncode=0, stdout="")
 
         mock_run.side_effect = fake_run
 
         data = get_instance_screenshot("phone-80", format="jpeg", max_width=540)
         self.assertTrue(len(data) > 0)
-        # Verify screencap -p was NOT called
+        # Verificar que screencap -p NO fue llamado
         called_cmds = [c[0][0] for c in mock_run.call_args_list]
         self.assertIn(["docker", "exec", "phone-80", "screencap"], called_cmds)
         self.assertNotIn(["docker", "exec", "phone-80", "screencap", "-p"], called_cmds)
+        # Confirmar que NO se invocó docker ps (QW-2)
+        self.assertNotIn(["docker", "ps", "-q", "-f", "name=^phone-80$"], called_cmds)
 
 
 if __name__ == "__main__":

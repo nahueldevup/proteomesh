@@ -1,9 +1,8 @@
 """
 Rutas para ciclo de vida de instancias (CloudPhones)
 """
-import asyncio
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from server.models.schemas import (
     InstanceCreateRequest,
@@ -249,28 +248,3 @@ def launch_url(name: str, req: LaunchUrlRequest):
         return launch_instance_url(name, req.url)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.websocket("/{name}/ws-stream")
-async def ws_stream(websocket: WebSocket, name: str, fps: int = 3, max_width: int = 540):
-    """Stream continuo de frames JPEG por WebSocket (fallback nativo cuando ws-scrcpy no está disponible)."""
-    await websocket.accept()
-    delay = 1.0 / max(1, min(fps, 10))
-    try:
-        while True:
-            try:
-                frame = await asyncio.to_thread(get_instance_screenshot, name, "jpeg", max_width)
-            except Exception as e:
-                await websocket.send_json({"error": str(e)})
-                break
-            await websocket.send_bytes(frame)
-            await asyncio.sleep(delay)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
-    finally:
-        try:
-            await websocket.close()
-        except Exception:
-            pass
