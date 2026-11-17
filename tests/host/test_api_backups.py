@@ -119,3 +119,42 @@ def test_restore_backup(tmp_path, monkeypatch):
     assert restore_res.status_code == 200
     assert restore_res.json()["status"] == "ok"
     assert restore_target.exists()
+
+
+def test_backup_schedule_status():
+    """Verifica consulta de estado de programación periódica."""
+    res = client.get("/api/v1/backups/schedule")
+    assert res.status_code == 200
+    data = res.json()
+    assert "active" in data
+    assert "frequency" in data
+    assert "time" in data
+
+
+def test_backup_schedule_update_and_trigger():
+    """Verifica actualización y disparo de prueba de la programación periódica."""
+    # Configurar horario 04:15
+    res = client.post(
+        "/api/v1/backups/schedule",
+        json={"enabled": True, "frequency": "daily", "time": "04:15", "keep": 4, "no_encrypt": True},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["active"] is True
+    assert data["time"] == "04:15"
+    assert data["keep"] == 4
+
+    # Disparar prueba de ejecución
+    res_trig = client.post("/api/v1/backups/schedule/trigger")
+    assert res_trig.status_code == 200
+    assert res_trig.json()["status"] == "ok"
+
+
+def test_backup_schedule_invalid_time():
+    """Verifica rechazo de hora inválida en programación."""
+    res = client.post(
+        "/api/v1/backups/schedule",
+        json={"enabled": True, "frequency": "daily", "time": "99:99", "keep": 5, "no_encrypt": True},
+    )
+    assert res.status_code == 400
+    assert "inválido" in res.json()["detail"]

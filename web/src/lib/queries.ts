@@ -23,6 +23,7 @@ export const queryKeys = {
   installedApks: ['installed-apks'] as const,
   files: (phoneName?: string, fullPath?: string) => ['files', phoneName, fullPath] as const,
   backups: ['backups'] as const,
+  backupSchedule: ['backupSchedule'] as const,
 };
 
 export const EMPTY_CATALOG: CustomLocationsCatalog = {
@@ -120,6 +121,15 @@ export function useBackups(options?: { enabled?: boolean }) {
     queryKey: queryKeys.backups,
     queryFn: () => api.getBackups(),
     staleTime: 10_000,
+    enabled: options?.enabled,
+  });
+}
+
+export function useBackupSchedule(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.backupSchedule,
+    queryFn: () => api.getBackupSchedule(),
+    staleTime: 15_000,
     enabled: options?.enabled,
   });
 }

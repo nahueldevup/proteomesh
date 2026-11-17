@@ -39,6 +39,7 @@ ALLOWED_FILE_ROOTS = [
 # Backups automatizados de bundles e identidades
 BACKUPS_DIR = Path(os.getenv("PROTEOMESH_BACKUP_DEST", str(REPO_ROOT / "backups" / "bundles")))
 BACKUP_SCRIPT_PATH = TOOLS_DIR / "backup_bundles.sh"
+SETUP_SCHEDULE_SCRIPT_PATH = TOOLS_DIR / "setup_backup_schedule.sh"
 
 def resolve_aapt2_path() -> Path:
     """Devuelve la primera ruta ejecutable de aapt2 disponible."""

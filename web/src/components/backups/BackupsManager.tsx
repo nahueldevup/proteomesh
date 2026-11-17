@@ -19,10 +19,13 @@ import {
   Info,
   X,
   RotateCcw,
+  Clock,
+  Play,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { useBackups, queryKeys } from '../../lib/queries';
+import { useBackups, useBackupSchedule, queryKeys } from '../../lib/queries';
 import { api } from '../../lib/api';
 import type { BackupItem } from '../../types';
 import { cn } from '../../lib/utils';
@@ -61,6 +64,21 @@ export function BackupsManager() {
   const [showRestorePass, setShowRestorePass] = useState(false);
   const [confirmDestructive, setConfirmDestructive] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+
+  // Consulta de programación de backups
+  const { data: schedule } = useBackupSchedule();
+
+  // Estados del modal de programación
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [schedEnabled, setSchedEnabled] = useState(true);
+  const [schedFrequency, setSchedFrequency] = useState<'daily' | 'weekly'>('daily');
+  const [schedTime, setSchedTime] = useState('03:00');
+  const [schedKeep, setSchedKeep] = useState(5);
+  const [schedEncrypt, setSchedEncrypt] = useState(false);
+  const [schedPassphrase, setSchedPassphrase] = useState('');
+  const [showSchedPass, setShowSchedPass] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [isTriggeringNow, setIsTriggeringNow] = useState(false);
 
   // Filtrado de backups
   const filteredBackups = useMemo(() => {
@@ -202,6 +220,59 @@ export function BackupsManager() {
     }
   };
 
+  const handleOpenSchedule = () => {
+    if (schedule) {
+      setSchedEnabled(schedule.active);
+      setSchedFrequency(schedule.frequency === 'weekly' ? 'weekly' : 'daily');
+      setSchedTime(schedule.time || '03:00');
+      setSchedKeep(schedule.keep || 5);
+      setSchedEncrypt(schedule.encrypted);
+    }
+    setSchedPassphrase('');
+    setShowSchedPass(false);
+    setIsScheduleOpen(true);
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSchedule(true);
+    try {
+      await api.updateBackupSchedule({
+        enabled: schedEnabled,
+        frequency: schedFrequency,
+        time: schedTime,
+        keep: schedKeep,
+        no_encrypt: !schedEncrypt,
+        passphrase: schedEncrypt && schedPassphrase.trim() ? schedPassphrase.trim() : undefined,
+      });
+      toast.success(
+        schedEnabled
+          ? 'Programación de respaldos guardada y activada'
+          : 'Programación de respaldos deshabilitada'
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.backupSchedule });
+      setIsScheduleOpen(false);
+    } catch (err: any) {
+      toast.error(`Error al actualizar programación: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const handleTriggerScheduleNow = async () => {
+    setIsTriggeringNow(true);
+    try {
+      await api.triggerBackupScheduleNow();
+      toast.success('Respaldo automático ejecutado exitosamente en segundo plano');
+      queryClient.invalidateQueries({ queryKey: queryKeys.backups });
+      queryClient.invalidateQueries({ queryKey: queryKeys.backupSchedule });
+    } catch (err: any) {
+      toast.error(`Error al ejecutar respaldo: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsTriggeringNow(false);
+    }
+  };
+
   const formatDate = (isoStr: string) => {
     try {
       const d = new Date(isoStr);
@@ -238,6 +309,17 @@ export function BackupsManager() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleOpenSchedule}
+            className="flex items-center gap-1.5 rounded-sm border border-border bg-card px-3 py-1.5 font-mono text-xs font-semibold text-foreground shadow-xs hover:bg-muted transition-colors"
+          >
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            <span>Programación</span>
+            {schedule?.active && (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            )}
+          </button>
           <IconBtn
             icon={RefreshCw}
             label="Actualizar lista de respaldos"
@@ -301,6 +383,82 @@ export function BackupsManager() {
             <div className="grid h-10 w-10 place-items-center rounded-sm bg-primary/10 text-primary border border-primary/20">
               <Database className="h-5 w-5" />
             </div>
+          </div>
+        </div>
+
+        {/* ── BANNER / CARD DE AUTOMATIZACIÓN ───────────────────────────────── */}
+        <div className="rounded-sm border border-border bg-card p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono">
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                'grid h-9 w-9 shrink-0 place-items-center rounded-sm border mt-0.5',
+                schedule?.active
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                  : 'bg-muted text-muted-foreground border-border'
+              )}
+            >
+              <Clock className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-foreground tracking-wide">
+                  AUTOMATIZACIÓN EN SEGUNDO PLANO (SYSTEMD TIMER)
+                </span>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-[10px] font-semibold border',
+                    schedule?.active
+                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                      : 'bg-muted text-muted-foreground border-border'
+                  )}
+                >
+                  {schedule?.active ? 'ACTIVO' : 'INACTIVO'}
+                </span>
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {schedule?.active ? (
+                  <>
+                    <span>
+                      Ejecución {schedule.frequency === 'weekly' ? 'Semanal (Lunes)' : 'Diaria'} a las {schedule.time} hs · Conserva {schedule.keep} copias
+                    </span>
+                    {schedule.next_run && (
+                      <span className="block text-[10px] text-foreground/80 mt-0.5">
+                        Próxima activación: {schedule.next_run}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  'Sin programar. El sistema no realiza respaldos periódicos automáticos.'
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+            {schedule?.active && (
+              <button
+                type="button"
+                onClick={handleTriggerScheduleNow}
+                disabled={isTriggeringNow}
+                className="flex items-center gap-1.5 rounded-sm border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors disabled:opacity-50 shadow-xs"
+                title="Ejecutar de inmediato el servicio para verificarlo"
+              >
+                {isTriggeringNow ? (
+                  <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+                ) : (
+                  <Play className="h-3 w-3 text-emerald-500" />
+                )}
+                <span>{isTriggeringNow ? 'Ejecutando…' : 'Probar Ahora'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenSchedule}
+              className="flex items-center gap-1.5 rounded-sm bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors shadow-xs"
+            >
+              <SlidersHorizontal className="h-3 w-3" />
+              <span>Configurar</span>
+            </button>
           </div>
         </div>
 
@@ -796,6 +954,186 @@ export function BackupsManager() {
                 >
                   {isRestoring && <RefreshCw className="h-3 w-3 animate-spin" />}
                   <span>{isRestoring ? 'Restaurando…' : 'Restaurar Copia'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: PROGRAMAR RESPALDOS AUTOMÁTICOS ─────────────────────────── */}
+      {isScheduleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-sm border border-border bg-card p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                <h2 className="font-mono text-sm font-bold tracking-wider">
+                  PROGRAMACIÓN DE RESPALDOS (SYSTEMD)
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScheduleOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSchedule} className="space-y-4 font-mono text-xs">
+              {/* Toggle Habilitar/Deshabilitar */}
+              <div className="flex items-center justify-between rounded-sm bg-muted/40 p-3 border border-border">
+                <div>
+                  <div className="font-bold text-foreground">
+                    Ejecución automática en segundo plano
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Temporizador desatendido de bajo impacto (systemd user timer)
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={schedEnabled}
+                  onChange={(e) => setSchedEnabled(e.target.checked)}
+                  className="h-4 w-4 accent-primary cursor-pointer"
+                />
+              </div>
+
+              {schedEnabled && (
+                <div className="space-y-4 pt-1">
+                  {/* Frecuencia */}
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-foreground">Frecuencia de Ejecución</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSchedFrequency('daily')}
+                        className={cn(
+                          'rounded-sm border p-2 text-left transition-colors',
+                          schedFrequency === 'daily'
+                            ? 'border-primary bg-primary/10 text-primary font-bold'
+                            : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <div className="text-xs">Diario</div>
+                        <div className="text-[10px] opacity-80">Todos los días</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSchedFrequency('weekly')}
+                        className={cn(
+                          'rounded-sm border p-2 text-left transition-colors',
+                          schedFrequency === 'weekly'
+                            ? 'border-primary bg-primary/10 text-primary font-bold'
+                            : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <div className="text-xs">Semanal</div>
+                        <div className="text-[10px] opacity-80">Cada lunes</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Hora de ejecución y Copias */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-foreground">Hora de Ejecución (24h)</label>
+                      <input
+                        type="time"
+                        value={schedTime}
+                        onChange={(e) => setSchedTime(e.target.value)}
+                        required
+                        className="h-8 w-full rounded-sm border border-border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-foreground">Retención (Máx Copias)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={schedKeep}
+                        onChange={(e) => setSchedKeep(Number(e.target.value))}
+                        required
+                        className="h-8 w-full rounded-sm border border-border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cifrado AES-256 */}
+                  <div className="space-y-2 pt-1 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-foreground">Cifrado Criptográfico AES-256</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          PBKDF2 con sal y vector de inicialización
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={schedEncrypt}
+                        onChange={(e) => setSchedEncrypt(e.target.checked)}
+                        className="h-4 w-4 accent-primary cursor-pointer"
+                      />
+                    </div>
+
+                    {schedEncrypt && (
+                      <div className="space-y-1.5 pt-1">
+                        <label className="font-semibold text-foreground flex items-center justify-between">
+                          <span>Contraseña de Cifrado Automático</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowSchedPass(!showSchedPass)}
+                            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          >
+                            {showSchedPass ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            <span>{showSchedPass ? 'Ocultar' : 'Ver'}</span>
+                          </button>
+                        </label>
+                        <div className="relative">
+                          <KeyRound className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                          <input
+                            type={showSchedPass ? 'text' : 'password'}
+                            value={schedPassphrase}
+                            onChange={(e) => setSchedPassphrase(e.target.value)}
+                            placeholder="Dejar vacío para mantener la llave previamente guardada…"
+                            className="h-8 w-full rounded-sm border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Se guarda de forma aislada en ~/.config/proteomesh/backup.key (permisos 600) para permitir la ejecución desatendida.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Nota explicativa de consumo cero */}
+              <div className="rounded-sm bg-muted/40 p-3 border border-border/80 text-[11px] text-muted-foreground flex items-start gap-2.5">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+                <p className="leading-relaxed">
+                  El proceso se ejecuta como un temporizador nativo del sistema operativo (systemd timer). Consume <strong>0% CPU y 0 MB RAM</strong> mientras espera. Al llegar la hora exacta, despierta 2 segundos para generar el snapshot atómico y se apaga de inmediato.
+                </p>
+              </div>
+
+              {/* Botones de Acción */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleOpen(false)}
+                  className="rounded-sm border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSchedule}
+                  className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs"
+                >
+                  {isSavingSchedule && <RefreshCw className="h-3 w-3 animate-spin" />}
+                  <span>{isSavingSchedule ? 'Guardando…' : 'Guardar y Aplicar'}</span>
                 </button>
               </div>
             </form>

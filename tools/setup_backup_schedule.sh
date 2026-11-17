@@ -87,6 +87,7 @@ INCLUDE_DB=1
 PASS_FILE=""
 NEW_PASSPHRASE=""
 USE_CRON=0
+OUTPUT_JSON=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -104,6 +105,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --trigger-now|--test)
             ACTION="trigger"
+            shift 1
+            ;;
+        --json)
+            OUTPUT_JSON=1
             shift 1
             ;;
         --daily)
@@ -187,16 +192,64 @@ get_calendar_spec() {
 
 # ── Acción: STATUS ────────────────────────────────────────────────────────────
 action_status() {
-    echo "================================================================================"
-    echo "       ⏰ ESTADO DE PROGRAMACIÓN DE RESPALDOS DE PROTEOMESH"
-    echo "================================================================================"
-
     local systemd_active=0
     if command -v systemctl >/dev/null 2>&1; then
         if systemctl --user is-active --quiet "${TIMER_NAME}" 2>/dev/null; then
             systemd_active=1
         fi
     fi
+
+    if [ "${OUTPUT_JSON}" -eq 1 ]; then
+        local freq="daily"
+        local sched_time="03:00"
+        local cal_spec=""
+        local keep=5
+        local enc="true"
+        local next_run=""
+        local last_run=""
+
+        if [ -f "${TIMER_PATH}" ]; then
+            cal_spec="$(grep -E "^OnCalendar=" "${TIMER_PATH}" | cut -d'=' -f2- || true)"
+            if echo "${cal_spec}" | grep -qE "(Mon|weekly)"; then
+                freq="weekly"
+            fi
+            sched_time="$(echo "${cal_spec}" | grep -oE "([01][0-9]|2[0-3]):[0-5][0-9]" || echo "03:00")"
+        fi
+
+        if [ -f "${SERVICE_PATH}" ]; then
+            if grep -q -- "--no-encrypt" "${SERVICE_PATH}"; then
+                enc="false"
+            fi
+            local parsed_keep
+            parsed_keep="$(grep -oE -- "--keep [0-9]+" "${SERVICE_PATH}" | awk '{print $2}' || true)"
+            if [ -n "${parsed_keep}" ]; then
+                keep="${parsed_keep}"
+            fi
+        fi
+
+        if [ "${systemd_active}" -eq 1 ]; then
+            next_run="$(systemctl --user show "${TIMER_NAME}" --property=NextElapseUSecRealtime --value 2>/dev/null || true)"
+            last_run="$(systemctl --user show "${SERVICE_NAME}" --property=ExecMainExitTimestamp --value 2>/dev/null || true)"
+        fi
+
+        cat <<EOF
+{
+  "active": $( [ "${systemd_active}" -eq 1 ] && echo "true" || echo "false" ),
+  "frequency": "${freq}",
+  "time": "${sched_time}",
+  "calendar_spec": "${cal_spec}",
+  "keep": ${keep},
+  "encrypted": ${enc},
+  "next_run": "${next_run}",
+  "last_run": "${last_run}"
+}
+EOF
+        return 0
+    fi
+
+    echo "================================================================================"
+    echo "       ⏰ ESTADO DE PROGRAMACIÓN DE RESPALDOS DE PROTEOMESH"
+    echo "================================================================================"
 
     if [ "${systemd_active}" -eq 1 ]; then
         log_success "Systemd User Timer: ACTIVO Y EN EJECUCIÓN (${TIMER_NAME})"

@@ -438,3 +438,23 @@ export interface RestoreBackupResult {
   restore_dest: string;
   message: string;
 }
+
+export interface BackupScheduleStatus {
+  active: boolean;
+  frequency: string;
+  time: string;
+  calendar_spec?: string | null;
+  keep: number;
+  encrypted: boolean;
+  next_run?: string | null;
+  last_run?: string | null;
+}
+
+export interface UpdateBackupSchedulePayload {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  time: string;
+  keep: number;
+  no_encrypt: boolean;
+  passphrase?: string;
+}

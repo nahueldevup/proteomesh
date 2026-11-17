@@ -7,6 +7,7 @@ y depurar backups de hardware de alto valor con cifrado AES-256.
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -18,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from server.config import BACKUPS_DIR, BACKUP_SCRIPT_PATH, REPO_ROOT
+from server.config import BACKUPS_DIR, BACKUP_SCRIPT_PATH, REPO_ROOT, SETUP_SCHEDULE_SCRIPT_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,26 @@ class RestoreBackupPayload(BaseModel):
         description="Directorio de destino en el host. Por defecto restaura en el entorno activo de ProteoMesh.",
     )
     passphrase: Optional[str] = Field(None, description="Frase de paso si el archivo está cifrado")
+
+
+class BackupScheduleStatus(BaseModel):
+    active: bool
+    frequency: str = Field("daily", description="daily o weekly")
+    time: str = Field("03:00", description="Hora de ejecución en formato HH:MM")
+    calendar_spec: Optional[str] = None
+    keep: int = 5
+    encrypted: bool = False
+    next_run: Optional[str] = None
+    last_run: Optional[str] = None
+
+
+class UpdateBackupSchedulePayload(BaseModel):
+    enabled: bool = Field(True, description="True para activar el timer, False para deshabilitarlo")
+    frequency: str = Field("daily", description="Frecuencia: 'daily' o 'weekly'")
+    time: str = Field("03:00", description="Hora de ejecución en formato HH:MM (ej. 03:00)")
+    keep: int = Field(5, ge=1, le=100, description="Cantidad de copias a retener")
+    no_encrypt: bool = Field(False, description="True para copias sin cifrar")
+    passphrase: Optional[str] = Field(None, description="Contraseña para cifrado automático desatendido")
 
 
 def _validate_filename(filename: str) -> Path:
@@ -174,32 +195,6 @@ def create_backup(payload: CreateBackupPayload) -> BackupItem:
     return current_backups[0]
 
 
-@router.get("/{filename}/download", summary="Descargar archivo de backup")
-def download_backup(filename: str):
-    """Descarga el archivo tar.gz / tar.gz.enc al navegador."""
-    target_path = _validate_filename(filename)
-    return FileResponse(
-        path=str(target_path),
-        filename=filename,
-        media_type="application/octet-stream",
-    )
-
-
-@router.delete("/{filename}", summary="Eliminar archivo de backup")
-def delete_backup(filename: str) -> Dict[str, Any]:
-    """Elimina permanentemente un backup de bundles."""
-    target_path = _validate_filename(filename)
-    try:
-        target_path.unlink()
-        return {"status": "ok", "deleted": filename}
-    except Exception as e:
-        logger.error("Error al eliminar backup %s: %s", filename, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No se pudo eliminar el backup: {e}",
-        )
-
-
 @router.post("/verify", summary="Verificar integridad y descifrado de backup")
 def verify_backup(payload: VerifyBackupPayload) -> Dict[str, Any]:
     """Verifica en frío un archivo de backup con su frase de paso sin extraerlo."""
@@ -257,3 +252,111 @@ def restore_backup(payload: RestoreBackupPayload) -> Dict[str, Any]:
         "restore_dest": str(dest_dir),
         "message": proc.stdout.strip(),
     }
+
+
+# ── Automatización Periódica de Respaldos (Systemd Timer) ─────────────────────
+
+@router.get("/schedule", response_model=BackupScheduleStatus, summary="Consultar estado de programación periódica")
+def get_backup_schedule() -> BackupScheduleStatus:
+    """Retorna el estado de la automatización periódica de backups en el host."""
+    cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--status", "--json"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=15)
+    if proc.returncode != 0:
+        logger.warning("Fallo al consultar status de schedule: %s", proc.stderr)
+        return BackupScheduleStatus(active=False)
+
+    try:
+        data = json.loads(proc.stdout)
+        return BackupScheduleStatus(**data)
+    except Exception as exc:
+        logger.error("Error parseando respuesta JSON de schedule: %s", exc)
+        return BackupScheduleStatus(active=False)
+
+
+@router.post("/schedule", response_model=BackupScheduleStatus, summary="Configurar programación periódica de backups")
+def update_backup_schedule(payload: UpdateBackupSchedulePayload) -> BackupScheduleStatus:
+    """Activa, modifica o desactiva la programación periódica desatendida."""
+    if not payload.enabled:
+        cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--disable"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
+        if proc.returncode != 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Fallo al deshabilitar timer: {proc.stderr.strip()}",
+            )
+        return get_backup_schedule()
+
+    # Validar formato de hora HH:MM
+    if not re.match(r"^([01][0-9]|2[0-3]):[0-5][0-9]$", payload.time):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Formato de hora inválido: '{payload.time}'. Use formato 24h HH:MM (ej. 03:00).",
+        )
+
+    cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--enable"]
+    if payload.frequency == "weekly":
+        cmd.append("--weekly")
+    else:
+        cmd.append("--daily")
+
+    cmd.extend(["--time", payload.time])
+    cmd.extend(["--keep", str(payload.keep)])
+
+    if payload.no_encrypt:
+        cmd.append("--no-encrypt")
+    elif payload.passphrase:
+        cmd.extend(["--save-pass", payload.passphrase])
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fallo al configurar timer: {proc.stderr.strip()}",
+        )
+
+    return get_backup_schedule()
+
+
+@router.post("/schedule/trigger", summary="Disparar respaldo programado inmediatamente")
+def trigger_backup_schedule_now() -> Dict[str, Any]:
+    """Ejecuta de inmediato el servicio de respaldo para verificar su funcionamiento."""
+    cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--trigger-now"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fallo al ejecutar respaldo: {proc.stderr.strip()}",
+        )
+
+    return {
+        "status": "ok",
+        "message": proc.stdout.strip(),
+    }
+
+
+# ── Endpoints Parametrizados por Nombre de Archivo ────────────────────────────
+
+@router.get("/{filename}/download", summary="Descargar archivo de backup")
+def download_backup(filename: str):
+    """Descarga el archivo tar.gz / tar.gz.enc al navegador."""
+    target_path = _validate_filename(filename)
+    return FileResponse(
+        path=str(target_path),
+        filename=filename,
+        media_type="application/octet-stream",
+    )
+
+
+@router.delete("/{filename}", summary="Eliminar archivo de backup")
+def delete_backup(filename: str) -> Dict[str, Any]:
+    """Elimina permanentemente un backup de bundles."""
+    target_path = _validate_filename(filename)
+    try:
+        target_path.unlink()
+        return {"status": "ok", "deleted": filename}
+    except Exception as e:
+        logger.error("Error al eliminar backup %s: %s", filename, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo eliminar el backup: {e}",
+        )

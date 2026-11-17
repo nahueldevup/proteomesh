@@ -41,6 +41,8 @@ import type {
   VerifyBackupResult,
   RestoreBackupPayload,
   RestoreBackupResult,
+  BackupScheduleStatus,
+  UpdateBackupSchedulePayload,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -608,6 +610,27 @@ export const api = {
 
   getDownloadBackupUrl(filename: string): string {
     return `${API_BASE}/backups/${encodeURIComponent(filename)}/download`;
+  },
+
+  async getBackupSchedule(): Promise<BackupScheduleStatus> {
+    const res = await fetch(`${API_BASE}/backups/schedule`);
+    return handleResponse<BackupScheduleStatus>(res);
+  },
+
+  async updateBackupSchedule(payload: UpdateBackupSchedulePayload): Promise<BackupScheduleStatus> {
+    const res = await fetch(`${API_BASE}/backups/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<BackupScheduleStatus>(res);
+  },
+
+  async triggerBackupScheduleNow(): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/backups/schedule/trigger`, {
+      method: 'POST',
+    });
+    return handleResponse<{ status: string; message: string }>(res);
   },
 
 };
