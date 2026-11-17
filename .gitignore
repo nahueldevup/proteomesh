@@ -70,3 +70,6 @@ tools/genfarmer_install.sh
 instances/*.db
 instances/*.db-wal
 instances/*.db-shm
+
+# Backups of bundles and instances
+backups/
