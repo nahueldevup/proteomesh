@@ -113,6 +113,64 @@ def _evict_some_locked() -> None:
             _cache.pop(key, None)
 
 
+# ── Telemetría de Captura y Caché (HI-4) ────────────────────────────────────
+_cache_hits: int = 0
+_cache_misses: int = 0
+_latencies: list[float] = []  # Últimas latencias de captura en segundos
+_metrics_guard = threading.Lock()
+
+
+def record_latency(duration_s: float) -> None:
+    """Registra una muestra de latencia de captura para telemetría (HI-4)."""
+    with _metrics_guard:
+        _latencies.append(duration_s)
+        if len(_latencies) > 200:
+            del _latencies[:100]
+
+
+def _record_hit() -> None:
+    global _cache_hits
+    with _metrics_guard:
+        _cache_hits += 1
+
+
+def _record_miss() -> None:
+    global _cache_misses
+    with _metrics_guard:
+        _cache_misses += 1
+
+
+def get_cache_stats() -> dict:
+    """Retorna métricas de hit/miss, latencias p50/p95 y entradas activas (HI-4)."""
+    with _metrics_guard:
+        hits = _cache_hits
+        misses = _cache_misses
+        lats = sorted(_latencies)
+    with _cache_guard:
+        active_entries = len(_cache)
+
+    p50_ms = 0.0
+    p95_ms = 0.0
+    if lats:
+        idx_50 = int(len(lats) * 0.50)
+        idx_95 = min(int(len(lats) * 0.95), len(lats) - 1)
+        p50_ms = round(lats[idx_50] * 1000.0, 2)
+        p95_ms = round(lats[idx_95] * 1000.0, 2)
+
+    total_reqs = hits + misses
+    hit_ratio = round((hits / total_reqs) * 100.0, 1) if total_reqs > 0 else 0.0
+
+    return {
+        "hits": hits,
+        "misses": misses,
+        "total_requests": total_reqs,
+        "hit_ratio_percent": hit_ratio,
+        "active_entries": active_entries,
+        "latency_p50_ms": p50_ms,
+        "latency_p95_ms": p95_ms,
+    }
+
+
 def invalidate_instance(name: str) -> None:
     """Elimina todas las entradas de una instancia (stop/restart/delete)."""
     prefix = f"{name}:"
@@ -151,6 +209,7 @@ def capture(
     if not fresh:
         cached = _get(key)
         if cached is not None:
+            _record_hit()
             return cached
 
     lock = _get_lock(key)
@@ -159,8 +218,13 @@ def capture(
         if not fresh:
             cached = _get(key)
             if cached is not None:
+                _record_hit()
                 return cached
+        _record_miss()
+        t_start = time.monotonic()
         data = fn()
+        duration = time.monotonic() - t_start
+        record_latency(duration)
         actual_ttl = apply_ttl_jitter(ttl)
         _set(key, data, actual_ttl)
         return data

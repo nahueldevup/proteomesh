@@ -1097,11 +1097,23 @@ GROUP_START_CONCURRENCY = int(os.getenv("GROUP_START_CONCURRENCY", "2"))
 _group_start_semaphore: Optional[asyncio.Semaphore] = None
 
 
+def init_group_start_semaphore(loop: Optional[asyncio.AbstractEventLoop] = None) -> asyncio.Semaphore:
+    """Inicializa formalmente el semáforo en el event loop activo (HI-5).
+
+    Llamado durante el lifespan/startup de FastAPI para evitar vinculación tardía
+    a bucles de hilos secundarios (RuntimeError: Task attached to different loop).
+    """
+    global _group_start_semaphore
+    concurrency = int(os.getenv("GROUP_START_CONCURRENCY", "2"))
+    _group_start_semaphore = asyncio.Semaphore(concurrency)
+    return _group_start_semaphore
+
+
 def get_group_start_semaphore() -> asyncio.Semaphore:
+    """Obtiene el semáforo de arranque grupal, creándolo si no existiera."""
     global _group_start_semaphore
     if _group_start_semaphore is None:
-        concurrency = int(os.getenv("GROUP_START_CONCURRENCY", "2"))
-        _group_start_semaphore = asyncio.Semaphore(concurrency)
+        return init_group_start_semaphore()
     return _group_start_semaphore
 
 
