@@ -316,9 +316,6 @@ export function BackupsManager() {
           >
             <Clock className="h-3.5 w-3.5 text-primary" />
             <span>Programación</span>
-            {schedule?.active && (
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            )}
           </button>
           <IconBtn
             icon={RefreshCw}
