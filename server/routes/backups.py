@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from server.config import BACKUPS_DIR, BACKUP_SCRIPT_PATH
+from server.config import BACKUPS_DIR, BACKUP_SCRIPT_PATH, REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,10 @@ class VerifyBackupPayload(BaseModel):
 
 class RestoreBackupPayload(BaseModel):
     filename: str = Field(..., description="Nombre del archivo a restaurar")
-    restore_dest: str = Field(..., description="Directorio de destino en el host")
+    restore_dest: Optional[str] = Field(
+        None,
+        description="Directorio de destino en el host. Por defecto restaura en el entorno activo de ProteoMesh.",
+    )
     passphrase: Optional[str] = Field(None, description="Frase de paso si el archivo está cifrado")
 
 
@@ -224,15 +227,18 @@ def verify_backup(payload: VerifyBackupPayload) -> Dict[str, Any]:
 
 @router.post("/restore", summary="Restaurar backup en directorio")
 def restore_backup(payload: RestoreBackupPayload) -> Dict[str, Any]:
-    """Restaura los contenidos de un backup en el destino indicado."""
+    """Restaura los contenidos de un backup en el destino indicado o en el entorno activo."""
     target_path = _validate_filename(payload.filename)
+
+    dest_dir = Path(payload.restore_dest).resolve() if payload.restore_dest else REPO_ROOT
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         str(BACKUP_SCRIPT_PATH),
         "--restore",
         str(target_path),
         "--restore-dest",
-        payload.restore_dest,
+        str(dest_dir),
     ]
     if payload.passphrase:
         cmd.extend(["--pass", payload.passphrase])
@@ -248,6 +254,6 @@ def restore_backup(payload: RestoreBackupPayload) -> Dict[str, Any]:
     return {
         "status": "ok",
         "filename": payload.filename,
-        "restore_dest": payload.restore_dest,
+        "restore_dest": str(dest_dir),
         "message": proc.stdout.strip(),
     }

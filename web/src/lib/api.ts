@@ -39,6 +39,8 @@ import type {
   CreateBackupPayload,
   VerifyBackupPayload,
   VerifyBackupResult,
+  RestoreBackupPayload,
+  RestoreBackupResult,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -593,6 +595,15 @@ export const api = {
       method: 'DELETE',
     });
     return handleResponse<{ status: string; deleted: string }>(res);
+  },
+
+  async restoreBackup(payload: RestoreBackupPayload): Promise<RestoreBackupResult> {
+    const res = await fetch(`${API_BASE}/backups/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<RestoreBackupResult>(res);
   },
 
   getDownloadBackupUrl(filename: string): string {

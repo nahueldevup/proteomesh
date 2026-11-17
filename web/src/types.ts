@@ -425,3 +425,16 @@ export interface VerifyBackupResult {
   filename: string;
   message: string;
 }
+
+export interface RestoreBackupPayload {
+  filename: string;
+  passphrase?: string;
+  restore_dest?: string;
+}
+
+export interface RestoreBackupResult {
+  status: string;
+  filename: string;
+  restore_dest: string;
+  message: string;
+}

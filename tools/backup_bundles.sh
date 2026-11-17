@@ -301,6 +301,12 @@ action_restore() {
 
     log_info "Extrayendo contenidos..."
     tar -xzf "${tar_file}" -C "${dest}"
+
+    # Si se extrajo proteomesh.db en dest y existe instances/, sincronizar la ruta estándar
+    if [ -f "${dest}/proteomesh.db" ] && [ -d "${dest}/instances" ]; then
+        cp -p "${dest}/proteomesh.db" "${dest}/instances/proteomesh.db" 2>/dev/null || true
+    fi
+
     log_success "Restauración completada con éxito en: ${dest}"
     exit 0
 }

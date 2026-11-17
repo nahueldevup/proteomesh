@@ -96,3 +96,26 @@ def test_backup_path_traversal_protection():
 
     res_ver = client.post("/api/v1/backups/verify", json={"filename": bad_filename})
     assert res_ver.status_code == 400
+
+
+def test_restore_backup(tmp_path, monkeypatch):
+    """Verifica restauración de un backup en destino especificado."""
+    monkeypatch.setattr("server.routes.backups.BACKUPS_DIR", tmp_path)
+
+    # Crear backup sin cifrar
+    create_res = client.post(
+        "/api/v1/backups",
+        json={"no_encrypt": True, "include_db": False, "keep": 2},
+    )
+    assert create_res.status_code == 201
+    filename = create_res.json()["filename"]
+
+    # Restaurar en directorio de prueba
+    restore_target = tmp_path / "restored_dir"
+    restore_res = client.post(
+        "/api/v1/backups/restore",
+        json={"filename": filename, "restore_dest": str(restore_target)},
+    )
+    assert restore_res.status_code == 200
+    assert restore_res.json()["status"] == "ok"
+    assert restore_target.exists()

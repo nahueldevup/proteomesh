@@ -18,6 +18,7 @@ import {
   HardDrive,
   Info,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,13 @@ export function BackupsManager() {
   const [showVerifyPass, setShowVerifyPass] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{ valid: boolean; message: string } | null>(null);
+
+  // Formulario de restauración
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [restorePassphrase, setRestorePassphrase] = useState('');
+  const [showRestorePass, setShowRestorePass] = useState(false);
+  const [confirmDestructive, setConfirmDestructive] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Filtrado de backups
   const filteredBackups = useMemo(() => {
@@ -148,6 +156,49 @@ export function BackupsManager() {
       toast.error('Fallo en la verificación del respaldo');
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleOpenRestore = (backup: BackupItem) => {
+    setSelectedBackup(backup);
+    setRestorePassphrase('');
+    setShowRestorePass(false);
+    setConfirmDestructive(false);
+    setIsRestoreOpen(true);
+  };
+
+  const handleRestoreSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBackup) return;
+
+    if (selectedBackup.encrypted && !restorePassphrase.trim()) {
+      toast.error('Debe ingresar la frase de paso para descifrar y restaurar');
+      return;
+    }
+
+    if (!confirmDestructive) {
+      toast.error('Debe confirmar la sobreescritura de identidades');
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      await api.restoreBackup({
+        filename: selectedBackup.filename,
+        passphrase: selectedBackup.encrypted ? restorePassphrase : undefined,
+      });
+      toast.success(`Respaldo restaurado con éxito desde '${selectedBackup.filename}'`);
+      setIsRestoreOpen(false);
+
+      // Invalidar consultas relevantes para recargar las identidades restauradas
+      queryClient.invalidateQueries({ queryKey: queryKeys.backups });
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ipLedger });
+      queryClient.invalidateQueries({ queryKey: queryKeys.usb });
+    } catch (err: any) {
+      toast.error(`Error al restaurar respaldo: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -386,6 +437,16 @@ export function BackupsManager() {
                             className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           >
                             <ShieldCheck className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Restaurar */}
+                          <button
+                            type="button"
+                            title="Restaurar identidades desde este respaldo"
+                            onClick={() => handleOpenRestore(b)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
                           </button>
 
                           {/* Eliminar */}
@@ -634,6 +695,107 @@ export function BackupsManager() {
                 >
                   {isVerifying && <RefreshCw className="h-3 w-3 animate-spin" />}
                   <span>{isVerifying ? 'Verificando…' : 'Comprobar Integridad'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL: RESTAURAR RESPALDO ────────────────────────────────────── */}
+      {isRestoreOpen && selectedBackup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-sm border border-border bg-card p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-primary" />
+                <h2 className="font-mono text-sm font-bold tracking-wider">RESTAURAR IDENTIDADES</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRestoreOpen(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRestoreSubmit} className="space-y-4 font-mono text-xs">
+              <div className="rounded-sm bg-muted/40 p-3 border border-border/60 text-muted-foreground text-[11px] space-y-1">
+                <div className="font-semibold text-foreground">Archivo a Restaurar:</div>
+                <div className="font-mono text-foreground break-all">{selectedBackup.filename}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  Tamaño: {selectedBackup.size_human} · Cifrado: {selectedBackup.encrypted ? 'AES-256' : 'Sin Cifrar'}
+                </div>
+              </div>
+
+              {/* Advertencia de Sobreescritura */}
+              <div className="rounded-sm bg-amber-500/10 border border-amber-500/30 p-3 text-amber-500 text-[11px] flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold">Advertencia de Sobreescritura</div>
+                  <p className="opacity-90 leading-relaxed">
+                    Esta operación reemplazará los perfiles de hardware (IMEI, MAC, serial) y la base de datos de flota activa con el contenido de este respaldo.
+                  </p>
+                </div>
+              </div>
+
+              {/* Frase de paso para descifrado si está cifrado */}
+              {selectedBackup.encrypted && (
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-foreground flex items-center justify-between">
+                    <span>Frase de Paso para Descifrar</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRestorePass(!showRestorePass)}
+                      className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[10px]"
+                    >
+                      {showRestorePass ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      <span>{showRestorePass ? 'Ocultar' : 'Mostrar'}</span>
+                    </button>
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      type={showRestorePass ? 'text' : 'password'}
+                      value={restorePassphrase}
+                      onChange={(e) => setRestorePassphrase(e.target.value)}
+                      placeholder="Ingresá la contraseña con la que se cifró el archivo…"
+                      required
+                      className="h-8 w-full rounded-sm border border-border bg-background pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmación obligatoria */}
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={confirmDestructive}
+                  onChange={(e) => setConfirmDestructive(e.target.checked)}
+                  className="h-4 w-4 rounded-xs accent-primary mt-0.5 cursor-pointer"
+                />
+                <span className="text-[11px] text-foreground">
+                  Comprendo y confirmo la sobreescritura de las identidades y base de datos locales.
+                </span>
+              </label>
+
+              {/* Botones de Acción */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsRestoreOpen(false)}
+                  className="rounded-sm border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRestoring || !confirmDestructive || (selectedBackup.encrypted && !restorePassphrase.trim())}
+                  className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-xs"
+                >
+                  {isRestoring && <RefreshCw className="h-3 w-3 animate-spin" />}
+                  <span>{isRestoring ? 'Restaurando…' : 'Restaurar Copia'}</span>
                 </button>
               </div>
             </form>
