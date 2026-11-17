@@ -16,11 +16,12 @@ export const COUNTRY_NAMES: Record<string, string> = {
   es: 'España',
 };
 
-export const RAM_PRESETS = ['2.0g', '2.5g', '3.0g', '4.0g'];
+export const RAM_PRESETS = ['2.5g', '3.0g', '4.0g'];
 export const CPU_PRESETS = [
-  { label: '2 Hilos (0-1)', value: '0-1' },
-  { label: '4 Hilos (0-3)', value: '0-3' },
-  { label: '8 Hilos (0-7)', value: '0-7' },
+  { label: 'Auto SMT (Recomendado)', value: 'auto', desc: 'Asignación dinámica de slots SMT Zen 3 libres' },
+  { label: '4 Hilos SMT (1,9, 2,10)', value: '1,9,2,10', desc: '2 núcleos físicos Zen 3 completos' },
+  { label: '2 Hilos SMT (1,9)', value: '1,9', desc: '1 núcleo físico Zen 3' },
+  { label: '4 Hilos Planos (0-3)', value: '0-3', desc: 'Cores consecutivos genéricos' },
 ];
 
 export interface PinnedItem {

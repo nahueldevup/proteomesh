@@ -74,6 +74,8 @@ export interface Instance {
   limits?: {
     memory?: string;
     cpus?: string;
+    swap?: string;
+    dense?: boolean;
     pids_limit?: number;
   };
   identity?: {
@@ -262,7 +264,13 @@ export interface CreateInstancePayload {
   phone_number?: string;
   port: number;
   start: boolean;
-  limits: { memory: string; cpus: string };
+  limits: {
+    memory?: string;
+    cpus?: string;
+    swap?: string;
+    dense?: boolean;
+    pids_limit?: number;
+  };
   custom_location: InstanceLocationPayload;
 }
 

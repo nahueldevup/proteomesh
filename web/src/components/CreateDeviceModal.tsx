@@ -67,8 +67,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   };
 
   // Limits
+  const [isDense, setIsDense] = useState(false);
   const [memoryLimit, setMemoryLimit] = useState('2.5g');
-  const [cpuLimit, setCpuLimit] = useState('0-3');
+  const [cpuLimit, setCpuLimit] = useState('auto');
 
   // Location
   const [latitude, setLatitude] = useState(-34.603722);
@@ -131,6 +132,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       setPort(nextPort);
       setName(`phone-${String(nextPort).slice(-2)}`);
       setPhoneNumber(generateFormosaNumber());
+      setIsDense(false);
+      setMemoryLimit('2.5g');
+      setCpuLimit('auto');
 
       if (presetModel) {
         setSelectedModel(presetModel);
@@ -190,8 +194,10 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
         port: Number(port),
         start: startImmediately,
         limits: {
-          memory: memoryLimit,
-          cpus: cpuLimit,
+          dense: isDense,
+          memory: isDense ? '2048m' : memoryLimit,
+          swap: isDense ? '1200m' : '700m',
+          cpus: cpuLimit === 'auto' ? undefined : cpuLimit,
         },
         custom_location: {
           city,
@@ -451,6 +457,8 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                 {/* ── PASO 3: RECURSOS & RESUMEN DETERMINISTA ──────────────────────── */}
                 {activeStep === 'review' && (
                   <StepResourcesSummary
+                    isDense={isDense}
+                    setIsDense={setIsDense}
                     memoryLimit={memoryLimit}
                     setMemoryLimit={setMemoryLimit}
                     cpuLimit={cpuLimit}
