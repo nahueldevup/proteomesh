@@ -1270,21 +1270,24 @@ def container_network_ok(inst_name):
 def wait_for_boot(inst_name: str, attempts: int = 150) -> bool:
     """Espera boot_completed=1 y el marcador de apply-props.sh vía docker exec.
 
+    HI-3: Colapsa los chequeos en una única invocación de shell.
     No depende de ADB/red: si el datapath del contenedor muere, adb queda
     offline pero el estado de arranque sigue siendo legible por docker exec.
     """
     for _ in range(attempts):
-        run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
-                         timeout=10, capture_output=True, text=True)
-        if run_state.stdout.strip() != "true":
-            return False
-        r = _run(["docker", "exec", inst_name, "getprop", "sys.boot_completed"],
-                 timeout=10, capture_output=True, text=True)
-        if r.stdout.strip() == "1":
-            m = _run(["docker", "exec", inst_name, "ls", "/data/local/tmp/.proteomesh_boot_done"],
-                     timeout=10, capture_output=True, text=True)
-            if ".proteomesh_boot_done" in m.stdout:
-                return True
+        # HI-3: Colapsar getprop y marcador en un solo comando
+        res = _run([
+            "docker", "exec", inst_name, "sh", "-c",
+            '[ "$(getprop sys.boot_completed)" = "1" ] && [ -f /data/local/tmp/.proteomesh_boot_done ] && echo READY'
+        ], timeout=10, capture_output=True, text=True)
+        if res.stdout.strip() == "READY":
+            return True
+        # Si falló la ejecución o devolvió error, verificar si el contenedor sigue en ejecución
+        if res.returncode != 0:
+            run_state = _run(["docker", "inspect", "-f", "{{.State.Running}}", inst_name],
+                             timeout=5, capture_output=True, text=True)
+            if run_state.stdout.strip() != "true":
+                return False
         time.sleep(2)
     return False
 
@@ -1621,13 +1624,17 @@ def cmd_start_instance(args):
         apply_location_to_instance(inst_name, adb_s, loc)
         print(f"[✓] Ubicación GPS configurada: {loc.get('city')} ({loc.get('latitude')}, {loc.get('longitude')})")
 
-    # Normalizar permisos de sysfs de CPU para que apps sin privilegios lean topología completa
+    # HI-3: Normalizar permisos de sysfs de CPU solo si no se aplicó previamente.
+    # El marcador .cpu_perms_fixed evita llamadas recursivas 'find ... chmod' en arranques sucesivos.
     subprocess.run([
         "docker", "exec", inst_name, "sh", "-c",
+        "[ ! -f /data/local/tmp/.cpu_perms_fixed ] && { "
         "chmod -R 755 /data/local/tmp/fake_sys_cpu 2>/dev/null || true; "
         "find /data/local/tmp/fake_sys_cpu -type f -exec chmod 644 {} + 2>/dev/null || true; "
         "chmod -R 755 /sys/devices/system/cpu 2>/dev/null || true; "
-        "find /sys/devices/system/cpu -type f -exec chmod 644 {} + 2>/dev/null || true"
+        "find /sys/devices/system/cpu -type f -exec chmod 644 {} + 2>/dev/null || true; "
+        "touch /data/local/tmp/.cpu_perms_fixed; "
+        "}"
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Instalar Brand Store oficial (stub nativo) si aplica al fabricante.
@@ -1678,7 +1685,8 @@ def cmd_start_instance(args):
                 if "signatures do not match" in last_out or "UPDATE_INCOMPATIBLE" in last_out:
                     break
                 if attempt == 0:
-                    time.sleep(15)
+                    # HI-3: Reducir espera entre reintentos de instalación de stub a 3s
+                    time.sleep(3)
             if not installed and ("signatures do not match" in last_out or "UPDATE_INCOMPATIBLE" in last_out):
                 print(f"[*] Firma distinta (stub actualizado): reinstalando limpio {pkg_name}...")
                 _run(["adb", "-s", adb_s, "uninstall", pkg_name],
