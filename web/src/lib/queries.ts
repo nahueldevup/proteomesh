@@ -8,6 +8,7 @@ import type {
   LocationData,
   ApkEntry,
   FileEntry,
+  BackupItem,
 } from '../types';
 
 export const queryKeys = {
@@ -21,6 +22,7 @@ export const queryKeys = {
   apks: ['apks'] as const,
   installedApks: ['installed-apks'] as const,
   files: (phoneName?: string, fullPath?: string) => ['files', phoneName, fullPath] as const,
+  backups: ['backups'] as const,
 };
 
 export const EMPTY_CATALOG: CustomLocationsCatalog = {
@@ -110,5 +112,14 @@ export function useDeviceFiles(
     queryFn: () => (phoneName && fullPath ? api.listFiles(phoneName, fullPath) : Promise.resolve([])),
     staleTime: 10_000,
     enabled: Boolean(phoneName && fullPath && (options?.enabled ?? true)),
+  });
+}
+
+export function useBackups(options?: { enabled?: boolean }) {
+  return useQuery<BackupItem[]>({
+    queryKey: queryKeys.backups,
+    queryFn: () => api.getBackups(),
+    staleTime: 10_000,
+    enabled: options?.enabled,
   });
 }

@@ -11,6 +11,7 @@ from server.routes.network import router as network_router
 from server.routes.apks import router as apks_router
 from server.routes.files import router as files_router
 from server.routes.metrics import router as metrics_router
+from server.routes.backups import router as backups_router
 
 __all__ = [
     "templates_router",
@@ -23,4 +24,5 @@ __all__ = [
     "apks_router",
     "files_router",
     "metrics_router",
+    "backups_router",
 ]

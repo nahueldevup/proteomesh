@@ -72,4 +72,4 @@ instances/*.db-wal
 instances/*.db-shm
 
 # Backups of bundles and instances
-backups/
+/backups/

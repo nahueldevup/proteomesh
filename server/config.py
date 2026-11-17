@@ -36,6 +36,10 @@ ALLOWED_FILE_ROOTS = [
     "/sdcard/Recordings",
 ]
 
+# Backups automatizados de bundles e identidades
+BACKUPS_DIR = Path(os.getenv("PROTEOMESH_BACKUP_DEST", str(REPO_ROOT / "backups" / "bundles")))
+BACKUP_SCRIPT_PATH = TOOLS_DIR / "backup_bundles.sh"
+
 def resolve_aapt2_path() -> Path:
     """Devuelve la primera ruta ejecutable de aapt2 disponible."""
     for candidate in AAPT2_CANDIDATES:

@@ -395,3 +395,33 @@ export interface LaunchUrlResult {
   action: 'launch_url';
   url: string;
 }
+
+// ── Backups de Bundles e Identidades Congeladas ─────────────────────────────
+export interface BackupItem {
+  filename: string;
+  size_bytes: number;
+  size_human: string;
+  modified_at: string;
+  encrypted: boolean;
+  cipher: string | null;
+}
+
+export interface CreateBackupPayload {
+  passphrase?: string;
+  keep?: number;
+  no_encrypt?: boolean;
+  include_db?: boolean;
+  source?: string;
+}
+
+export interface VerifyBackupPayload {
+  filename: string;
+  passphrase?: string;
+}
+
+export interface VerifyBackupResult {
+  status: string;
+  valid: boolean;
+  filename: string;
+  message: string;
+}

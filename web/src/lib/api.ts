@@ -35,6 +35,10 @@ import type {
   InputKeyResult,
   InputTextResult,
   LaunchUrlResult,
+  BackupItem,
+  CreateBackupPayload,
+  VerifyBackupPayload,
+  VerifyBackupResult,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -558,6 +562,41 @@ export const api = {
       }),
     });
     return handleResponse<FileEntry>(res);
+  },
+
+  // ── Backups de Bundles e Identidades Congeladas ───────────────────────────
+  async getBackups(): Promise<BackupItem[]> {
+    const res = await fetch(`${API_BASE}/backups`);
+    return handleResponse<BackupItem[]>(res);
+  },
+
+  async createBackup(payload: CreateBackupPayload): Promise<BackupItem> {
+    const res = await fetch(`${API_BASE}/backups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<BackupItem>(res);
+  },
+
+  async verifyBackup(payload: VerifyBackupPayload): Promise<VerifyBackupResult> {
+    const res = await fetch(`${API_BASE}/backups/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<VerifyBackupResult>(res);
+  },
+
+  async deleteBackup(filename: string): Promise<{ status: string; deleted: string }> {
+    const res = await fetch(`${API_BASE}/backups/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+    return handleResponse<{ status: string; deleted: string }>(res);
+  },
+
+  getDownloadBackupUrl(filename: string): string {
+    return `${API_BASE}/backups/${encodeURIComponent(filename)}/download`;
   },
 
 };
