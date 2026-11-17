@@ -930,8 +930,12 @@ def filter_clone_stderr(stderr_bytes: bytes) -> list[str]:
 def cmd_create_instance(args):
     """Crea una nueva instancia en instances/<nombre>/ con su profile.json congelado."""
     inst_name = validate_instance_name(args.name)
-    mem_arg = getattr(args, "memory", None) or os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
-    swap_arg = getattr(args, "swap", None) or os.getenv("PROTEOMESH_DEFAULT_SWAP", DEFAULT_INSTANCE_SWAP)
+    if getattr(args, "dense", False):
+        mem_arg = "2048m"
+        swap_arg = "1200m"
+    else:
+        mem_arg = getattr(args, "memory", None) or os.getenv("PROTEOMESH_DEFAULT_MEMORY", DEFAULT_INSTANCE_MEMORY)
+        swap_arg = getattr(args, "swap", None) or os.getenv("PROTEOMESH_DEFAULT_SWAP", DEFAULT_INSTANCE_SWAP)
     limits = validate_limits(
         mem_arg,
         getattr(args, "cpus", None),
@@ -1444,11 +1448,17 @@ def cmd_start_instance(args):
 
     # Límites de recursos (de meta.json o flags CLI)
     limits = dict(meta.get("limits") or {})
+    if getattr(args, "dense", False):
+        cli_mem = "2048m"
+        cli_swap = "1200m"
+    else:
+        cli_mem = getattr(args, "memory", None)
+        cli_swap = getattr(args, "swap", None)
     cli_limits = validate_limits(
-        getattr(args, "memory", None),
+        cli_mem,
         getattr(args, "cpus", None),
         getattr(args, "pids_limit", None),
-        swap=getattr(args, "swap", None),
+        swap=cli_swap,
     )
     limits.update(cli_limits)
     if not limits.get("memory"):
@@ -2351,6 +2361,7 @@ def main():
         "--swap", required=False,
         help=f"Límite de swap adicional para el contenedor (default: {DEFAULT_INSTANCE_SWAP}, configurable vía PROTEOMESH_DEFAULT_SWAP; ej: 512m, 1g)"
     )
+    sub.add_argument("--dense", action="store_true", default=False, help="Modo denso: asigna 2048m RAM y 1200m swap para flotas livianas")
     sub.add_argument("--cpus", required=False, help="Límite de CPU para el contenedor (ej: 0-3 para pinning, o 2.0)")
     sub.add_argument("--pids-limit", type=int, required=False, help="Límite de PIDs (ej: 4096 o sin límite; evitar <3000 para no agotar hilos en Android 13)")
     sub.add_argument("--start", "-s_auto", action="store_true", dest="start", help="Inicia el contenedor inmediatamente")
@@ -2372,6 +2383,7 @@ def main():
     sub.add_argument("name", help="Nombre de la instancia (ej: mi-a54-01)")
     sub.add_argument("--memory", "-m", required=False, help="Override temporal de memoria RAM (ej: 4g)")
     sub.add_argument("--swap", required=False, help="Override temporal de swap adicional (ej: 1g)")
+    sub.add_argument("--dense", action="store_true", default=False, help="Override a modo denso: 2048m RAM y 1200m swap")
     sub.add_argument("--cpus", required=False, help="Override temporal de CPU (ej: 2.0, 0-3)")
     sub.add_argument("--pids-limit", type=int, required=False, help="Override temporal de PIDs")
     sub.add_argument("--verify-health", action="store_true", help="Ejecuta protocolo de salud post-arranque")

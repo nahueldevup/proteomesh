@@ -290,5 +290,38 @@ class CreateInstanceSwapTest(unittest.TestCase):
         self.assertEqual(cmd[swap_idx + 1], "1200m", "dense debe fijar swap a 1200m")
 
 
+class InstanceCliDenseFlagTest(unittest.TestCase):
+    """Valida el soporte del flag --dense en la CLI de instance_manager (HI-2)."""
+
+    def test_create_parser_accepts_dense(self):
+        """instance_manager.py create --dense configura memory=2048m y swap=1200m."""
+        import argparse
+        # Instanciar el parser principal
+        script = REPO_ROOT / "tools" / "instance_manager.py"
+        content = script.read_text(encoding="utf-8")
+        self.assertIn('"--dense"', content)
+        self.assertIn("mem_arg = \"2048m\"", content)
+        self.assertIn("swap_arg = \"1200m\"", content)
+
+    @patch("instance_manager.validate_instance_name", return_value="phone-dense-test")
+    @patch("instance_manager.validate_limits")
+    def test_cmd_create_uses_dense_values(self, mock_val_limits, mock_val_name):
+        """cmd_create_instance pasa 2048m y 1200m a validate_limits cuando args.dense es True."""
+        args = MagicMock(dense=True, memory=None, swap=None, cpus=None, pids_limit=None)
+        args.name = "phone-dense-test"
+        args.from_bundle = None
+        args.template = "a54x"
+
+        # Simular fallo temprano tras validate_limits para no escribir a disco
+        import instance_manager
+        mock_val_limits.side_effect = RuntimeError("early exit")
+        with self.assertRaises(RuntimeError):
+            instance_manager.cmd_create_instance(args)
+
+        mock_val_limits.assert_called_once_with(
+            "2048m", None, None, swap="1200m"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
