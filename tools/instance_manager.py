@@ -1363,20 +1363,34 @@ def apply_runtime_defaults(adb_s, meta, read_only_verify: bool = False):
     if read_only_verify:
         # Segunda pasada: verificación de solo lectura (sin comandos destructivos si ya están desactivados)
         missing = [p for p in target_pkgs + extra_pkgs if p not in currently_disabled]
-        for pkg in missing:
-            _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
-                 timeout=15, capture_output=True, text=True)
-            currently_disabled.add(pkg)
+        if missing:
+            # QW-6: batch también en la segunda pasada
+            pkgs_joined = " ".join(missing)
+            shell_cmd = (
+                f"for p in {pkgs_joined}; "
+                f"do pm disable-user --user 0 $p >/dev/null 2>&1; done"
+            )
+            _run(["adb", "-s", adb_s, "shell", shell_cmd],
+                 timeout=60, capture_output=True, text=True)
+            for pkg in missing:
+                currently_disabled.add(pkg)
         disabled_count = len([p for p in target_pkgs if p in currently_disabled])
         return w, h, dpi, disabled_count, display_ok
 
     # Primera pasada: deshabilitar únicamente los paquetes que aún falten
     all_targets = target_pkgs + extra_pkgs
     needed_disable = [pkg for pkg in all_targets if pkg not in currently_disabled]
-    for pkg in needed_disable:
-        res = _run(["adb", "-s", adb_s, "shell", "pm", "disable-user", "--user", "0", pkg],
-                   timeout=20, capture_output=True, text=True)
-        if "disabled" in res.stdout.lower() or "new state" in res.stdout.lower():
+    if needed_disable:
+        # QW-6: Una sola invocación ADB en lugar de N RTTs secuenciales (~150-200 ms c/u).
+        # Ahorro estimado: hasta 21 paquetes × ~175 ms ≈ -3.5 s en fase post_boot.
+        pkgs_joined = " ".join(needed_disable)
+        shell_cmd = (
+            f"for p in {pkgs_joined}; "
+            f"do pm disable-user --user 0 $p >/dev/null 2>&1; done"
+        )
+        _run(["adb", "-s", adb_s, "shell", shell_cmd],
+             timeout=60, capture_output=True, text=True)
+        for pkg in needed_disable:
             currently_disabled.add(pkg)
 
     disabled_count = len([p for p in target_pkgs if p in currently_disabled])
@@ -1446,6 +1460,11 @@ def cmd_start_instance(args):
         "--privileged",
         "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
         "--sysctl", "net.ipv6.conf.default.disable_ipv6=1",
+        # QW-5: Auto-recuperación ante OOM transitorio o fallo de proceso.
+        # 'unless-stopped' reinicia automáticamente salvo `docker stop` explícito.
+        "--restart", "unless-stopped",
+        # QW-5: 128 MiB de /dev/shm para MediaCodec C2 (SwiftShader + decodificación HW).
+        "--shm-size", "128m",
     ]
 
     if limits.get("memory"):

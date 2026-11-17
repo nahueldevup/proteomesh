@@ -64,11 +64,12 @@ class BootBatchingTest(unittest.TestCase):
             w, h, dpi, disabled_count, display_ok = apply_runtime_defaults("127.0.0.1:5580", meta)
 
             self.assertTrue(display_ok)
-            pm_disable_calls = [c for c in executed_cmds if "disable-user" in c]
-            # Solo deben invocarse los 2 paquetes faltantes
-            self.assertEqual(len(pm_disable_calls), 2)
-            self.assertIn(DISABLE_PACKAGES[20], pm_disable_calls[0])
-            self.assertIn(DISABLE_PACKAGES[21], pm_disable_calls[1])
+            # QW-6: Los paquetes faltantes se deshabilitan en UNA sola invocación batch
+            batch_calls = [c for c in executed_cmds if any("for p in" in str(x) for x in c)]
+            self.assertEqual(len(batch_calls), 1, "Esperaba 1 llamada batch para los paquetes faltantes")
+            batch_cmd_str = " ".join(batch_calls[0])
+            self.assertIn(DISABLE_PACKAGES[20], batch_cmd_str)
+            self.assertIn(DISABLE_PACKAGES[21], batch_cmd_str)
 
     def test_apply_runtime_defaults_read_only_verify_zero_disable_calls(self):
         # En la segunda pasada con todo ya desactivado, debe hacer 0 llamadas a pm disable-user
