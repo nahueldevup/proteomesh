@@ -1465,6 +1465,11 @@ def cmd_start_instance(args):
         "--restart", "unless-stopped",
         # QW-5: 128 MiB de /dev/shm para MediaCodec C2 (SwiftShader + decodificación HW).
         "--shm-size", "128m",
+        # QW-7: Acotación y rotación de logs de Docker para evitar saturación de disco.
+        # json-file con máximo 3 archivos de 10 MB (techo 30 MB por contenedor).
+        "--log-driver", "json-file",
+        "--log-opt", "max-size=10m",
+        "--log-opt", "max-file=3",
     ]
 
     if limits.get("memory"):
