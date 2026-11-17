@@ -2,16 +2,31 @@
 
 | Campo | Valor |
 |---|---|
-| Fecha de corte | 2026-11-12 |
-| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f`; SEC-001 `89b8849`; GEO-002 `a782557`; USB-002 `f79cbfb`; WEB-014 `e70bd95`; STREAM-019 `981aa68`/`b328cd0`; UI-020 `c5dbbd7`; APP-021 `b2be2f0`/`7d2dfaf`/`42c1b9c`; RACK-022 `4956b35`; BUNDLE-023 `be18f55`; UI-FILES-024 `9ea911e`; UI-LOCATIONS-025 `69e9b25`; UI-NETWORK-027 `ef41da7`; UI-TOOLTIP-031 `85493b2`; DB-CORE-033 `2d8d352`/`d5915df`/`65b5f28`; WEB-QUALITY-034 `c629351`..`3abc2e4`; REPO-HYGIENE-035 |
+| Fecha de corte | 2026-11-17 |
+| Commit de referencia | `b7d900f`; F0.5 `c72b33a`; F1 `ec30a2a`; F1.5 `00a7353`; F2 `8c87f5a`/`222efef`; F3 `98a3a72`; F4 `accbea1`/`5665bfe`; OPT-001 `cd7d47f`; SEC-001 `89b8849`; GEO-002 `a782557`; USB-002 `f79cbfb`; WEB-014 `e70bd95`; STREAM-019 `981aa68`/`b328cd0`; UI-020 `c5dbbd7`; APP-021 `b2be2f0`/`7d2dfaf`/`42c1b9c`; RACK-022 `4956b35`; BUNDLE-023 `be18f55`; UI-FILES-024 `9ea911e`; UI-LOCATIONS-025 `69e9b25`; UI-NETWORK-027 `ef41da7`; UI-TOOLTIP-031 `85493b2`; DB-CORE-033 `2d8d352`/`d5915df`/`65b5f28`; WEB-QUALITY-034 `c629351`..`3abc2e4`; REPO-HYGIENE-035; PERF-UNIFIED-036 `ffc460f` |
 | Baseline | Android 13 / API 33 |
 | Imagen | `proteomesh:latest`; rollback `proteomesh:pre-f15` (`sha256:0765bb5f1d8c9428084ea4586971ef4fd88f24a0f212112db0671a4e9acb56a4`) |
-| Estado del repo | Rama `chore/cleanup-residuos`; REPO-HYGIENE-035 completado (Saneamiento integral del repositorio, erradicación de backups muertos de /data con permisos root, eliminación de artefactos viejos de armado MindTheGapps, remoción de configuraciones huérfanas y perfiles estáticos superados por el motor determinista, >2.7 GB liberados); tests host y unitarios web pasando (159 host pasando, 2 skipped, 24 unitarios web pasando) y build web limpio |
-| Próximo hito | Orquestador Multi-Host / Túneles WireGuard / Perfiles de Red Proxy Avanzados y Rotación Celular 4G |
+| Estado del repo | Rama `integration/perf-unified-v1`; PERF-UNIFIED-036 completado (Consolidación integral de optimizaciones de rendimiento en host, daemon, backend y frontend: CPU Pinning SMT Zen 3 consciente, batching en boot y geolocalización, límites cgroups v2, Modo Denso 2048m RAM + 1200m Swap ZRAM validado en host, observabilidad `/metrics`, rotación de logs de docker, semáforo grupal protegido y soporte web accesible); tests de host pasando (239 pasados, 1 skipped, 86 subtests pasados) y build web limpio en 365 ms |
+| Próximo hito | Backup Automatizado de Bundles Congelados (`tools/backup_bundles.sh`) / Pipeline de CI (`.github/workflows/ci.yml`) / Orquestador Multi-Host |
 
 > Este documento es la fuente operativa de verdad. Si contradice a otro documento del repo, vale este archivo. La verdad arquitectónica decidida vive en el ADR-001 y sus afirmaciones verificadas `C1-C20`.
 
 ## 1. Qué está validado hoy
+
+- **Consolidación Integral de Rendimiento y Modo Denso Multi-Instancia (PERF-UNIFIED-036 cerrado):** Implementación integral del plan unificado de optimización (`docs/PLAN_OPTIMIZACION_UNIFICADO.md`) cubriendo las 3 fases operativas:
+  1. *Fase 1 (Quick Wins Seguros):*
+     - CPU Pinning SMT-aware (`tools/instance_manager.py`): Topología Zen 3 consciente agrupando núcleos lógicos hermanos (`(1,9, 2,10)`), allocator dinámico `allocate_cpuset_slot` reservando Core 0 para el SO host, y corrección en regex `RESOURCE_CPUS_RE`.
+     - Optimización de Screenshots: Resampling PIL Bilinear, compresión JPEG nativa sin re-renderizado PNG redundante, eliminación de invocación en bucle a `docker ps`, y erradicación definitiva del endpoint obsoleto `/ws-stream`.
+     - Reducción de Overhead Fork+Exec: Batching de `getprop` para coordenadas GPS colapsado en un único script batch `sh -c` por adb; caché reactiva con TTL de 3.0 s en `get_running_containers_map()` con invalidación por eventos.
+     - Resiliencia de Contenedor: Configuración de `--restart unless-stopped`, ampliación de `/dev/shm` a 128 MiB para buffers sin pérdida de MediaCodec C2, y rotación estricta de logs de Docker daemon a `max-size=30m` (`max-file=3`).
+     - Paridad Web/CLI y Logging: Soporte explícito de `swap` y flag `dense` en `LimitsSchema` de FastAPI; bifurcación estricta entre `run_api` (producción) y `run_api_dev` (desarrollo con reload).
+  2. *Fase 2 (Arranque y Observabilidad):*
+     - Aceleración del Bucle de Arranque: `wait_for_boot` colapsado a una sola ejecución por ciclo con sondeo a 1s; archivo de guarda `.cpu_perms_fixed` evitando re-ejecuciones innecesarias de `chmod` recursivo sobre sysfs; reducción de sleep en reintentos de instalación de stub de 15s a 5s.
+     - Telemetría Unificada (`GET /api/v1/metrics`): Endpoint nativo reportando métricas vivas de cgroup v2 por instancia (`memory.stat`, `memory.swap.current`, `cpu.stat`), host ZRAM y estadísticas de la caché de capturas.
+     - Estabilidad de Concurrencia: Vinculación e inicialización formal del ciclo de vida de `_group_start_semaphore` en el evento de inicio de FastAPI.
+  3. *Fase 3 (Experimento HI-2 y Adaptación Web):*
+     - Modo Denso en Host (`--dense`): Validación experimental en host real de perfil `2048m RAM + 1200m Swap ZRAM`. 0 OOM kills bajo estrés de navegación y apps concurrentes, ratio de compresión ZRAM comprobado de `4.55x` (1200 MiB de swap insumen apenas ~263 MiB de RAM física en host), habilitando la escalabilidad a 4 instancias simultáneas en un host de 16 GiB.
+     - Experiencia Web Accesible: Switch interactivo para Modo Denso en el modal de aprovisionamiento, presets visuales de CPU SMT y cálculo de límites de memoria en tiempo real, validado con `oxlint` y `tsc -b`.
 
 - **Saneamiento Integral del Repositorio y Erradicación de Residuos (REPO-HYGIENE-035 cerrado):** Purgado seguro de más de 2.7 GB en disco; eliminación de backups muertos de `/data` (`data-clean.backup-before-darkmode` y `data-clean.backup-testapps`) con elevación Docker; erradicación de artefactos obsoletos de MindTheGapps (`apk/` y `build_gapps/`); remoción de archivos de configuración huérfanos (`pnpm-workspace.yaml`), perfiles estáticos y props iniciales (`build.prop`, `media_codecs.xml`, `proc/`, `props/`); eliminación de compose roto (`docker-compose.bindmounts.yml`) y scripts personales con rutas cableadas (`bin/generar-reportes-redroid.sh`); reubicación canónica de `AUDITORIA.md` a `docs/AUDITORIA_FRONTEND_WEB.md`, actualización de índices y fortalecimiento de `.gitignore`.
 - **Auditoría Integral de Calidad, Partición Modular y Optimización del Frontend Web (WEB-QUALITY-034 cerrado):** Ejecución rigurosa del plan técnico de calidad en 4 etapas:

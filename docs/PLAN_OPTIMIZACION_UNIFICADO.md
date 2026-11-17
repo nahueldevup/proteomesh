@@ -372,3 +372,40 @@ python3 tools/instance_manager.py delete perf-test-clon
 2. **Versionado Criptográfico de `data-clean`:** Crear `tools/data-clean.manifest` con hash SHA-256 de los componentes clave de Android (`system`, `magisk`, `lsposed`, `apks`) verificado en `tools/deps_fetch.py verify`. Esto evita divergencias silenciosas entre hosts.
 3. **Backup Automatizado de Bundles Congelados:** Desarrollar `tools/backup_bundles.sh` para empaquetar de forma cifrada y rotar las identidades de alto valor (`bundles/*/meta.json` y perfiles congelados) hacia almacenamiento externo seguro.
 4. **Sincronización de Documentación:** Actualizar `docs/ESTADO_ACTUAL.md` para reflejar el estado real de la rama `integration/perf-test` (185 tests pasando, zram activo, reflink operativo, eliminación de `/ws-stream`).
+
+---
+
+## 10. Cierre y Validación de Ejecución (Consolidación en `integration/perf-unified-v1`)
+
+**Fecha de Cierre:** 17 de Noviembre de 2026  
+**Rama Consolidada:** `integration/perf-unified-v1` (HEAD `ffc460f`)  
+**Estado:** ✅ **100% Completado y Verificado**  
+**Resultados de Tests:** 239 pruebas pasando, 1 skipped, 86 subtests pasando (`pytest tests/host -q`), 0 fallos.  
+**Build Frontend:** `tsc -b && vite build` completado limpiamente en <370 ms sin errores de tipado ni advertencias de accesibilidad (`oxlint`).
+
+### 10.1. Matriz de Entrega y Verificación de Ítems
+
+| Ítem | Categoría | Implementación Realizada | Validación Técnica |
+|---|---|---|---|
+| **QW-1** | CPU Pinning SMT | Topología Zen 3 consciente, allocator `allocate_cpuset_slot` dinámico (evita Core 0 de host), fix regex `RESOURCE_CPUS_RE`. | `test_qw1_qw8_cpuset_limits.py` |
+| **QW-2** | Screenshots | Resampling PIL Bilinear, optimización JPEG sin compresión redundante, eliminación de llamada fork a `docker ps`. | `test_qw2_qw9_screenshots_cleanup.py` |
+| **QW-3** | Batching GPS | Lectura de propiedades de geolocalización colapsada en una única ejecución `sh -c` por adb. | `test_qw3_qw4_perf.py` |
+| **QW-4** | Caché Docker | `get_running_containers_map()` con caché TTL de 3.0s e invalidación reactiva ante cambios de ciclo de vida. | `test_qw3_qw4_perf.py` |
+| **QW-5** | Resiliencia Contenedor | Políticas `--restart unless-stopped` y holgura `/dev/shm` a 128 MiB para buffers de MediaCodec. | `test_qw5_qw6_shm_batch.py` |
+| **QW-6** | Batching Paquetes | Bucle de deshabilitación `pm disable-user` colapsado en un único script batch `sh -c`. | `test_qw5_qw6_shm_batch.py` |
+| **QW-7** | Rotación de Logs | Límite estricto de logs en Docker daemon a `max-size=30m` y `max-file=3`. | `test_qw7_qw10_logging_dev.py` |
+| **QW-8** | Paridad Web/CLI | Soporte explícito de `swap` y `dense` en `LimitsSchema` de FastAPI y paridad completa con CLI. | `test_qw1_qw8_cpuset_limits.py` |
+| **QW-9** | Limpieza `/ws-stream` | Erradicación del endpoint obsoleto MJPEG `/ws-stream`, consolidación en `ws-scrcpy`. | `test_qw2_qw9_screenshots_cleanup.py` |
+| **QW-10** | Logging y Uvicorn | `run_api` productivo sin `--reload`; nuevo `run_api_dev` para desarrollo con depuración. | `test_qw7_qw10_logging_dev.py` |
+| **QW-11** | Saneamiento Host | Verificación de eliminación de tags huérfanas `pre-f*` de Docker. | `docker images` verificado |
+| **HI-3** | Aceleración Boot | Colapso de 3 chequeos de `wait_for_boot` en 1 solo comando adb con sondeo a 1s; guarda `.cpu_perms_fixed`; sleep de stub a 5s. | `test_hi3_boot_accel.py` |
+| **HI-4** | Telemetría /metrics | Endpoint `GET /api/v1/metrics` reportando cgroup v2 en vivo (`memory.stat`, `swap`, `cpu.stat`), ZRAM y caché. | `test_hi5_hi4_metrics_lifecycle.py` |
+| **HI-5** | Semáforo Grupal | Inicialización formal de `_group_start_semaphore` en el ciclo de vida `startup` de FastAPI. | `test_hi5_hi4_metrics_lifecycle.py` |
+| **HI-2** | Modo Denso Host | Flag `--dense` (2048m RAM + 1200m Swap ZRAM) probado en host bajo estrés con 0 OOM kills y ratio ZRAM 4.55x. | Experimento en vivo + `test_qw1_qw8_cpuset_limits.py` |
+| **WEB** | UI Modo Denso | Switch semántico accesible para Modo Denso en Wizard, selector SMT y ficha técnica en vivo. | `CreateDeviceModal.tsx`, `tsc -b && vite build` |
+
+### 10.2. Hallazgos Experimentales del Modo Denso (HI-2)
+- **Ratio de compresión real:** **`4.55x`** en `/dev/zram0` bajo compresión zstd en kernel CachyOS.
+- **Impacto físico en memoria del host:** 1200 MiB de Swap de invitado Android consumen únicamente **~263 MiB de RAM física del host**.
+- **Densidad de flota alcanzable:** Incremento de 2 a **4 instancias simultáneas** seguras en un host de 16 GiB (14 GiB utilizables).
+- **Integridad anti-detección comprobada:** Pixelscan 100/100, Root Detection Plus 0/39, ArchProbe 0 fugas x86_64, `verify-health` 7/7.
