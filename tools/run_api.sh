@@ -18,7 +18,7 @@ PORT="${PORT:-8000}"
 HOST="${HOST:-127.0.0.1}"
 
 echo "================================================================================"
-echo "          🚀 INICIANDO SERVIDOR BACKEND FASTAPI DE PROTEOMESH"
+echo "          🚀 INICIANDO SERVIDOR BACKEND FASTAPI DE PROTEOMESH (PROD)"
 echo "================================================================================"
 echo "  • URL Base     : http://${HOST}:${PORT}"
 echo "  • Swagger Docs : http://${HOST}:${PORT}/docs"
@@ -26,9 +26,8 @@ echo "  • Redoc Docs   : http://${HOST}:${PORT}/redoc"
 echo "  • API v1       : http://${HOST}:${PORT}/api/v1"
 echo "================================================================================"
 
-# Vigilar solo los directorios con código Python de la app. Sin esto, StatReload
-# (watchfiles no instalado) hace polling de todos los .py bajo la raíz, incluido
-# .venv (~1058 archivos), y consume ~33% de un core de forma constante.
+# QW-10: Modo producción sin watchdog de recarga (--reload).
+# Evita polling continuo de CPU en reposo del host (~2-5% CPU).
+# Para desarrollo con auto-reload, usar tools/run_api_dev.sh.
 exec "${HOME}/.local/bin/uv" run --python "${VENV_PYTHON}" uvicorn server.main:app \
-    --host "${HOST}" --port "${PORT}" --reload \
-    --reload-dir server --reload-dir tools
+    --host "${HOST}" --port "${PORT}"

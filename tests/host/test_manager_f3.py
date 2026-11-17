@@ -14,6 +14,7 @@ from instance_manager import (
     cmd_create_instance,
     cmd_start_instance,
     verify_instance_health,
+    compute_total_memory_swap,
     INSTANCES_DIR,
     BUNDLE_FORMAT_VERSION,
 )
@@ -25,9 +26,14 @@ class ResourceLimitsTest(unittest.TestCase):
         self.assertEqual(validate_limits(memory="4g"), {"memory": "4g"})
         self.assertEqual(validate_limits(memory="2048m"), {"memory": "2048m"})
         self.assertEqual(validate_limits(memory="512M"), {"memory": "512m"})
+        self.assertEqual(validate_limits(memory="2.5g"), {"memory": "2560m"})
+        self.assertEqual(validate_limits(memory="2.0g"), {"memory": "2g"})
+        self.assertEqual(validate_limits(memory="3.0g"), {"memory": "3g"})
+        self.assertEqual(validate_limits(memory="4.0g"), {"memory": "4g"})
+        self.assertEqual(validate_limits(memory="512m"), {"memory": "512m"})
 
     def test_rejects_invalid_memory(self):
-        for bad in ("4gb", "invalid", "-1g", "4 g", ""):
+        for bad in ("4gb", "invalid", "-1g", "4 g", "2..5g", "2.5.5g", ".5g", "g", "2.g", ""):
             with self.subTest(bad=bad):
                 if bad == "":
                     self.assertEqual(validate_limits(memory=bad), {})
@@ -37,11 +43,19 @@ class ResourceLimitsTest(unittest.TestCase):
                     self.assertIn("Formato de --memory inválido", str(ctx.exception))
 
     def test_valid_cpus(self):
-        self.assertEqual(validate_limits(cpus="2.0"), {"cpus": "2.0"})
+        # QW-1: "2.0" ya NO es válido (activa throttling CFS en lugar de pinning).
+        # Los formatos válidos son listas y rangos SMT-aware.
         self.assertEqual(validate_limits(cpus="1"), {"cpus": "1"})
         self.assertEqual(validate_limits(cpus="0-3"), {"cpus": "0-3"})
+        self.assertEqual(validate_limits(cpus="1,9,2,10"), {"cpus": "1,9,2,10"})
+        self.assertEqual(validate_limits(cpus="0,8"), {"cpus": "0,8"})
 
     def test_rejects_invalid_cpus(self):
+        # QW-1: "2.0" rechazado con mensaje específico sobre CFS.
+        with self.assertRaises(SystemExit) as ctx:
+            validate_limits(cpus="2.0")
+        self.assertIn("CFS", str(ctx.exception))
+
         for bad in ("abc", "2.0.0", "-1"):
             with self.subTest(bad=bad):
                 with self.assertRaises(SystemExit) as ctx:
@@ -58,6 +72,30 @@ class ResourceLimitsTest(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     validate_limits(pids_limit=bad)
                 self.assertIn("--pids-limit debe ser un entero >= 100", str(ctx.exception))
+
+
+    def test_valid_swap(self):
+        self.assertEqual(validate_limits(swap="700m"), {"swap": "700m"})
+        self.assertEqual(validate_limits(swap="1g"), {"swap": "1g"})
+        self.assertEqual(validate_limits(swap="512M"), {"swap": "512m"})
+        self.assertEqual(validate_limits(swap="2.5g"), {"swap": "2560m"})
+        self.assertEqual(validate_limits(swap="2.0g"), {"swap": "2g"})
+        self.assertEqual(validate_limits(swap="0.5g"), {"swap": "512m"})
+
+    def test_rejects_invalid_swap(self):
+        for bad in ("700mb", "invalid", "-1m", "512 m", "1..5g", ".5g", "m", "1.m"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(SystemExit) as ctx:
+                    validate_limits(swap=bad)
+                self.assertIn("Formato de --swap inválido", str(ctx.exception))
+
+    def test_compute_total_memory_swap(self):
+        self.assertEqual(compute_total_memory_swap("2560m", "700m"), "3260m")
+        self.assertEqual(compute_total_memory_swap("4g", "1g"), "5120m")
+        self.assertEqual(compute_total_memory_swap("2.5g", "512m"), "3072m")
+        self.assertEqual(compute_total_memory_swap("2.5g", "700m"), "3260m")
+        self.assertEqual(compute_total_memory_swap("2.0g", "0.5g"), "2560m")
+        self.assertEqual(compute_total_memory_swap("512m", "256m"), "768m")
 
 
 class CreateFromBundleTest(unittest.TestCase):
@@ -130,7 +168,7 @@ class CreateFromBundleTest(unittest.TestCase):
                 "template": None,
                 "port": 5592,
                 "memory": "4g",
-                "cpus": "2.0",
+                "cpus": "1,9",   # QW-1: cpuset SMT-aware en lugar del flotante "2.0"
                 "pids_limit": 2048,
                 "seed": None,
                 "start": False,
@@ -143,13 +181,88 @@ class CreateFromBundleTest(unittest.TestCase):
             self.assertTrue(meta_file.exists())
             meta = json.loads(meta_file.read_text())
             self.assertEqual(meta["limits"]["memory"], "4g")
-            self.assertEqual(meta["limits"]["cpus"], "2.0")
+            self.assertEqual(meta["limits"]["cpus"], "1,9")   # QW-1: SMT-aware
             self.assertEqual(meta["limits"]["pids_limit"], 2048)
 
             profile_file = inst_target / "profile.json"
             self.assertTrue(profile_file.exists())
             prof = json.loads(profile_file.read_text())
             self.assertEqual(prof["instance"]["name"], test_inst_name)
+
+    def test_create_applies_default_memory_when_omitted(self):
+        test_inst_name = "test-default-mem"
+        inst_target = self.temp_dir / test_inst_name
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            args = type("Args", (), {
+                "name": test_inst_name,
+                "from_bundle": str(self.golden_bundle),
+                "template": None,
+                "port": 5592,
+                "memory": None,
+                "cpus": None,
+                "pids_limit": None,
+                "seed": None,
+                "start": False,
+            })()
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0, stderr=b"")
+                cmd_create_instance(args)
+
+            meta_file = inst_target / "meta.json"
+            self.assertTrue(meta_file.exists())
+            meta = json.loads(meta_file.read_text())
+            self.assertEqual(meta["limits"]["memory"], "2560m")
+            self.assertEqual(meta["limits"]["swap"], "700m")
+
+    def test_create_respects_custom_default_memory_env(self):
+        test_inst_name = "test-env-mem"
+        inst_target = self.temp_dir / test_inst_name
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            with patch.dict("os.environ", {"PROTEOMESH_DEFAULT_MEMORY": "3072m"}):
+                args = type("Args", (), {
+                    "name": test_inst_name,
+                    "from_bundle": str(self.golden_bundle),
+                    "template": None,
+                    "port": 5592,
+                    "memory": None,
+                    "cpus": None,
+                    "pids_limit": None,
+                    "seed": None,
+                    "start": False,
+                })()
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr=b"")
+                    cmd_create_instance(args)
+
+                meta_file = inst_target / "meta.json"
+                self.assertTrue(meta_file.exists())
+                meta = json.loads(meta_file.read_text())
+                self.assertEqual(meta["limits"]["memory"], "3072m")
+
+    def test_create_respects_custom_default_swap_env(self):
+        test_inst_name = "test-env-swap"
+        inst_target = self.temp_dir / test_inst_name
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            with patch.dict("os.environ", {"PROTEOMESH_DEFAULT_SWAP": "1g"}):
+                args = type("Args", (), {
+                    "name": test_inst_name,
+                    "from_bundle": str(self.golden_bundle),
+                    "template": None,
+                    "port": 5592,
+                    "memory": None,
+                    "cpus": None,
+                    "pids_limit": None,
+                    "seed": None,
+                    "start": False,
+                })()
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr=b"")
+                    cmd_create_instance(args)
+
+                meta_file = inst_target / "meta.json"
+                self.assertTrue(meta_file.exists())
+                meta = json.loads(meta_file.read_text())
+                self.assertEqual(meta["limits"]["swap"], "1g")
 
 
 class StartWithLimitsTest(unittest.TestCase):
@@ -195,6 +308,42 @@ class StartWithLimitsTest(unittest.TestCase):
                 self.assertEqual(cmd_args[cmd_args.index("--cpuset-cpus") + 1], "0-3")
                 self.assertIn("--pids-limit", cmd_args)
                 self.assertEqual(cmd_args[cmd_args.index("--pids-limit") + 1], "4096")
+                self.assertIn("--memory-swap", cmd_args)
+                self.assertEqual(cmd_args[cmd_args.index("--memory-swap") + 1], "3772m")
+
+    def test_start_applies_default_memory_if_missing_in_meta(self):
+        temp_inst = self.temp_dir / "f3-start-nomem"
+        temp_inst.mkdir(parents=True, exist_ok=True)
+        golden = REPO_ROOT / "tests" / "golden" / "bundles" / "a54x_personal_seed42"
+        shutil.copy(golden / "profile.json", temp_inst / "profile.json")
+        shutil.copy(golden / "manifest.json", temp_inst / "manifest.json")
+        (temp_inst / "meta.json").write_text(json.dumps({
+            "adb_port": 5593,
+            "display": {"width": 1080, "height": 2340, "dpi": 450, "fps": 90},
+            "limits": {}
+        }))
+
+        args = type("Args", (), {
+            "name": "f3-start-nomem",
+            "memory": None,
+            "cpus": None,
+            "pids_limit": None,
+            "verify_health": False,
+        })()
+
+        with patch("instance_manager.INSTANCES_DIR", self.temp_dir):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=1, stderr="stop test")
+                cmd_start_instance(args)
+
+                docker_calls = [call for call in mock_run.call_args_list if "docker" in call[0][0]]
+                run_call = [call for call in docker_calls if "run" in call[0][0]][0]
+                cmd_args = run_call[0][0]
+
+                self.assertIn("--memory", cmd_args)
+                self.assertEqual(cmd_args[cmd_args.index("--memory") + 1], "2560m")
+                self.assertIn("--memory-swap", cmd_args)
+                self.assertEqual(cmd_args[cmd_args.index("--memory-swap") + 1], "3260m")
 
 
 class VerifyHealthTest(unittest.TestCase):

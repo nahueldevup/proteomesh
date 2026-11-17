@@ -1,9 +1,8 @@
 """
 Rutas para ciclo de vida de instancias (CloudPhones)
 """
-import asyncio
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from server.models.schemas import (
     InstanceCreateRequest,
@@ -178,16 +177,18 @@ def get_screen(
     format: str = Query("jpeg", description="Formato de imagen ('jpeg' o 'png')"),
     max_width: int = Query(540, description="Ancho máximo para optimizar ancho de banda"),
     fresh: bool = Query(False, description="Si es true, salta la caché y captura ahora"),
+    ttl: Optional[float] = Query(None, description="TTL personalizado en segundos para la caché"),
 ):
     """Retorna un frame de pantalla del CloudPhone para visualización interactiva en navegador."""
     fmt = format.lower()
+    effective_ttl = screenshot_cache.sanitize_ttl(ttl)
     try:
         img_bytes = screenshot_cache.capture(
             name,
             fmt,
             max_width,
             fresh=fresh,
-            ttl=screenshot_cache.DEFAULT_TTL,
+            ttl=effective_ttl,
             fn=lambda: get_instance_screenshot(name, format=fmt, max_width=max_width),
         )
         media_type = "image/jpeg" if fmt in ("jpeg", "jpg") else "image/png"
@@ -247,28 +248,3 @@ def launch_url(name: str, req: LaunchUrlRequest):
         return launch_instance_url(name, req.url)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.websocket("/{name}/ws-stream")
-async def ws_stream(websocket: WebSocket, name: str, fps: int = 3, max_width: int = 540):
-    """Stream continuo de frames JPEG por WebSocket (fallback nativo cuando ws-scrcpy no está disponible)."""
-    await websocket.accept()
-    delay = 1.0 / max(1, min(fps, 10))
-    try:
-        while True:
-            try:
-                frame = await asyncio.to_thread(get_instance_screenshot, name, "jpeg", max_width)
-            except Exception as e:
-                await websocket.send_json({"error": str(e)})
-                break
-            await websocket.send_bytes(frame)
-            await asyncio.sleep(delay)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
-    finally:
-        try:
-            await websocket.close()
-        except Exception:
-            pass

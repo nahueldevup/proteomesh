@@ -22,6 +22,32 @@ class ApiServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
+        from server.db.instance_store import instance_store
+        cls.instance_store = instance_store
+        cls.created_fixture = False
+        if len(instance_store.list_all()) == 0:
+            instance_store.save_instance(
+                "test-api-device",
+                {
+                    "instance_name": "test-api-device",
+                    "template": "samsung/a54x",
+                    "carrier": "ar_personal",
+                    "adb_port": 5580,
+                    "location": {
+                        "latitude": -34.603722,
+                        "longitude": -58.381592,
+                        "city": "Buenos Aires, Argentina",
+                        "timezone": "America/Argentina/Buenos_Aires",
+                    },
+                },
+                sync_to_disk=True,
+            )
+            cls.created_fixture = True
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "created_fixture", False):
+            cls.instance_store.delete("test-api-device", delete_disk=True)
 
     def test_root_endpoint(self):
         res = self.client.get("/")

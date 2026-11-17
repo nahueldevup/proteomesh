@@ -74,6 +74,8 @@ export interface Instance {
   limits?: {
     memory?: string;
     cpus?: string;
+    swap?: string;
+    dense?: boolean;
     pids_limit?: number;
   };
   identity?: {
@@ -262,7 +264,13 @@ export interface CreateInstancePayload {
   phone_number?: string;
   port: number;
   start: boolean;
-  limits: { memory: string; cpus: string };
+  limits: {
+    memory?: string;
+    cpus?: string;
+    swap?: string;
+    dense?: boolean;
+    pids_limit?: number;
+  };
   custom_location: InstanceLocationPayload;
 }
 
@@ -386,4 +394,67 @@ export interface LaunchUrlResult {
   status: string;
   action: 'launch_url';
   url: string;
+}
+
+// ── Backups de Bundles e Identidades Congeladas ─────────────────────────────
+export interface BackupItem {
+  filename: string;
+  size_bytes: number;
+  size_human: string;
+  modified_at: string;
+  encrypted: boolean;
+  cipher: string | null;
+}
+
+export interface CreateBackupPayload {
+  passphrase?: string;
+  keep?: number;
+  no_encrypt?: boolean;
+  include_db?: boolean;
+  source?: string;
+}
+
+export interface VerifyBackupPayload {
+  filename: string;
+  passphrase?: string;
+}
+
+export interface VerifyBackupResult {
+  status: string;
+  valid: boolean;
+  filename: string;
+  message: string;
+}
+
+export interface RestoreBackupPayload {
+  filename: string;
+  passphrase?: string;
+  restore_dest?: string;
+}
+
+export interface RestoreBackupResult {
+  status: string;
+  filename: string;
+  restore_dest: string;
+  message: string;
+}
+
+export interface BackupScheduleStatus {
+  active: boolean;
+  frequency: string;
+  time: string;
+  calendar_spec?: string | null;
+  keep: number;
+  encrypted: boolean;
+  next_run?: string | null;
+  last_run?: string | null;
+}
+
+export interface UpdateBackupSchedulePayload {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  time: string;
+  keep: number;
+  no_encrypt: boolean;
+  passphrase?: string;
 }

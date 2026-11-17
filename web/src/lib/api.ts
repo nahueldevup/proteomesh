@@ -35,6 +35,14 @@ import type {
   InputKeyResult,
   InputTextResult,
   LaunchUrlResult,
+  BackupItem,
+  CreateBackupPayload,
+  VerifyBackupPayload,
+  VerifyBackupResult,
+  RestoreBackupPayload,
+  RestoreBackupResult,
+  BackupScheduleStatus,
+  UpdateBackupSchedulePayload,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -312,10 +320,11 @@ export const api = {
     return res.blob();
   },
 
-  getScreenUrl(name: string, timestamp?: number, fresh?: boolean): string {
+  getScreenUrl(name: string, timestamp?: number, fresh?: boolean, ttl?: number): string {
     const t = timestamp || Date.now();
     const freshQuery = fresh ? '&fresh=1' : '';
-    return `${API_BASE}/instances/${encodeName(name)}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}`;
+    const ttlQuery = ttl !== undefined ? `&ttl=${ttl}` : '';
+    return `${API_BASE}/instances/${encodeName(name)}/screen?format=jpeg&max_width=540&t=${t}${freshQuery}${ttlQuery}`;
   },
 
   async sendTap(name: string, x: number, y: number): Promise<InputTapResult> {
@@ -557,6 +566,71 @@ export const api = {
       }),
     });
     return handleResponse<FileEntry>(res);
+  },
+
+  // ── Backups de Bundles e Identidades Congeladas ───────────────────────────
+  async getBackups(): Promise<BackupItem[]> {
+    const res = await fetch(`${API_BASE}/backups`);
+    return handleResponse<BackupItem[]>(res);
+  },
+
+  async createBackup(payload: CreateBackupPayload): Promise<BackupItem> {
+    const res = await fetch(`${API_BASE}/backups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<BackupItem>(res);
+  },
+
+  async verifyBackup(payload: VerifyBackupPayload): Promise<VerifyBackupResult> {
+    const res = await fetch(`${API_BASE}/backups/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<VerifyBackupResult>(res);
+  },
+
+  async deleteBackup(filename: string): Promise<{ status: string; deleted: string }> {
+    const res = await fetch(`${API_BASE}/backups/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+    return handleResponse<{ status: string; deleted: string }>(res);
+  },
+
+  async restoreBackup(payload: RestoreBackupPayload): Promise<RestoreBackupResult> {
+    const res = await fetch(`${API_BASE}/backups/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<RestoreBackupResult>(res);
+  },
+
+  getDownloadBackupUrl(filename: string): string {
+    return `${API_BASE}/backups/${encodeURIComponent(filename)}/download`;
+  },
+
+  async getBackupSchedule(): Promise<BackupScheduleStatus> {
+    const res = await fetch(`${API_BASE}/backups/schedule`);
+    return handleResponse<BackupScheduleStatus>(res);
+  },
+
+  async updateBackupSchedule(payload: UpdateBackupSchedulePayload): Promise<BackupScheduleStatus> {
+    const res = await fetch(`${API_BASE}/backups/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<BackupScheduleStatus>(res);
+  },
+
+  async triggerBackupScheduleNow(): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/backups/schedule/trigger`, {
+      method: 'POST',
+    });
+    return handleResponse<{ status: string; message: string }>(res);
   },
 
 };

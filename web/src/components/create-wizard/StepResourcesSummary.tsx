@@ -3,6 +3,8 @@ import { cn } from '../../lib/utils';
 import { RAM_PRESETS, CPU_PRESETS } from './wizardTypes';
 
 export interface StepResourcesSummaryProps {
+  isDense: boolean;
+  setIsDense: (dense: boolean) => void;
   memoryLimit: string;
   setMemoryLimit: (limit: string) => void;
   cpuLimit: string;
@@ -21,6 +23,8 @@ export interface StepResourcesSummaryProps {
 }
 
 export function StepResourcesSummary({
+  isDense,
+  setIsDense,
   memoryLimit,
   setMemoryLimit,
   cpuLimit,
@@ -41,57 +45,119 @@ export function StepResourcesSummary({
 
   return (
     <div className="space-y-4">
+      {/* Selector de Modo Denso */}
+      <div
+        role="switch"
+        aria-checked={isDense}
+        aria-label="Modo Denso (Flotas Livianas)"
+        tabIndex={0}
+        onClick={() => setIsDense(!isDense)}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            setIsDense(!isDense);
+          }
+        }}
+        className={cn(
+          'flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer',
+          isDense
+            ? 'bg-emerald-500/10 border-primary shadow-xs'
+            : 'bg-background/60 border-border hover:border-border/80'
+        )}
+      >
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-foreground">Modo Denso (Flotas Livianas)</span>
+            <span
+              className={cn(
+                'text-[10px] px-1.5 py-0.5 rounded-full font-mono font-medium',
+                isDense ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+              )}
+            >
+              {isDense ? 'ACTIVADO' : 'ESTÁNDAR'}
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {isDense
+              ? 'Asigna 2048m RAM + 1200m Swap ZRAM. Habilita hasta 4 instancias simultáneas en 16 GiB.'
+              : 'Activa esta opción para compactar la huella de memoria con compresión ZRAM del kernel.'}
+          </p>
+        </div>
+        <div
+          className={cn(
+            'w-10 h-5 rounded-full transition-colors relative flex items-center p-0.5 shrink-0',
+            isDense ? 'bg-primary' : 'bg-muted-foreground/30'
+          )}
+        >
+          <div
+            className={cn(
+              'w-4 h-4 rounded-full bg-white transition-transform shadow-xs',
+              isDense ? 'translate-x-5' : 'translate-x-0'
+            )}
+          />
+        </div>
+      </div>
+
       {/* Asignación de Recursos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <span className="block text-xs font-medium text-foreground">
-            Memoria RAM
+            Memoria RAM {isDense && <span className="text-primary font-normal">(Modo Denso)</span>}
           </span>
           <div className="flex gap-1.5">
-            {RAM_PRESETS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setMemoryLimit(p)}
-                className={cn(
-                  'flex-1 h-8 rounded-md border font-mono text-xs transition-colors cursor-pointer',
-                  memoryLimit === p
-                    ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
-                    : 'bg-background border-border text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {p}
-              </button>
-            ))}
+            {isDense ? (
+              <div className="flex-1 h-8 rounded-md border border-primary bg-emerald-500/15 flex items-center justify-center font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                2048m RAM + 1200m ZRAM
+              </div>
+            ) : (
+              RAM_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setMemoryLimit(p)}
+                  className={cn(
+                    'flex-1 h-8 rounded-md border font-mono text-xs transition-colors cursor-pointer',
+                    memoryLimit === p
+                      ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
+                      : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {p}
+                </button>
+              ))
+            )}
           </div>
           <span className="text-[10px] text-muted-foreground block">
-            Recomendado: 2.5g (Óptimo para 120Hz)
+            {isDense
+              ? 'Descarga automática de memoria fría al swap ZRAM de host'
+              : 'Recomendado: 2.5g (Óptimo para 120Hz con 700m swap)'}
           </span>
         </div>
 
         <div className="space-y-1.5">
           <span className="block text-xs font-medium text-foreground">
-            CPU Pinning (Aislamiento de Hilos)
+            CPU Pinning (Aislamiento SMT Zen 3)
           </span>
-          <div className="flex gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {CPU_PRESETS.map((c) => (
               <button
                 key={c.value}
                 type="button"
                 onClick={() => setCpuLimit(c.value)}
+                title={c.desc}
                 className={cn(
-                  'flex-1 h-8 rounded-md border font-mono text-xs transition-colors cursor-pointer',
+                  'h-8 px-2 rounded-md border font-mono text-[11px] transition-colors cursor-pointer text-left truncate flex items-center justify-between',
                   cpuLimit === c.value
                     ? 'bg-emerald-500/15 border-primary text-emerald-600 dark:text-emerald-400 font-bold'
                     : 'bg-background border-border text-muted-foreground hover:text-foreground'
                 )}
               >
-                {c.value}
+                <span className="truncate">{c.label}</span>
               </button>
             ))}
           </div>
           <span className="text-[10px] text-muted-foreground block">
-            Asignación de núcleos de CPU para mitigar contención
+            {CPU_PRESETS.find((c) => c.value === cpuLimit)?.desc || 'Mitiga contención de CPU'}
           </span>
         </div>
       </div>
@@ -126,7 +192,7 @@ export function StepResourcesSummary({
         <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
           <div className="flex justify-between border-b border-border/30 py-1">
             <span className="text-muted-foreground">Instancia:</span>
-            <span className="font-bold text-foreground">{name}</span>
+            <span className="text-foreground">{name || '---'}</span>
           </div>
           <div className="flex justify-between border-b border-border/30 py-1">
             <span className="text-muted-foreground">Puerto ADB:</span>
@@ -148,15 +214,21 @@ export function StepResourcesSummary({
           </div>
           <div className="flex justify-between border-b border-border/30 py-1">
             <span className="text-muted-foreground">Recursos:</span>
-            <span className="text-foreground">{memoryLimit.toUpperCase()} RAM · CPU {cpuLimit}</span>
+            <span className="text-foreground">
+              {isDense ? '2048M RAM · 1200M SWAP' : `${memoryLimit.toUpperCase()} RAM · 700M SWAP`}
+              {' · '}
+              {cpuLimit === 'auto' ? 'CPU AUTO SMT' : `CPU ${cpuLimit}`}
+            </span>
           </div>
           <div className="flex justify-between border-b border-border/30 py-1">
             <span className="text-muted-foreground">GPS / Ciudad:</span>
             <span className="text-foreground">{city} ({latitude.toFixed(2)}, {longitude.toFixed(2)})</span>
           </div>
           <div className="flex justify-between border-b border-border/30 py-1">
-            <span className="text-muted-foreground">Red / Aislamiento:</span>
-            <span className="text-foreground">Cuarentena T=0 (Módem USB)</span>
+            <span className="text-muted-foreground">Arranque Inmediato:</span>
+            <span className={startImmediately ? 'text-primary' : 'text-muted-foreground'}>
+              {startImmediately ? 'SÍ (Boot T=0)' : 'NO (Manual)'}
+            </span>
           </div>
         </div>
       </div>

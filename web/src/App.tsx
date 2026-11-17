@@ -11,10 +11,11 @@ import {
   Plug,
   Clock,
   FolderArchive,
+  ShieldCheck,
 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys, useInstances, useUsbOverview, useLocationPresets, EMPTY_PRESETS } from './lib/queries';
+import { queryKeys, useInstances, useUsbOverview, useLocationPresets, useBackups, EMPTY_PRESETS } from './lib/queries';
 import type { Instance } from './types';
 import DeviceGrid from './components/grid/DeviceGrid';
 import BulkBar from './components/grid/BulkBar';
@@ -50,9 +51,12 @@ const CustomLocationsManager = lazy(() =>
 const ApkFileManager = lazy(() =>
   import('./components/files/ApkFileManager').then((m) => ({ default: m.default }))
 );
+const BackupsManager = lazy(() =>
+  import('./components/backups/BackupsManager').then((m) => ({ default: m.BackupsManager }))
+);
 
 type ViewMode = 'grid' | 'focus';
-type NavTab = 'instances' | 'network' | 'locations' | 'files';
+type NavTab = 'instances' | 'network' | 'locations' | 'files' | 'backups';
 
 const NO_INSTANCES: Instance[] = [];
 
@@ -132,6 +136,7 @@ export function App() {
   // Estado del Pool de Red USB y Cola FIFO (NET-USB-001)
   const queryClient = useQueryClient();
   const { data: usbOverview } = useUsbOverview();
+  const { data: backupsList = [] } = useBackups();
   const { data: instancesData } = useInstances(isCreateOpen);
   const instances = instancesData ?? NO_INSTANCES;
 
@@ -326,6 +331,22 @@ export function App() {
                       }}
                     />
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      icon={ShieldCheck}
+                      label="Backups e Identidades"
+                      active={activeNav === 'backups'}
+                      badge={
+                        backupsList.length > 0 ? (
+                          <span className="rounded-full bg-sidebar-accent/80 border border-sidebar-border/70 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-muted-foreground">
+                            {backupsList.length}
+                          </span>
+                        ) : undefined
+                      }
+                      tooltip={`Backups e Identidades · ${backupsList.length}`}
+                      onClick={() => setActiveNav('backups')}
+                    />
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroup>
             </SidebarContent>
@@ -493,6 +514,11 @@ export function App() {
               initialTab={filesPreselectedInstance ? 'files' : 'apks'}
               onRefreshInstances={fetchInstances}
             />
+          )}
+
+          {/* Pestaña: Backups e Identidades Congeladas */}
+          {activeNav === 'backups' && (
+            <BackupsManager />
           )}
 
           </Suspense>

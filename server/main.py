@@ -34,6 +34,8 @@ from server.routes import (
     network_router,
     apks_router,
     files_router,
+    metrics_router,
+    backups_router,
 )
 
 app = FastAPI(
@@ -64,11 +66,20 @@ app.include_router(network_router, prefix=API_PREFIX)
 app.include_router(routes_router, prefix=API_PREFIX)
 app.include_router(apks_router, prefix=API_PREFIX)
 app.include_router(files_router, prefix=API_PREFIX)
+app.include_router(metrics_router, prefix=API_PREFIX)
+app.include_router(backups_router, prefix=API_PREFIX)
 
 
 @app.on_event("startup")
 def startup_event():
     """Asegura la disponibilidad de servicios críticos y reconcilia estado vs kernel (FRAG-01)."""
+    # HI-5: Inicializar semáforo de arranque grupal formalmente en el bucle principal
+    try:
+        from server.services.manager_bridge import init_group_start_semaphore
+        init_group_start_semaphore()
+    except Exception as e:
+        logger.warning(f"No se pudo inicializar semáforo de arranque grupal: {e}")
+
     try:
         from server.db.migrate import init_db
         init_db()
@@ -116,6 +127,7 @@ def root():
             "carriers": f"{API_PREFIX}/carriers",
             "locations": f"{API_PREFIX}/locations",
             "proxies": f"{API_PREFIX}/proxies/test",
+            "metrics": f"{API_PREFIX}/metrics",
         }
     }
 

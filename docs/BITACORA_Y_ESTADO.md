@@ -1881,6 +1881,48 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
   - Reducción de advertencias `set-state-in-effect` de **14 a 4** (10 casos saneados) y de archivos >900 líneas de 4 a 1 (`FileExplorer.tsx` queda en 926 líneas tras la consolidación de `IconBtn`/`BarBtn`).
 * **Estado:** WEB-QUALITY-034 **completado y validado el 2026-11-12**. Fusionado a `main`.
 
+### 95. Saneamiento Integral del Repositorio, Erradicación de Residuos Muertos y Blindaje de Gitignore (REPO-HYGIENE-035 — 2026-11-12)
+* **Objetivo:** Ejecutar una auditoría exhaustiva del repositorio para erradicar residuos de desarrollo, backups muertos de `/data` con permisos especiales de Android, archivos de configuración huérfanos de IA, artefactos de armado obsoletos de GApps y perfiles estáticos superados por el motor determinista, liberando más de 2.7 GB de disco y garantizando que la estructura del árbol de trabajo sea estrictamente canónica y reproducible.
+* **Componentes saneados y eliminados:**
+  1. **Artefactos pesados y backups de `/data` (~2.7 GB liberados):**
+     - Eliminación de `apk/` (374.9 MB) y `build_gapps/` (197 MB), insumos históricos de armado superados por la imagen base oficial `redroid:13.0.0_mindthegapps_magisk_widevine` que ya integra GApps de origen y `data-clean/` optimizado.
+     - Purgado seguro mediante contenedor root Alpine de `data-clean.backup-before-darkmode/` (985.5 MB) y `data-clean.backup-testapps/` (1.13 GB), eliminando nodos con UIDs Android sin errores de permisos.
+  2. **Archivos obsoletos trackeados retirados del repositorio (`git rm`):**
+     - `pnpm-workspace.yaml`: Configuración autogenerada residual (el proyecto web usa exclusivamente `npm`).
+     - `build.prop`, `media_codecs.xml`, `proc/` (`boot_id`, `cmdline`, `cpuinfo`, `version`) y `props/` (`product_build.prop`, `system_build.prop`, `system_ext_build.prop`, `vendor_build.prop`): Remanentes del prototipo inicial ReDroid 14 superados por la generación dinámica de `profile-loader` y montajes en memoria Bionic.
+     - `docker-compose.bindmounts.yml`: Compose obsoleto con referencias a rutas locales inexistentes.
+     - `bin/generar-reportes-redroid.sh`: Script personal con rutas absolutas cableadas al escritorio (preservando intacto `bin/resetprop` requerido por el `Dockerfile`).
+     - `contexto.md`: Symlink redundante en la raíz eliminado en favor de la ruta directa `docs/CONTEXTO_AUDITORIA.md`.
+  3. **Reorganización documental y reglas de saneamiento:**
+     - Reubicación canónica de `AUDITORIA.md` a `docs/AUDITORIA_FRONTEND_WEB.md`.
+     - Actualización de `docs/README.md` retirando la cita al symlink extinto y registrando el documento de auditoría web.
+     - Refuerzo de `.gitignore` con exclusiones para `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `**/.pytest_cache/` y preservación explícita `!modules.lock`.
+* **Verificación:**
+  - Suite de tests del host: **159 pasados**, 2 saltados (100% verde).
+  - Suite de tests unitarios del frontend web: **24 pasados**, 0 fallidos (100% verde).
+  - Pipeline de compilación web: `tsc -b && vite build` completado limpiamente en **441 ms**.
+* **Estado:** REPO-HYGIENE-035 **completado y validado el 2026-11-12** en rama `chore/cleanup-residuos`.
+
+---
+
+### 63. QW-2 + QW-9 — Limpieza de Pipeline de Screenshots y Eliminación de `/ws-stream` (2026-11-16)
+
+* **Rama:** `perf/qw2-qw9-screenshots-cleanup` (PR 1 del Plan Unificado de Optimización de Rendimiento).
+* **QW-2 — Eliminación de grasa en pipeline de screenshots (Host):**
+  - Eliminado el `docker ps -q` previo a `screencap` en `server/services/manager_bridge.py::get_instance_screenshot`. **Ahorro medido: 15.19 ms por frame**. Si el contenedor no está activo, `screencap` falla de inmediato y la excepción es capturada.
+  - `Image.Resampling.LANCZOS` → `Image.Resampling.BILINEAR` para thumbnails >540 px y `BOX` para thumbnails ≤540 px. **Ahorro medido: -12.48 ms por frame** (22.37 ms → 9.89 ms).
+  - `optimize=True` → `optimize=False` en todas las rutas de guardado JPEG. **Ahorro medido: -1.86 ms por frame**.
+  - **Reducción total estimada: ~29.5 ms por frame** en el proceso Python del host (latencia de screenshot de ~145 ms a ~115 ms, -20%).
+* **QW-9 — Eliminación definitiva de `/ws-stream`:**
+  - Eliminada la ruta `@router.websocket("/{name}/ws-stream")` de `server/routes/instances.py`. El endpoint MJPEG/WebSocket legado (~3 FPS) no es consumido por el frontend desde la integración de `ws-scrcpy` (STREAM-019).
+  - Eliminados los imports `asyncio`, `WebSocket` y `WebSocketDisconnect` de `server/routes/instances.py` (código muerto).
+  - `ws-scrcpy` (H.264 @ 30 FPS) es formalmente el **único visor interactivo**.
+  - El pipeline de captura estática y miniaturas (`/screen`, `screenshot_cache.py`, `screencap_parser.py`, raw parser) se preserva intacto sin ninguna modificación.
+  - Documentado en `docs/ESTADO_ACTUAL.md` y `docs/BITACORA_Y_ESTADO.md`.
+* **Tests actualizados:** `tests/host/test_screencap_raw.py` adaptado para reflejar la eliminación del mock de `docker ps`.
+* **Validación:** Suite `pytest tests/host -q` — ver resultado en esta entrada.
+* **Estado:** Cambios aplicados. Pendiente de commit (requiere orden explícita).
+
 ---
 
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)

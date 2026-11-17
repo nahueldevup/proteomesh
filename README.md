@@ -56,6 +56,12 @@ El sistema evade exhaustivamente la detección de root y manipulación en aplica
 * **Compatibilidad Ashmem (Chromium / Memfd):** Shim v3/v5.1 en `libpixel_hw.so` implementando `/dev/ashmem` sobre `memfd_create` con sellos `GROW|SHRINK` exigidos por Chromium 155+ (crbug 498720726).
 * **Protección Contra Fugas de Kernel Host:** Sustitución de `uname` y `/proc/version` reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`), erradicando cualquier firma del kernel anfitrión (`cachyos`).
 
+### 5. Resguardo Criptográfico y Automatización de Identidades
+* **Snapshots Atómicos de Base de Datos:** Resguardo online seguro de `instances/proteomesh.db` mediante la API nativa de backup de SQLite (sin bloqueos de lectura/escritura WAL).
+* **Cifrado Simétrico AES-256-CBC con PBKDF2:** Empaquetado de perfiles de hardware (IMEI, MAC, seriales) y bases de datos con 100.000 iteraciones y sal aleatoria.
+* **Automatización con Cero Consumo en Reposo:** Integración nativa con temporizadores de usuario de systemd (`systemd --user`) que consumen 0% CPU y 0 MB RAM en espera, despertando solo para el snapshot.
+* **Consola Web y API REST:** Gestión integral desde la interfaz gráfica (listado, verificación, restauración, programación periódica diaria/semanal y prueba inmediata de disparo).
+
 ---
 
 ## 🛠️ Arquitectura de Tres Capas
@@ -136,7 +142,14 @@ bash src/lsposed_module/build_apk.sh
 
 # Construir la imagen golden unificada
 DOCKER_BUILDKIT=1 docker build -t proteomesh:latest .
+
+# Construir imagen auxiliar para clonado CoW ultra-rápido (reflink en Btrfs/XFS)
+bash tools/helper/build.sh
 ```
+
+> **Nota de Almacenamiento y CoW (Btrfs):**
+> ProteoMesh utiliza clonado con Copy-on-Write (`cp -a --reflink=auto`) mediante el contenedor auxiliar `proteomesh-helper:latest`, reduciendo la creación de instancias a <1.5 s y 0 bytes físicos iniciales al compartir extents con `data-clean`.
+> **ADVERTENCIA:** **NO ejecutar `btrfs filesystem defragment`** sobre el directorio `data-clean` ni sobre `instances/`. La desfragmentación en Btrfs desenlaza los extents compartidos por reflink, duplicando físicamente el espacio en disco (~1 GB por instancia) y destruyendo el beneficio de CoW.
 
 ### 2. Verificar Dependencias y `data-clean`
 ```bash
@@ -161,8 +174,10 @@ Cada invocación genera un IMEI (Luhn válido), MAC Wi-Fi, MAC Bluetooth, Serial
 python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 
-# 2. Crear una nueva instancia con identidad única y límites de recursos (RAM, CPUs, PIDs)
-python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --memory 4g --cpus 2.0 --pids-limit 2048 --start
+# 2. Crear una nueva instancia con límites por defecto (RAM: 2560m, Swap: 700m -> --memory-swap 3260m)
+python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54x --carrier ar_personal --port 5584 --start
+# O especificando límites explícitos (RAM, Swap, CPUs, PIDs):
+python3 tools/instance_manager.py create --name mi-a54-02 --template samsung/a54x --carrier ar_personal --port 5585 --memory 4g --swap 1g --cpus 2.0 --pids-limit 2048 --start
 ```
 
 #### Modo B: Congelamiento de Hardware y Migración sin Alertas de Fraude (`--from-bundle`)
@@ -195,6 +210,7 @@ python3 tools/instance_manager.py sync-scope mi-a54-01 --package <paquete>
 
 * **[Guía Maestra de Blindaje Anti-Root y Replicación](docs/GUIA_DE_REPLICACION_ANTIROOT.md):** Manual exhaustivo con causas raíz, procedimientos de replicación en instancias existentes, automatización para nuevas instancias e inventario detallado de cada archivo modificado.
 * **[Arquitectura Integral del Sistema](docs/ARQUITECTURA.md):** Especificación profunda del modelo de tres capas, flujo GeeLark, evasión de tiendas y mecanismos GMS.
+* **[Arquitectura de Respaldo y Automatización de Identidades](docs/ARQUITECTURA_BACKUPS_AUTOMATION.md):** Especificación del subsistema de backups cifrados (AES-256 PBKDF2), snapshots atómicos de SQLite y temporizador nativo systemd de consumo cero en reposo.
 * **[Guía de Reproducción y Despliegue](docs/GUIA_DE_REPRODUCCION.md):** Manual paso a paso para compilar binarios nativos, construir imágenes y operar instancias.
 * **[Bitácora Histórica y Estado del Proyecto](docs/BITACORA_Y_ESTADO.md):** Registro cronológico detallado de todos los retos técnicos (§1 a §49), causas raíz, tombstones resueltos y métricas.
 
