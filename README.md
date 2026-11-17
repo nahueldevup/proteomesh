@@ -56,6 +56,12 @@ El sistema evade exhaustivamente la detección de root y manipulación en aplica
 * **Compatibilidad Ashmem (Chromium / Memfd):** Shim v3/v5.1 en `libpixel_hw.so` implementando `/dev/ashmem` sobre `memfd_create` con sellos `GROW|SHRINK` exigidos por Chromium 155+ (crbug 498720726).
 * **Protección Contra Fugas de Kernel Host:** Sustitución de `uname` y `/proc/version` reportando el kernel oficial GKI de Google (`5.10.149-android12-9-...`), erradicando cualquier firma del kernel anfitrión (`cachyos`).
 
+### 5. Resguardo Criptográfico y Automatización de Identidades
+* **Snapshots Atómicos de Base de Datos:** Resguardo online seguro de `instances/proteomesh.db` mediante la API nativa de backup de SQLite (sin bloqueos de lectura/escritura WAL).
+* **Cifrado Simétrico AES-256-CBC con PBKDF2:** Empaquetado de perfiles de hardware (IMEI, MAC, seriales) y bases de datos con 100.000 iteraciones y sal aleatoria.
+* **Automatización con Cero Consumo en Reposo:** Integración nativa con temporizadores de usuario de systemd (`systemd --user`) que consumen 0% CPU y 0 MB RAM en espera, despertando solo para el snapshot.
+* **Consola Web y API REST:** Gestión integral desde la interfaz gráfica (listado, verificación, restauración, programación periódica diaria/semanal y prueba inmediata de disparo).
+
 ---
 
 ## 🛠️ Arquitectura de Tres Capas
@@ -204,6 +210,7 @@ python3 tools/instance_manager.py sync-scope mi-a54-01 --package <paquete>
 
 * **[Guía Maestra de Blindaje Anti-Root y Replicación](docs/GUIA_DE_REPLICACION_ANTIROOT.md):** Manual exhaustivo con causas raíz, procedimientos de replicación en instancias existentes, automatización para nuevas instancias e inventario detallado de cada archivo modificado.
 * **[Arquitectura Integral del Sistema](docs/ARQUITECTURA.md):** Especificación profunda del modelo de tres capas, flujo GeeLark, evasión de tiendas y mecanismos GMS.
+* **[Arquitectura de Respaldo y Automatización de Identidades](docs/ARQUITECTURA_BACKUPS_AUTOMATION.md):** Especificación del subsistema de backups cifrados (AES-256 PBKDF2), snapshots atómicos de SQLite y temporizador nativo systemd de consumo cero en reposo.
 * **[Guía de Reproducción y Despliegue](docs/GUIA_DE_REPRODUCCION.md):** Manual paso a paso para compilar binarios nativos, construir imágenes y operar instancias.
 * **[Bitácora Histórica y Estado del Proyecto](docs/BITACORA_Y_ESTADO.md):** Registro cronológico detallado de todos los retos técnicos (§1 a §49), causas raíz, tombstones resueltos y métricas.
 

@@ -46,7 +46,12 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
 9. **[AUDITORIA_FRONTEND_WEB.md](./AUDITORIA_FRONTEND_WEB.md)**
    * Auditoría integral de calidad del frontend web, modularización de componentes monolíticos y optimización con TanStack Query v5.
 
-10. **[USB_MOBILE_TRANSPORT_ROADMAP.md](./USB_MOBILE_TRANSPORT_ROADMAP.md)**
+10. **[ARQUITECTURA_BACKUPS_AUTOMATION.md](./ARQUITECTURA_BACKUPS_AUTOMATION.md)**
+   * Resguardo criptográfico de identidades de hardware (IMEI, MAC, serial) y base de datos `proteomesh.db`.
+   * Cifrado simétrico AES-256-CBC con PBKDF2, snapshots atómicos SQLite, política de rotación activa.
+   * Automatización desatendida mediante temporizadores de usuario de systemd (`systemd --user`) con consumo de recursos cero en reposo y panel de control web.
+
+11. **[USB_MOBILE_TRANSPORT_ROADMAP.md](./USB_MOBILE_TRANSPORT_ROADMAP.md)**
    * Diseño de Fase 2 para usar teléfonos físicos por USB como módems de datos móviles.
    * Reutilización de `Transport(ABC)` e `IpLeaseRegistry`, rotación de IP por modo avión y enrutamiento por `usbX`.
 
