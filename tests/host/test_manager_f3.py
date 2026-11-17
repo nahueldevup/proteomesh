@@ -43,11 +43,19 @@ class ResourceLimitsTest(unittest.TestCase):
                     self.assertIn("Formato de --memory inválido", str(ctx.exception))
 
     def test_valid_cpus(self):
-        self.assertEqual(validate_limits(cpus="2.0"), {"cpus": "2.0"})
+        # QW-1: "2.0" ya NO es válido (activa throttling CFS en lugar de pinning).
+        # Los formatos válidos son listas y rangos SMT-aware.
         self.assertEqual(validate_limits(cpus="1"), {"cpus": "1"})
         self.assertEqual(validate_limits(cpus="0-3"), {"cpus": "0-3"})
+        self.assertEqual(validate_limits(cpus="1,9,2,10"), {"cpus": "1,9,2,10"})
+        self.assertEqual(validate_limits(cpus="0,8"), {"cpus": "0,8"})
 
     def test_rejects_invalid_cpus(self):
+        # QW-1: "2.0" rechazado con mensaje específico sobre CFS.
+        with self.assertRaises(SystemExit) as ctx:
+            validate_limits(cpus="2.0")
+        self.assertIn("CFS", str(ctx.exception))
+
         for bad in ("abc", "2.0.0", "-1"):
             with self.subTest(bad=bad):
                 with self.assertRaises(SystemExit) as ctx:
@@ -160,7 +168,7 @@ class CreateFromBundleTest(unittest.TestCase):
                 "template": None,
                 "port": 5592,
                 "memory": "4g",
-                "cpus": "2.0",
+                "cpus": "1,9",   # QW-1: cpuset SMT-aware en lugar del flotante "2.0"
                 "pids_limit": 2048,
                 "seed": None,
                 "start": False,
@@ -173,7 +181,7 @@ class CreateFromBundleTest(unittest.TestCase):
             self.assertTrue(meta_file.exists())
             meta = json.loads(meta_file.read_text())
             self.assertEqual(meta["limits"]["memory"], "4g")
-            self.assertEqual(meta["limits"]["cpus"], "2.0")
+            self.assertEqual(meta["limits"]["cpus"], "1,9")   # QW-1: SMT-aware
             self.assertEqual(meta["limits"]["pids_limit"], 2048)
 
             profile_file = inst_target / "profile.json"

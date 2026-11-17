@@ -39,11 +39,60 @@ CLEAN_DATA_DIR = BASE_DIR / "data-clean"
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 MAC_RE = re.compile(r"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
 RESOURCE_MEM_RE = re.compile(r"^\d+[bkmgBKMG]$")
-RESOURCE_CPUS_RE = re.compile(r"^(\d+(\.\d+)?|\d+-\d+(,\d+-\d+)*)$")
+# QW-1: Regex corregida — acepta listas con coma (ej: 0,8,1,9,2,10) además de rangos (0-3)
+# y descarta decimales flotantes (2.0) que causan throttling CFS en lugar de pinning real.
+RESOURCE_CPUS_RE = re.compile(r"^(\d+(-\d+)?)(,\d+(-\d+)?)*$")
+
 BUNDLE_FORMAT_VERSION = 1
 RUNTIME_VERSION = "1.0"
 DEFAULT_INSTANCE_MEMORY = os.getenv("PROTEOMESH_DEFAULT_MEMORY", "2560m")
 DEFAULT_INSTANCE_SWAP = os.getenv("PROTEOMESH_DEFAULT_SWAP", "700m")
+
+# QW-1: CPU pinning con conciencia SMT (Zen 3, 1 CCX, 8C/16T).
+# Topología: núcleo físico N → hilos lógicos N y N+8.
+# Cores reservados para host/API/Docker: 0,8 y 7,15.
+# Slots de instancias: (1,9), (2,10), (3,11), (4,12), (5,13), (6,14) → 6 slots × 2 núcleos = 12 hilos.
+PROTEOMESH_DEFAULT_CPUSET = os.getenv("PROTEOMESH_DEFAULT_CPUSET", "1,9,2,10")
+_CPUSET_SLOTS = [
+    "1,9",
+    "2,10",
+    "3,11",
+    "4,12",
+    "5,13",
+    "6,14",
+]
+
+
+def allocate_cpuset_slot(inst_name: str) -> str:
+    """Asigna el cpuset SMT-aware con menor solapamiento disponible.
+
+    QW-1: Inspecciona los meta.json de todas las instancias excepto inst_name,
+    colecta los cpusets en uso y devuelve el primer slot libre de _CPUSET_SLOTS.
+    Si todos están ocupados, devuelve PROTEOMESH_DEFAULT_CPUSET como fallback.
+
+    La asignación no es persistente en sí misma; el llamador debe guardarla en
+    meta.json junto al resto de los límites de la instancia.
+    """
+    used: set[str] = set()
+    if INSTANCES_DIR.exists():
+        for meta_path in INSTANCES_DIR.glob("*/meta.json"):
+            if meta_path.parent.name == inst_name:
+                continue
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                cpuset = meta.get("limits", {}).get("cpus", "")
+                if cpuset:
+                    used.add(cpuset.strip())
+            except Exception:
+                pass
+
+    for slot in _CPUSET_SLOTS:
+        if slot not in used:
+            return slot
+
+    # Todos los slots están ocupados — usar el default configurado
+    return PROTEOMESH_DEFAULT_CPUSET
 
 
 def parse_mem_to_mb(mem_str: str) -> int:
@@ -128,10 +177,18 @@ def validate_limits(
 
     if cpus:
         c = str(cpus).strip()
+        # QW-1: Detectar y rechazar decimales flotantes (ej: "2.0") que activan
+        # throttling CFS en lugar de pinning real de hilos lógicos.
+        if re.fullmatch(r"\d+\.\d+", c):
+            raise SystemExit(
+                f"[!] Error: --cpus='{c}' es un decimal flotante (modo CFS). "
+                "Para CPU pinning SMT-aware usá listas o rangos: ej. '1,9,2,10' o '0-3'. "
+                "Ejecutá 'instance-manager allocate-cpuset <nombre>' para obtener un slot libre."
+            )
         if not RESOURCE_CPUS_RE.fullmatch(c):
             raise SystemExit(
                 f"[!] Error: Formato de --cpus inválido: {cpus!r} "
-                "(ejemplos válidos: 2.0, 1, 0-3)."
+                "(ejemplos válidos: 1,9,2,10  0-3  1,9)."
             )
         limits["cpus"] = c
 

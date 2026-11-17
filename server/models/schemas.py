@@ -177,8 +177,13 @@ class TemplateItem(BaseModel):
 # ── Modelos de Recursos Docker ───────────────────────────────────────────────
 class LimitsSchema(BaseModel):
     memory: Optional[str] = Field(default="2560m", description="Límite de memoria RAM (ej: 2560m, 4g, 2048m)")
-    cpus: Optional[str] = Field(default="0-3", description="Asignación de CPU (ej: 0-3 para CPU pinning, o 2.0)")
+    # QW-8: swap expuesto en la API Web (antes ausente, sólo lo manejaba la CLI)
+    swap: Optional[str] = Field(default="700m", description="Límite de swap (ej: 700m, 1200m). Se suma a memory para docker --memory-swap.")
+    # QW-1: default cpuset SMT-aware en lugar del hardcoded '0-3'
+    cpus: Optional[str] = Field(default="1,9,2,10", description="CPU pinning SMT-aware (ej: 1,9,2,10 o 0-3). Evitar decimales flotantes como 2.0.")
     pids_limit: Optional[int] = Field(default=None, description="Límite de PIDs (recomendado: None o >=4096)")
+    # QW-8: flag --dense para flotas livianas (2048m RAM + 1200m swap)
+    dense: Optional[bool] = Field(default=False, description="Modo denso: 2048m RAM + 1200m swap (flotas livianas, mayor riesgo de OOM bajo apps pesadas)")
 
 
 # ── Modelos de Control Interactivo y Pantalla ────────────────────────────────

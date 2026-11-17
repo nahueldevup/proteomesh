@@ -260,8 +260,15 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         cmd.extend(["--seed", str(req.seed)])
 
     if req.limits:
-        if req.limits.memory:
-            cmd.extend(["--memory", req.limits.memory])
+        # QW-8: modo --dense tiene precedencia sobre memory/swap individuales
+        if getattr(req.limits, "dense", False):
+            cmd.extend(["--memory", "2048m", "--swap", "1200m"])
+        else:
+            if req.limits.memory:
+                cmd.extend(["--memory", req.limits.memory])
+            # QW-8: --swap ahora se propaga desde la Web igual que desde la CLI
+            if req.limits.swap:
+                cmd.extend(["--swap", req.limits.swap])
         if req.limits.cpus:
             cmd.extend(["--cpus", req.limits.cpus])
         if req.limits.pids_limit:
