@@ -75,7 +75,7 @@ Para evitar daemonizar procesos pesados en Node.js, Python o Docker en espera co
 ### 4.1. Ventajas sobre daemons convencionales
 1. **Consumo de recursos cero:** Mientras el temporizador espera, el consumo de CPU es del 0% y el de memoria RAM es de 0 MB (el kernel de Linux maneja el temporizador en su tabla de eventos de temporización estándar).
 2. **Ciclo de vida efímero:** Al llegar la hora exacta (`OnCalendar`), systemd instancia el servicio `proteomesh-backup.service`, ejecuta el script durante ~2 segundos, realiza el snapshot y se apaga inmediatamente.
-3. **Persistencia entre reinicios:** La regla `Persistent=true` asegura que si el equipo estuvo apagado a la hora programada, el respaldo se ejecute automáticamente ni bien el sistema arranque.
+3. **Comportamiento predecible ante reinicios:** `Persistent=false` garantiza que el timer **no** ejecute un backup al arrancar si la hora programada pasó mientras la máquina o el servidor estaban apagados. Solo se dispara a la hora exacta programada.
 4. **Almacenamiento seguro de llaves:** La clave de cifrado desatendido se resguarda en `~/.config/proteomesh/backup.key` con permisos de acceso restringidos (`chmod 600`).
 5. **Fallback transparente a Cron:** Si el entorno no soporta systemd de usuario (por ejemplo, contenedores Docker sin systemd init), el script detecta automáticamente la ausencia de `systemctl` y configura una entrada equivalente en `crontab`.
 
@@ -84,19 +84,22 @@ Para evitar daemonizar procesos pesados en Node.js, Python o Docker en espera co
   ```ini
   [Unit]
   Description=Trigger ProteoMesh Automated Bundles & Hardware Backup
-  
+
   [Timer]
   OnCalendar=*-*-* 03:00:00
-  Persistent=true
-  
+  Persistent=false
+  RandomizedDelaySec=120
+
   [Install]
   WantedBy=timers.target
   ```
+  > **Nota:** `Persistent=false` es intencional. Con `Persistent=true`, systemd detecta que "se perdió" un evento durante el tiempo que la máquina estuvo apagada y ejecuta el backup inmediatamente al arrancar. Con `false`, el timer solo se dispara a la hora exacta programada.
+
 - **Service (`~/.config/systemd/user/proteomesh-backup.service`):**
   ```ini
   [Unit]
   Description=ProteoMesh Automated Backup of Bundles & Hardware Identities
-  
+
   [Service]
   Type=oneshot
   WorkingDirectory=/path/to/redroid-integrity-lab
@@ -143,3 +146,69 @@ El subsistema cuenta con cobertura automatizada en `pytest`:
    - Flujo integral de endpoints API: listado, creación, verificación, descarga y eliminación.
    - Bloqueo contra Path Traversal.
    - Configuración, consulta y disparo de timer a través de la API.
+
+---
+
+## 7. Persistencia de Preferencias del Temporizador
+
+### 7.1. Problema anterior
+
+Al deshabilitar el timer (`--disable`), el script eliminaba físicamente las unidades `.service` y `.timer` de systemd sin guardar los parámetros elegidos. Al volver a consultar el estado (`--status --json`), la API devolvía valores por defecto vacíos y la UI del panel web revertía todos los campos a sus valores iniciales (frecuencia: diaria, hora: 03:00, retención: 5, cifrado: deshabilitado).
+
+### 7.2. Solución: `backup_schedule.json`
+
+El script ahora persiste la configuración en dos ubicaciones redundantes:
+- **Primaria:** `instances/backup_schedule.json` (junto a los datos del proyecto)
+- **Secundaria:** `~/.config/proteomesh/backup_schedule.json` (en el directorio de configuración del usuario)
+
+```json
+{
+  "enabled": false,
+  "frequency": "weekly",
+  "time": "04:15",
+  "keep": 4,
+  "encrypted": false
+}
+```
+
+El campo `"enabled": false` registra que el timer está deshabilitado, pero todos los demás parámetros (frecuencia, hora, retención, cifrado) se conservan intactos. Al habilitar el timer nuevamente (`--enable`), el script carga estos valores como punto de partida.
+
+### 7.3. Flujo de `load_schedule_config` / `save_schedule_config`
+
+```
+Script invocado con cualquier acción
+  ↓
+load_schedule_config()
+  → busca instances/backup_schedule.json
+  → fallback: ~/.config/proteomesh/backup_schedule.json
+  → aplica FREQUENCY, SCHEDULE_TIME, KEEP_COUNT, ENCRYPT como defaults
+
+Procesar argumentos CLI (sobreescriben los defaults cargados)
+
+Ejecutar acción (--enable / --disable / --status / --trigger-now)
+
+save_schedule_config(enabled, freq, time, keep, enc)
+  → escribe instances/backup_schedule.json
+  → copia a ~/.config/proteomesh/backup_schedule.json
+```
+
+### 7.4. Corrección en el Endpoint de la API
+
+`PUT /api/v1/backups/schedule` con `enabled: false` ahora pasa todos los parámetros actuales al script incluso al deshabilitar:
+
+```python
+if not payload.enabled:
+    cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--disable"]
+    if payload.frequency == "weekly":
+        cmd.append("--weekly")
+    elif payload.frequency == "daily":
+        cmd.append("--daily")
+    if payload.time and re.match(r"^([01][0-9]|2[0-3]):[0-5][0-9]$", payload.time):
+        cmd.extend(["--time", payload.time])
+    if payload.keep:
+        cmd.extend(["--keep", str(payload.keep)])
+    if payload.no_encrypt:
+        cmd.append("--no-encrypt")
+```
+
+Esto garantiza que `save_schedule_config` reciba los parámetros correctos y la próxima consulta de estado devuelva los valores reales, no los por defecto.

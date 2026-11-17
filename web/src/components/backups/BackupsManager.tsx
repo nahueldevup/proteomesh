@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -30,6 +30,33 @@ import { api } from '../../lib/api';
 import type { BackupItem } from '../../types';
 import { cn } from '../../lib/utils';
 import { IconBtn } from '../ui/IconBtn';
+
+const BACKUP_SCHEDULE_STORAGE_KEY = 'pm-backup-schedule-cache';
+
+const loadLocalSchedulePreferences = () => {
+  try {
+    const raw = localStorage.getItem(BACKUP_SCHEDULE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        active: Boolean(parsed.active),
+        frequency: (parsed.frequency === 'weekly' ? 'weekly' : 'daily') as 'daily' | 'weekly',
+        time: parsed.time || '03:00',
+        keep: Number(parsed.keep) || 5,
+        encrypted: Boolean(parsed.encrypted),
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    active: true,
+    frequency: 'daily' as 'daily' | 'weekly',
+    time: '03:00',
+    keep: 5,
+    encrypted: false,
+  };
+};
 
 export function BackupsManager() {
   const queryClient = useQueryClient();
@@ -69,16 +96,42 @@ export function BackupsManager() {
   const { data: schedule } = useBackupSchedule();
 
   // Estados del modal de programación
+  const cachedSched = useMemo(() => loadLocalSchedulePreferences(), []);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [schedEnabled, setSchedEnabled] = useState(true);
-  const [schedFrequency, setSchedFrequency] = useState<'daily' | 'weekly'>('daily');
-  const [schedTime, setSchedTime] = useState('03:00');
-  const [schedKeep, setSchedKeep] = useState(5);
-  const [schedEncrypt, setSchedEncrypt] = useState(false);
+  const [schedEnabled, setSchedEnabled] = useState(cachedSched.active);
+  const [schedFrequency, setSchedFrequency] = useState<'daily' | 'weekly'>(cachedSched.frequency);
+  const [schedTime, setSchedTime] = useState(cachedSched.time);
+  const [schedKeep, setSchedKeep] = useState(cachedSched.keep);
+  const [schedEncrypt, setSchedEncrypt] = useState(cachedSched.encrypted);
   const [schedPassphrase, setSchedPassphrase] = useState('');
   const [showSchedPass, setShowSchedPass] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [isTriggeringNow, setIsTriggeringNow] = useState(false);
+
+  // Sincronizar estado cuando se recibe la configuración real del backend
+  useEffect(() => {
+    if (schedule) {
+      setSchedEnabled(schedule.active);
+      setSchedFrequency(schedule.frequency === 'weekly' ? 'weekly' : 'daily');
+      setSchedTime(schedule.time || '03:00');
+      setSchedKeep(schedule.keep || 5);
+      setSchedEncrypt(schedule.encrypted);
+      try {
+        localStorage.setItem(
+          BACKUP_SCHEDULE_STORAGE_KEY,
+          JSON.stringify({
+            active: schedule.active,
+            frequency: schedule.frequency,
+            time: schedule.time,
+            keep: schedule.keep,
+            encrypted: schedule.encrypted,
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }, [schedule]);
 
   // Filtrado de backups
   const filteredBackups = useMemo(() => {
@@ -250,6 +303,20 @@ export function BackupsManager() {
           ? 'Programación de respaldos guardada y activada'
           : 'Programación de respaldos deshabilitada'
       );
+      try {
+        localStorage.setItem(
+          BACKUP_SCHEDULE_STORAGE_KEY,
+          JSON.stringify({
+            active: schedEnabled,
+            frequency: schedFrequency,
+            time: schedTime,
+            keep: schedKeep,
+            encrypted: schedEncrypt,
+          })
+        );
+      } catch {
+        // ignore
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.backupSchedule });
       setIsScheduleOpen(false);
     } catch (err: any) {

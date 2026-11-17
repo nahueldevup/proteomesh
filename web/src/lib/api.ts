@@ -43,6 +43,7 @@ import type {
   RestoreBackupResult,
   BackupScheduleStatus,
   UpdateBackupSchedulePayload,
+  CreateDevicePreferences,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -631,6 +632,21 @@ export const api = {
       method: 'POST',
     });
     return handleResponse<{ status: string; message: string }>(res);
+  },
+
+  // ── Preferencias y Ajustes Persistentes ────────────────────────────────────
+  async getCreateDevicePreferences(): Promise<CreateDevicePreferences> {
+    const res = await fetch(`${API_BASE}/settings/create-device`);
+    return handleResponse<CreateDevicePreferences>(res);
+  },
+
+  async updateCreateDevicePreferences(payload: CreateDevicePreferences): Promise<CreateDevicePreferences> {
+    const res = await fetch(`${API_BASE}/settings/create-device`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<CreateDevicePreferences>(res);
   },
 
 };

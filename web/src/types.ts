@@ -458,3 +458,11 @@ export interface UpdateBackupSchedulePayload {
   no_encrypt: boolean;
   passphrase?: string;
 }
+
+export interface CreateDevicePreferences {
+  is_dense: boolean;
+  memory_limit: string;
+  cpu_limit: string;
+  start_immediately: boolean;
+}
+

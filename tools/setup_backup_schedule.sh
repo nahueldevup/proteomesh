@@ -17,6 +17,8 @@ SERVICE_NAME="proteomesh-backup.service"
 TIMER_NAME="proteomesh-backup.timer"
 SERVICE_PATH="${SYSTEMD_USER_DIR}/${SERVICE_NAME}"
 TIMER_PATH="${SYSTEMD_USER_DIR}/${TIMER_NAME}"
+SCHEDULE_CONFIG_FILE="${REPO_DIR}/instances/backup_schedule.json"
+USER_CONFIG_FILE="${CONFIG_DIR}/backup_schedule.json"
 
 # Colores de salida
 COLOR_CYAN="\033[1;36m"
@@ -88,6 +90,54 @@ PASS_FILE=""
 NEW_PASSPHRASE=""
 USE_CRON=0
 OUTPUT_JSON=0
+
+# Carga de configuración previa persistida
+load_schedule_config() {
+    local target=""
+    if [ -f "${SCHEDULE_CONFIG_FILE}" ]; then
+        target="${SCHEDULE_CONFIG_FILE}"
+    elif [ -f "${USER_CONFIG_FILE}" ]; then
+        target="${USER_CONFIG_FILE}"
+    fi
+
+    if [ -n "${target}" ]; then
+        local read_freq read_time read_keep read_enc
+        read_freq="$(python3 -c 'import json; d=json.load(open("'"${target}"'")); print(d.get("frequency","daily"))' 2>/dev/null || true)"
+        read_time="$(python3 -c 'import json; d=json.load(open("'"${target}"'")); print(d.get("time","03:00"))' 2>/dev/null || true)"
+        read_keep="$(python3 -c 'import json; d=json.load(open("'"${target}"'")); print(d.get("keep", 5))' 2>/dev/null || true)"
+        read_enc="$(python3 -c 'import json; d=json.load(open("'"${target}"'")); print("true" if d.get("encrypted", True) else "false")' 2>/dev/null || true)"
+
+        if [ -n "${read_freq}" ]; then FREQUENCY="${read_freq}"; fi
+        if [ -n "${read_time}" ]; then SCHEDULE_TIME="${read_time}"; fi
+        if [ -n "${read_keep}" ]; then KEEP_COUNT="${read_keep}"; fi
+        if [ "${read_enc}" = "false" ]; then ENCRYPT=0; fi
+    fi
+}
+
+save_schedule_config() {
+    local enabled="$1"
+    local freq="$2"
+    local time_val="$3"
+    local keep="$4"
+    local enc="$5"
+
+    mkdir -p "$(dirname "${SCHEDULE_CONFIG_FILE}")"
+    mkdir -p "${CONFIG_DIR}"
+
+    cat <<EOF > "${SCHEDULE_CONFIG_FILE}"
+{
+  "enabled": ${enabled},
+  "frequency": "${freq}",
+  "time": "${time_val}",
+  "keep": ${keep},
+  "encrypted": ${enc}
+}
+EOF
+    cp "${SCHEDULE_CONFIG_FILE}" "${USER_CONFIG_FILE}" 2>/dev/null || true
+}
+
+# Cargar configuración persistida antes de procesar argumentos
+load_schedule_config
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -200,11 +250,11 @@ action_status() {
     fi
 
     if [ "${OUTPUT_JSON}" -eq 1 ]; then
-        local freq="daily"
-        local sched_time="03:00"
+        local freq="${FREQUENCY}"
+        local sched_time="${SCHEDULE_TIME}"
         local cal_spec=""
-        local keep=5
-        local enc="true"
+        local keep="${KEEP_COUNT}"
+        local enc=$( [ "${ENCRYPT}" -eq 1 ] && echo "true" || echo "false" )
         local next_run=""
         local last_run=""
 
@@ -213,7 +263,7 @@ action_status() {
             if echo "${cal_spec}" | grep -qE "(Mon|weekly)"; then
                 freq="weekly"
             fi
-            sched_time="$(echo "${cal_spec}" | grep -oE "([01][0-9]|2[0-3]):[0-5][0-9]" || echo "03:00")"
+            sched_time="$(echo "${cal_spec}" | grep -oE "([01][0-9]|2[0-3]):[0-5][0-9]" || echo "${sched_time}")"
         fi
 
         if [ -f "${SERVICE_PATH}" ]; then
@@ -300,12 +350,8 @@ action_disable() {
         fi
     fi
 
-    if [ -f "${TIMER_PATH}" ]; then
-        rm -f "${TIMER_PATH}"
-    fi
-    if [ -f "${SERVICE_PATH}" ]; then
-        rm -f "${SERVICE_PATH}"
-    fi
+    # Guardar configuración en estado inactivo pero preservando los parámetros elegidos
+    save_schedule_config "false" "${FREQUENCY}" "${SCHEDULE_TIME}" "${KEEP_COUNT}" $( [ "${ENCRYPT}" -eq 1 ] && echo "true" || echo "false" )
 
     if command -v systemctl >/dev/null 2>&1; then
         systemctl --user daemon-reload 2>/dev/null || true
@@ -453,12 +499,15 @@ Documentation=https://github.com/proteomesh/redroid-integrity-lab
 
 [Timer]
 OnCalendar=${calendar_spec}
-Persistent=true
+Persistent=false
 RandomizedDelaySec=120
 
 [Install]
 WantedBy=timers.target
 EOF
+
+    # Guardar configuración en estado activo
+    save_schedule_config "true" "${FREQUENCY}" "${SCHEDULE_TIME}" "${KEEP_COUNT}" $( [ "${ENCRYPT}" -eq 1 ] && echo "true" || echo "false" )
 
     log_info "Recargando demonio de usuario de systemd..."
     systemctl --user daemon-reload

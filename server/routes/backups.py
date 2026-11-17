@@ -278,6 +278,16 @@ def update_backup_schedule(payload: UpdateBackupSchedulePayload) -> BackupSchedu
     """Activa, modifica o desactiva la programación periódica desatendida."""
     if not payload.enabled:
         cmd = [str(SETUP_SCHEDULE_SCRIPT_PATH), "--disable"]
+        if payload.frequency == "weekly":
+            cmd.append("--weekly")
+        elif payload.frequency == "daily":
+            cmd.append("--daily")
+        if payload.time and re.match(r"^([01][0-9]|2[0-3]):[0-5][0-9]$", payload.time):
+            cmd.extend(["--time", payload.time])
+        if payload.keep:
+            cmd.extend(["--keep", str(payload.keep)])
+        if payload.no_encrypt:
+            cmd.append("--no-encrypt")
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
         if proc.returncode != 0:
             raise HTTPException(

@@ -32,6 +32,7 @@ class DbPersistenceTest(unittest.TestCase):
         self.assertIn(2, first_run)
         self.assertIn(3, first_run)
         self.assertIn(4, first_run)
+        self.assertIn(5, first_run)
 
         # Segunda corrida no debe reaplicar nada
         second_run = run_migrations(self.db_path)
@@ -40,7 +41,7 @@ class DbPersistenceTest(unittest.TestCase):
         with get_connection(self.db_path) as conn:
             cur = conn.execute("SELECT version FROM _schema_version ORDER BY version ASC")
             versions = [r[0] for r in cur.fetchall()]
-            self.assertEqual(versions, [1, 2, 3, 4])
+            self.assertEqual(versions, [1, 2, 3, 4, 5])
 
     def test_json_bootstrap_and_service(self):
         """Verifica la migración automática de datos desde un archivo JSON legacy."""

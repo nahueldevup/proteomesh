@@ -19,6 +19,7 @@ import type {
   Carrier,
   CustomLocation,
   CreateInstancePayload,
+  CreateDevicePreferences,
 } from '../types';
 import { cn, getErrorMessage } from '../lib/utils';
 import {
@@ -41,6 +42,31 @@ interface CreateDeviceModalProps {
 const EMPTY_LOCATIONS: CustomLocation[] = [];
 const EMPTY_PINNED: string[] = [];
 
+const PREFERENCES_STORAGE_KEY = 'pm-create-device-preferences';
+
+const loadLocalPreferences = (): CreateDevicePreferences => {
+  try {
+    const raw = localStorage.getItem(PREFERENCES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        is_dense: Boolean(parsed.is_dense),
+        memory_limit: parsed.memory_limit || (parsed.is_dense ? '2048m' : '2.5g'),
+        cpu_limit: parsed.cpu_limit || 'auto',
+        start_immediately: parsed.start_immediately !== undefined ? Boolean(parsed.start_immediately) : true,
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    is_dense: false,
+    memory_limit: '2.5g',
+    cpu_limit: 'auto',
+    start_immediately: true,
+  };
+};
+
 export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   isOpen,
   onClose,
@@ -57,7 +83,6 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   const [selectedModel, setSelectedModel] = useState('samsung/a54x');
   const [selectedCarrier, setSelectedCarrier] = useState('ar_personal');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [startImmediately, setStartImmediately] = useState(true);
 
   // Generador de número de Formosa (3704 / 3705 + 6 dígitos)
   const generateFormosaNumber = () => {
@@ -66,10 +91,55 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
     return `${prefix}${suffix}`;
   };
 
-  // Limits
-  const [isDense, setIsDense] = useState(false);
-  const [memoryLimit, setMemoryLimit] = useState('2.5g');
-  const [cpuLimit, setCpuLimit] = useState('auto');
+  // Initial persistent preferences
+  const initialPrefs = useMemo(() => loadLocalPreferences(), []);
+  const [startImmediately, setStartImmediately] = useState(initialPrefs.start_immediately);
+  const [isDense, setIsDense] = useState(initialPrefs.is_dense);
+  const [memoryLimit, setMemoryLimit] = useState(initialPrefs.memory_limit);
+  const [cpuLimit, setCpuLimit] = useState(initialPrefs.cpu_limit);
+
+  const persistPreferences = (partial: Partial<CreateDevicePreferences>) => {
+    const nextPrefs: CreateDevicePreferences = {
+      is_dense: partial.is_dense !== undefined ? partial.is_dense : isDense,
+      memory_limit: partial.memory_limit !== undefined ? partial.memory_limit : memoryLimit,
+      cpu_limit: partial.cpu_limit !== undefined ? partial.cpu_limit : cpuLimit,
+      start_immediately: partial.start_immediately !== undefined ? partial.start_immediately : startImmediately,
+    };
+    try {
+      localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(nextPrefs));
+    } catch {
+      // ignore
+    }
+    api.updateCreateDevicePreferences(nextPrefs).catch((err) => {
+      console.warn('[CreateDeviceModal] No se pudieron guardar las preferencias en el servidor:', err);
+    });
+  };
+
+  const handleSetDense = (dense: boolean) => {
+    userInteractedWithPrefsRef.current = true;
+    setIsDense(dense);
+    const newMem = dense ? '2048m' : (memoryLimit === '2048m' ? '2.5g' : memoryLimit);
+    setMemoryLimit(newMem);
+    persistPreferences({ is_dense: dense, memory_limit: newMem });
+  };
+
+  const handleSetMemoryLimit = (mem: string) => {
+    userInteractedWithPrefsRef.current = true;
+    setMemoryLimit(mem);
+    persistPreferences({ memory_limit: mem });
+  };
+
+  const handleSetCpuLimit = (cpu: string) => {
+    userInteractedWithPrefsRef.current = true;
+    setCpuLimit(cpu);
+    persistPreferences({ cpu_limit: cpu });
+  };
+
+  const handleSetStartImmediately = (start: boolean) => {
+    userInteractedWithPrefsRef.current = true;
+    setStartImmediately(start);
+    persistPreferences({ start_immediately: start });
+  };
 
   // Location
   const [latitude, setLatitude] = useState(-34.603722);
@@ -99,6 +169,9 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
   // Prevención de reinicio: Inicializar SOLO una vez al pasar de cerrado a abierto
   const prevIsOpenRef = useRef(false);
   const [defaultLocationApplied, setDefaultLocationApplied] = useState(false);
+  // Guard contra race condition: si el usuario ya tocó prefs antes de que llegue el servidor, no sobreescribir
+  const serverPrefsFetchedRef = useRef(false);
+  const userInteractedWithPrefsRef = useRef(false);
 
   // Inicialización de ubicación predeterminada en render (sin sincronización forzada en efecto)
   if (isOpen && locCatalog?.default_location && !defaultLocationApplied) {
@@ -132,9 +205,36 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
       setPort(nextPort);
       setName(`phone-${String(nextPort).slice(-2)}`);
       setPhoneNumber(generateFormosaNumber());
-      setIsDense(false);
-      setMemoryLimit('2.5g');
-      setCpuLimit('auto');
+
+      const prefs = loadLocalPreferences();
+      setIsDense(prefs.is_dense);
+      setMemoryLimit(prefs.is_dense ? '2048m' : prefs.memory_limit);
+      setCpuLimit(prefs.cpu_limit);
+      setStartImmediately(prefs.start_immediately);
+
+      // Resetear guards de interacción para esta apertura del modal
+      serverPrefsFetchedRef.current = false;
+      userInteractedWithPrefsRef.current = false;
+
+      api.getCreateDevicePreferences()
+        .then((serverPrefs) => {
+          if (serverPrefs && !userInteractedWithPrefsRef.current) {
+            // Solo sobreescribir si el usuario NO tocó nada mientras esperábamos
+            setIsDense(serverPrefs.is_dense);
+            setMemoryLimit(serverPrefs.is_dense ? '2048m' : serverPrefs.memory_limit);
+            setCpuLimit(serverPrefs.cpu_limit);
+            setStartImmediately(serverPrefs.start_immediately);
+            try {
+              localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(serverPrefs));
+            } catch {
+              // ignore
+            }
+          }
+          serverPrefsFetchedRef.current = true;
+        })
+        .catch((err) => {
+          console.warn('[CreateDeviceModal] No se pudieron cargar las preferencias del servidor:', err);
+        });
 
       if (presetModel) {
         setSelectedModel(presetModel);
@@ -458,13 +558,13 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
                 {activeStep === 'review' && (
                   <StepResourcesSummary
                     isDense={isDense}
-                    setIsDense={setIsDense}
+                    setIsDense={handleSetDense}
                     memoryLimit={memoryLimit}
-                    setMemoryLimit={setMemoryLimit}
+                    setMemoryLimit={handleSetMemoryLimit}
                     cpuLimit={cpuLimit}
-                    setCpuLimit={setCpuLimit}
+                    setCpuLimit={handleSetCpuLimit}
                     startImmediately={startImmediately}
-                    setStartImmediately={setStartImmediately}
+                    setStartImmediately={handleSetStartImmediately}
                     name={name}
                     port={port}
                     selectedModel={selectedModel}
