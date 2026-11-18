@@ -251,8 +251,6 @@ function areDeviceCardPropsEqual(prev: DeviceCardProps, next: DeviceCardProps): 
     pi.location?.city !== ni.location?.city ||
     pi.location?.latitude !== ni.location?.latitude ||
     pi.location?.longitude !== ni.location?.longitude ||
-    pi.proxy?.host !== ni.proxy?.host ||
-    pi.proxy?.port !== ni.proxy?.port ||
     pi.limits?.memory !== ni.limits?.memory ||
     pi.limits?.cpus !== ni.limits?.cpus
   ) {

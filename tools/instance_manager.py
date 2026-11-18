@@ -1784,20 +1784,19 @@ def cmd_start_instance(args):
         print(f"[*] Validando y aplicando ruta de red ({meta['proxy'].get('type', 'socks5')})...")
         try:
             import asyncio
-            from server.services.proxy_service import proxy_service
-            asyncio.run(proxy_service.apply_from_meta(inst_name))
-            print(f"[✓] Ruta validada y enrutamiento transparente activado.")
+            from server.services.network.container_quarantine import quarantine_container, ContainerQuarantineError
+            asyncio.run(quarantine_container(inst_name))
+            print(f"[✓] Cuarentena interna aplicada.")
         except Exception as e:
-            from server.services.network.transport import QuarantineError
-            if isinstance(e, QuarantineError):
+            from server.services.network.container_quarantine import ContainerQuarantineError
+            if isinstance(e, ContainerQuarantineError):
                 print(f"[!] No se pudo aislar la instancia ({e}).")
                 print("[!] Sin cuarentena no se expone la IP real: se detiene el contenedor.")
                 subprocess.run(["docker", "rm", "-f", inst_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 subprocess.run(["adb", "disconnect", adb_s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 raise SystemExit(1)
-            print(f"[!] RUTA NO VALIDADA: {e}")
-            print(f"[!] La instancia sigue ENCENDIDA y EN CUARENTENA (sin salida a Internet).")
-            print(f"[!] ADB y scrcpy siguen operativos. Reintentá la asignación desde la sección Rutas.")
+            print(f"[!] CUARENTENA NO APLICADA: {e}")
+            print(f"[!] La instancia sigue ENCENDIDA y SIN CUARENTENA. Reintentá desde la sección Red.")
 
     net_ok, net_msg = container_network_ok(inst_name)
     if net_ok:

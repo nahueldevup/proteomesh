@@ -165,14 +165,12 @@ class DbPersistenceTest(unittest.TestCase):
         meta_disk = json.loads((inst_dir / "phone-alpha" / "meta.json").read_text(encoding="utf-8"))
         self.assertEqual(meta_disk["instance_name"], "phone-alpha")
 
-        # 2. Mutar meta atómicamente
-        def _add_proxy(m):
-            m["proxy"] = {"mode": "socks5", "host": "127.0.0.1", "port": 1080}
+        # 2. Mutar meta atómicamente (marcar APKs como provisioned)
+        def _mark_apks(m):
             m["default_apks_provisioned"] = True
 
-        store.mutate_meta("phone-alpha", _add_proxy)
+        store.mutate_meta("phone-alpha", _mark_apks)
         updated = store.get("phone-alpha")
-        self.assertEqual(updated["proxy"]["mode"], "socks5")
         self.assertTrue(store.is_apks_provisioned("phone-alpha"))
 
         # 3. Actualizar ubicación
@@ -242,41 +240,13 @@ class DbPersistenceTest(unittest.TestCase):
         self.assertFalse((inst_dir / "phone-usb" / "usb_tether.json").exists())
 
     def test_consolidated_stores_coexistence(self):
-        """Verifica que las 4 tiendas de datos consolidadas compartan la misma base SQLite."""
-        from server.services.network.route_store import RouteStore
-        from server.services.network.lease_registry import IpLeaseRegistry
+        """Verifica que las tiendas de datos consolidadas compartan la misma base SQLite."""
         from server.services.network.ip_ledger import IpLedger
         from server.services.apk_repository import ApkRepository
 
         init_db(self.db_path)
 
-        # 1. RouteStore
-        route_store = RouteStore(db_path=self.db_path)
-        created = route_store.create(
-            label="proxy-alpha",
-            host="127.0.0.1",
-            port=9050,
-            username="user",
-            password="pwd",
-            route_type="socks5",
-        )
-        self.assertIsNotNone(created)
-        rid = created["id"]
-        route = route_store.get(rid)
-        self.assertIsNotNone(route)
-        self.assertEqual(route["label"], "proxy-alpha")
-
-        # 2. IpLeaseRegistry
-        leases = IpLeaseRegistry(db_path=self.db_path)
-        lease_id = leases.reserve("190.2.3.4", "phone-alpha", "socks5", {"meta": "val"})
-        self.assertIsNotNone(lease_id)
-        active = leases.get_active_lease("phone-alpha")
-        self.assertIsNotNone(active)
-        self.assertEqual(active["exit_ip"], "190.2.3.4")
-        leases.release("phone-alpha")
-        self.assertIsNone(leases.get_active_lease("phone-alpha"))
-
-        # 3. IpLedger
+        # 1. IpLedger
         ledger = IpLedger(db_path=self.db_path)
         ledger.record_ip("200.10.20.30", "phone-beta", "usb-1", "Claro")
         allowed, reason, owner = ledger.check_ip_safety("200.10.20.30", "phone-beta")
@@ -284,7 +254,7 @@ class DbPersistenceTest(unittest.TestCase):
         allowed_other, _, _ = ledger.check_ip_safety("200.10.20.30", "phone-gamma")
         self.assertFalse(allowed_other)
 
-        # 4. ApkRepository
+        # 2. ApkRepository
         apk_dir = Path(self.temp_dir.name) / "apk_repo"
         repo = ApkRepository(repo_dir=apk_dir, db_path=self.db_path)
         apks = repo.list_apks()

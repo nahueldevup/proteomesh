@@ -16,14 +16,6 @@ export function FocusMetadataGrid({ instance, modelName, networkState }: FocusMe
     ['Operadora', instance.carrier ?? '—'],
     ['Serial', identity.serial ?? '—'],
     [
-      'Proxy',
-      instance.proxy?.exit_ip
-        ? `${instance.proxy.exit_ip} (${instance.proxy.type.toUpperCase()})`
-        : instance.proxy
-        ? `${instance.proxy.host}:${instance.proxy.port}`
-        : '—',
-    ],
-    [
       'Red USB',
       networkState?.public_ip
         ? `${networkState.public_ip} (Módem USB)`

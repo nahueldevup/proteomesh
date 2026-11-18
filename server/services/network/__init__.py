@@ -1,24 +1,16 @@
 """
-Módulo de subsistemas de red, transporte transparente y gestión de leases de IP.
+Módulo de subsistemas de red y aislamiento de contenedores.
 """
-from server.services.network.lease_registry import (
-    IpLeaseRegistry,
-    IpConflictError,
-    lease_registry,
-)
-from server.services.network.transport import (
-    Transport,
-    Socks5Transport,
-    QuarantineError,
-    ensure_kernel_net_modules,
+from server.services.network.container_quarantine import (
+    ContainerQuarantineError,
+    quarantine_container,
+    unquarantine_container,
+    is_quarantined,
 )
 
 __all__ = [
-    "IpLeaseRegistry",
-    "IpConflictError",
-    "lease_registry",
-    "Transport",
-    "Socks5Transport",
-    "QuarantineError",
-    "ensure_kernel_net_modules",
+    "ContainerQuarantineError",
+    "quarantine_container",
+    "unquarantine_container",
+    "is_quarantined",
 ]

@@ -144,9 +144,8 @@ async def quarantine_instance(name: str):
     try:
         res = await usb_network_service.release_network(name)
         try:
-            from server.services.proxy_service import proxy_service
-            await proxy_service.quarantine(name)
-            proxy_service._set_network_state(name, "quarantined")
+            from server.services.network.container_quarantine import quarantine_container
+            await quarantine_container(name)
         except Exception:
             pass
         return {

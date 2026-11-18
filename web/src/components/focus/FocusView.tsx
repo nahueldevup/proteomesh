@@ -30,7 +30,7 @@ import { cn, getErrorMessage } from '../../lib/utils';
 import { useExclusivePopover } from '../../lib/useExclusivePopover';
 import { FocusMetadataGrid } from './FocusMetadataGrid';
 import { FocusGpsTab } from './FocusGpsTab';
-import { FocusProxyTab } from './FocusProxyTab';
+import { FocusUsbNetworkTab } from './FocusUsbNetworkTab';
 import { FocusHealthTab } from './FocusHealthTab';
 
 interface FocusViewProps {
@@ -517,7 +517,7 @@ export default function FocusView({
 
             {/* Contenido: Tab Red USB & Cuarentena (NET-USB-001) */}
             {activeTab === 'network' && (
-              <FocusProxyTab
+              <FocusUsbNetworkTab
                 networkState={networkState}
                 networkBusy={networkBusy}
                 onRotateIp={handleRotateIp}

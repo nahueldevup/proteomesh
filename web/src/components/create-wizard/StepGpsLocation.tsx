@@ -7,7 +7,7 @@ import type { PinnedItem } from './wizardTypes';
 
 const MapPicker = lazy(() => import('../MapPicker').then((m) => ({ default: m.MapPicker })));
 
-export interface StepGpsProxyProps {
+export interface StepGpsLocationProps {
   city: string;
   setCity: (city: string) => void;
   latitude: number;
@@ -22,7 +22,7 @@ export interface StepGpsProxyProps {
   mapMarkers: MapPinItem[];
 }
 
-export function StepGpsProxy({
+export function StepGpsLocation({
   city,
   setCity,
   latitude,
@@ -35,7 +35,7 @@ export function StepGpsProxy({
   pinnedItems,
   customLocations,
   mapMarkers,
-}: StepGpsProxyProps) {
+}: StepGpsLocationProps) {
   return (
     <div className="space-y-4">
       {/* Mapa Interactivo Leaflet con Presets */}

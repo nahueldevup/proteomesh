@@ -28,7 +28,7 @@ import {
   type PinnedItem,
 } from './create-wizard/wizardTypes';
 import { StepDeviceSim } from './create-wizard/StepDeviceSim';
-import { StepGpsProxy } from './create-wizard/StepGpsProxy';
+import { StepGpsLocation } from './create-wizard/StepGpsLocation';
 import { StepResourcesSummary } from './create-wizard/StepResourcesSummary';
 
 interface CreateDeviceModalProps {
@@ -538,7 +538,7 @@ export const CreateDeviceModal: React.FC<CreateDeviceModalProps> = ({
 
                 {/* ── PASO 2: GEOLOCALIZACIÓN GPS & PROXY RESIDENCIAL ─────────────── */}
                 {activeStep === 'location' && (
-                  <StepGpsProxy
+                  <StepGpsLocation
                     city={city}
                     setCity={setCity}
                     latitude={latitude}
