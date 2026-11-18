@@ -6,14 +6,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Smartphone,
-  ExternalLink,
   MapPin,
   CheckCircle2,
   Sun,
   Moon,
-  Zap,
   Usb,
-  Camera,
 } from 'lucide-react';
 import type {
   Instance,
@@ -30,7 +27,6 @@ import { DeviceControlRail } from '../grid/DeviceControlRail';
 import { getPresetDisplay } from '../../lib/locations';
 import { toast } from 'sonner';
 import { cn, getErrorMessage } from '../../lib/utils';
-import { useFps } from '../../lib/scrcpy/useFps';
 import { useExclusivePopover } from '../../lib/useExclusivePopover';
 import { FocusMetadataGrid } from './FocusMetadataGrid';
 import { FocusGpsTab } from './FocusGpsTab';
@@ -52,11 +48,6 @@ interface FocusViewProps {
 }
 
 type SubTab = 'gps' | 'network' | 'health';
-
-function StreamFpsLabel({ adbPort }: { adbPort: number }) {
-  const fps = useFps(adbPort);
-  return <span>{fps} FPS</span>;
-}
 
 export default function FocusView({
   instance,
@@ -135,8 +126,6 @@ export default function FocusView({
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthReport, setHealthReport] = useState<{ ok: boolean; reports: string[] } | null>(null);
 
-  const [streamMode, setStreamMode] = useState<'scrcpy' | 'canvas'>('scrcpy');
-
   useEffect(() => {
     if (!instance) return;
     // Solo sincronizar automáticamente cuando cambia de contenedor seleccionado (evita que el polling de 5s resetee la selección del usuario)
@@ -168,17 +157,8 @@ export default function FocusView({
     }
   }, [instance, customCatalog.locations, customCatalog.default_location]);
 
-  // Estado del streaming ws-scrcpy: se consulta hasta que esté disponible
-  const supportsWebCodecs = typeof window !== 'undefined' && 'VideoDecoder' in window;
-  const streamPlayer = supportsWebCodecs ? 'webcodecs' : 'mse';
-  const { data: streamData } = useQuery({
-    queryKey: queryKeys.streamInfo(instanceName, streamPlayer),
-    queryFn: () => api.getStreamInfo(instanceName!, streamPlayer),
-    enabled: Boolean(instanceName) && Boolean(instance?.running),
-    refetchInterval: (query) => (query.state.data?.available ? false : 4000),
-    retry: false,
-  });
-  const streamInfo = instance?.running ? streamData : undefined;
+  // Estado del streaming ws-scrcpy: eliminado sondeo periódico (streamInfo/ExternalLink)
+  // El transporte WebSocket (puerto 8001) sigue activo vía ScrcpyLiveScreen → useScrcpyStream
 
   if (!instance) {
     return (
@@ -389,49 +369,8 @@ export default function FocusView({
           )}
         </span>
 
-        {/* Selector de Modo de Streaming (30 FPS Ultra-Baja Latencia vs Fallback HD) */}
+        {/* Controles de cabecera: navegación, tema */}
         <div className="ml-auto flex items-center gap-2">
-          {instance.running && (
-            <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5 text-xs font-mono">
-              <button
-                type="button"
-                onClick={() => setStreamMode('scrcpy')}
-                className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors cursor-pointer',
-                  streamMode === 'scrcpy'
-                    ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-                title="Streaming Scrcpy nativo (~20ms baja latencia a 30 FPS)"
-              >
-                <Zap className="h-3 w-3" />
-                <StreamFpsLabel adbPort={instance.adb_port} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setStreamMode('canvas')}
-                className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors cursor-pointer',
-                  streamMode === 'canvas'
-                    ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-                title="Modo Captura Continua (Fallback HD)"
-              >
-                <Camera className="h-3 w-3" />
-                <span>HD</span>
-              </button>
-            </div>
-          )}
-
-          {streamInfo?.available && (
-            <IconBtn
-              icon={ExternalLink}
-              label="Abrir scrcpy web en pestaña"
-              onClick={() => window.open(streamInfo.embed_url, '_blank', 'noopener,noreferrer')}
-            />
-          )}
-
           {onToggleTheme && (
             <IconBtn
               icon={theme === 'dark' ? Sun : Moon}
@@ -453,20 +392,13 @@ export default function FocusView({
               className="relative h-full overflow-hidden rounded-xs bg-black border border-border/40 select-none flex flex-col"
             >
               {instance.running ? (
-                streamMode === 'scrcpy' ? (
-                  <ScrcpyLiveScreen
-                    key={instance.instance_name}
-                    instance={instance}
-                    isFocused={true}
-                    onReleaseFocus={() => {}}
-                    className="relative h-full w-full"
-                  />
-                ) : (
-                  <InteractiveScreen
-                    instance={instance}
-                    onActionFeedback={(msg) => toast.info(msg, { duration: 1500 })}
-                  />
-                )
+                <ScrcpyLiveScreen
+                  key={instance.instance_name}
+                  instance={instance}
+                  isFocused={true}
+                  onReleaseFocus={() => {}}
+                  className="relative h-full w-full"
+                />
               ) : (
                 <InteractiveScreen
                   instance={instance}
