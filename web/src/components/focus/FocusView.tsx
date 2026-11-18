@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Sun,
   Moon,
-  Monitor,
   Zap,
   Usb,
   Camera,
@@ -206,20 +205,6 @@ export default function FocusView({
 
   const nativeWidth = Number(instance.display?.width) || 1080;
   const nativeHeight = Number(instance.display?.height) || 2340;
-
-  const handleLaunchNativeScrcpy = async () => {
-    if (!instance) return;
-    try {
-      const res = await api.launchScrcpy(instance.instance_name);
-      if (res.status === 'success' || res.status === 'ok') {
-        toast.success(res.message || 'Scrcpy nativo iniciado');
-      } else {
-        toast.error(res.message || 'No se pudo iniciar scrcpy');
-      }
-    } catch (err) {
-      toast.error(`Fallo al lanzar scrcpy: ${getErrorMessage(err)}`);
-    }
-  };
 
   const handleSaveGps = async () => {
     if (!instance) return;
@@ -437,14 +422,6 @@ export default function FocusView({
                 <span>HD</span>
               </button>
             </div>
-          )}
-
-          {instance.running && (
-            <IconBtn
-              icon={Monitor}
-              label="Lanzar Scrcpy de escritorio"
-              onClick={handleLaunchNativeScrcpy}
-            />
           )}
 
           {streamInfo?.available && (

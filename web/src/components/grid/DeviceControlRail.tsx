@@ -9,6 +9,7 @@ import {
   Circle,
   Layers,
   Camera,
+  Monitor,
   Router,
   Bell,
   Maximize2,
@@ -226,6 +227,28 @@ export const DeviceControlRail = memo(function DeviceControlRail({
       toast.success('Captura guardada');
     } catch {
       toast.error('Error al capturar pantalla');
+    }
+  };
+
+  // ── Scrcpy nativo de escritorio ──
+  const [scrcpyBusy, setScrcpyBusy] = useState(false);
+  const handleLaunchNativeScrcpy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!running || scrcpyBusy) return;
+    setScrcpyBusy(true);
+    const toastId = toast.loading(`Iniciando Scrcpy para ${name}…`);
+    try {
+      const res = await api.launchScrcpy(name);
+      if (res.status === 'success' || res.status === 'ok') {
+        toast.success(res.message || `Scrcpy iniciado para ${name}`, { id: toastId });
+      } else {
+        toast.error(res.message || 'No se pudo iniciar scrcpy', { id: toastId });
+      }
+    } catch (err) {
+      toast.error(`Fallo al lanzar scrcpy: ${getErrorMessage(err)}`, { id: toastId });
+    } finally {
+      setScrcpyBusy(false);
     }
   };
 
@@ -472,6 +495,16 @@ export const DeviceControlRail = memo(function DeviceControlRail({
           side="right"
           disabled={!running}
           onClick={handleScreenshot}
+        />
+
+        {/* 9. Lanzar Scrcpy de escritorio */}
+        <IconBtn
+          icon={Monitor}
+          label="Lanzar Scrcpy de escritorio"
+          size="sm"
+          side="right"
+          disabled={!running || scrcpyBusy}
+          onClick={handleLaunchNativeScrcpy}
         />
 
         {/* Texto y URL (conservados de FocusView, no cuentan como botones hardware) */}
