@@ -333,6 +333,10 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
       zoom,
       zoomControl: false,
       attributionControl: false,
+      // Zoom suave con ruedita: necesita el doble de desplazamiento por nivel
+      // y siempre hace zoom hacia donde está el puntero (comportamiento por defecto de Leaflet).
+      wheelPxPerZoomLevel: 120,
+      wheelDebounceTime: 40,
     });
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);

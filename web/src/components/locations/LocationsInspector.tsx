@@ -412,6 +412,7 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
       ) : sel ? (
         /* ── MODO INSPECTOR ── */
         <div key={sel.id} className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-2 duration-200">
+          <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="border-b border-border p-4">
             <div className="flex items-start gap-3">
               <div
@@ -614,6 +615,7 @@ export const LocationsInspector: React.FC<LocationsInspectorProps> = ({
             onTeleport={onTeleport}
             onResetTeleport={onResetTeleport}
           />
+          </div>
         </div>
       ) : (
         /* ── VISTA GENERAL (sin selección) ── */
