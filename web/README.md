@@ -1,6 +1,6 @@
 # ProteoMesh CloudPhone Platform — Frontend Web Panel 🛡️📱
 
-Panel web de orquestación, supervisión y control masivo de CloudPhones Android (ReDroid 13 / API 33) diseñado bajo estándares de alta densidad inspirados en **GenFarmer** y el sistema de diseño Dark Tech minimalista de **Lovable** (`proteo-harvest-flow`).
+Panel web de orquestación y supervisión de CloudPhones Android (ReDroid 13 / API 33) para un laboratorio local de pruebas, con un sistema de diseño Dark Tech minimalista inspirado en **Lovable** (`proteo-harvest-flow`).
 
 ---
 
@@ -8,7 +8,7 @@ Panel web de orquestación, supervisión y control masivo de CloudPhones Android
 
 ### 1. Referencias Clave
 * **Lovable (`proteo-harvest-flow`):** Modelo estético de referencia directa. Paleta de colores en espacio **OKLCH** con fondo negro obsidiana (`--background: oklch(0.17 0.008 255)`), superficies elevadas (`--surface: oklch(0.195 0.009 255)`), bordes técnicos (`--border: oklch(0.29 0.01 255)`), y acento primario cian eléctrico (`--primary: oklch(0.74 0.14 225)`). Tipografías emparejadas: **Geist** para interfaz y títulos, y **Geist Mono** / **JetBrains Mono** para identificadores técnicos, puertos ADB y metadatos.
-* **GenFarmer (`genfarmer.com`):** Estándar ergonómico de control de granjas de terminales móviles. Requiere densidad variable (slider de 4 a 12 columnas), selección masiva (clic, Shift+clic por rangos, Ctrl+A), interacción sincronizada en tiempo real (espejo de toques multi-device) y barra de acciones en lote flotante (`BulkBar`).
+* **Interfaces de alta densidad:** Estándar ergonómico de control de flotas de terminales móviles. Requiere densidad variable (slider de 4 a 12 columnas), selección masiva (clic, Shift+clic por rangos, Ctrl+A), interacción sincronizada en tiempo real (espejo de toques multi-device) y barra de acciones en lote flotante (`BulkBar`).
 * **ws-scrcpy (NetrisTV):** Motor de streaming de hardware H.264 de latencia ultrabaja (~20ms / 60 FPS) vía WebCodecs y MSE.
 
 ---

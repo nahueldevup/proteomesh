@@ -8,9 +8,9 @@
 - **Backend API:** Python 3.10+ FastAPI server in `server/` with Pydantic v2 data models, asynchronous handlers, and unified REST routing under `/api/v1`.
 - **Host Orchestration & Automation:** Python 3 CLI suite in `tools/` (`instance_manager.py`, `render.py`, `deps_fetch.py`, `scope_audit.py`) managing Docker, ADB, and hardware bundles.
 - **Virtualization & Emulation Runtime:** Docker containerized ReDroid 13 (Android 13 / API 33) on Linux x86_64 with Magisk 30.6 root, Zygisk NoHello v0.0.7 namespace isolation, and ashmem/binder shims.
-- **Anti-Detection & System Hooking:** Dual-layer hooking with native Bionic C shims (`src/libpixel_hw/` loaded via `LD_PRELOAD`) and Java-level LSPosed Xposed module (`src/lsposed_module/FakeWifiPixel.apk`).
+- **Integrity Probing & System Hooking:** Dual-layer hooking with native Bionic C shims (`src/libpixel_hw/` loaded via `LD_PRELOAD`) and Java-level LSPosed Xposed module (`src/lsposed_module/FakeWifiPixel.apk`), used to exercise the lab's own integrity checks and those of applications under test.
 - **Hardware Profile Loader:** Standalone native C binary (`src/profile_loader/`) with embedded `cJSON` that executes `resetprop` injections during early Android boot.
-- **Networking & Mobile Transport:** Physical USB tethering integration, host-level iptables/nftables firewall isolation, SOCKS5 tunnel routing, and local DNS bridging.
+- **Networking & Mobile Transport:** Physical USB tethering integration, host-level iptables/nftables firewall isolation, container quarantine, and local DNS bridging.
 
 ---
 
@@ -51,4 +51,4 @@
 ## 3. General Development Guidelines
 - **Modularity:** Maintain separation of concerns across the three architectural layers (Frontend, API/Orchestration, Android/C hooks).
 - **Type Consistency:** When modifying backend Pydantic models in `server/models/schemas.py`, update matching TypeScript interfaces in `web/src/types.ts`.
-- **Integrity First:** Any change to Android system props, sensors, or device templates must preserve consistency across the whole stack to maintain 100/100 Low Risk rating in anti-fraud and anti-root checks.
+- **Integrity First:** Any change to Android system props, sensors, or device templates must preserve consistency across the whole stack so the environment remains reproducible and the regression metrics (`Pixelscan`, `Root Detection Plus`) stay stable.

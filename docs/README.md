@@ -1,6 +1,6 @@
 # Índice de Documentación de ProteoMesh 🛡️📱
 
-Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la plataforma de virtualización, endurecimiento (*hardening*), simulación de hardware móvil y evasión de detección de emulación para contenedores Android (**ReDroid 13 / API 33**) sobre Linux x86_64.
+Bienvenido a la documentación técnica del proyecto **ProteoMesh**, un laboratorio local de virtualización Android, endurecimiento (*hardening*) y simulación de hardware móvil para contenedores (**ReDroid 13 / API 33**) sobre Linux x86_64. El alcance y uso previsto están en [ALCANCE.md](../ALCANCE.md).
 
 ---
 
@@ -27,7 +27,7 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
    * Checklist de auditoría en vivo con `Device Info`, `DevCheck`, `Root Detection Plus` y `Pixelscan`.
 
 5. **[BITACORA_Y_ESTADO.md](./BITACORA_Y_ESTADO.md)**
-   * Registro histórico cronológico exhaustivo de decisiones de ingeniería (§1 a §72).
+   * Registro histórico cronológico exhaustivo de decisiones de ingeniería (§1 a §68).
    * Matriz completa de estado por subsistema (SoC, Kernel, RAM, GPU, Wi-Fi, SIM, Sensores, Cámara, Zygisk, ABIs).
    * Análisis de causas raíz y resolución de problemas críticos.
 
@@ -59,9 +59,8 @@ Bienvenido a la documentación técnica del proyecto **ProteoMesh**, la platafor
 
 ## 🗄️ Archivos de Referencia Histórica (en `docs/historico/`)
 
-Los siguientes documentos corresponden a etapas previas de investigación, exploraciones iniciales o diagnósticos de laboratorio que se conservan íntegramente como material de consulta:
+Los siguientes documentos corresponden a etapas previas de investigación, exploraciones iniciales o diagnósticos de laboratorio que se conservan íntegramente como material de consulta. Sus afirmaciones reflejan el alcance de cada etapa y pueden no coincidir con el alcance vigente descrito en [ALCANCE.md](../ALCANCE.md):
 
-* **[contexto_explicativo_referencia.md](./historico/contexto_explicativo_referencia.md):** Guía exhaustiva y autocrítica técnica post-commit `d1a1c9a` sobre inercia de fabricantes y parches en memoria.
 * **[INFORME_SESION_DROIDGUARD_Y_CONTEXTO.md](./historico/INFORME_SESION_DROIDGUARD_Y_CONTEXTO.md):** Diagnóstico de causa raíz y mitigación de complejidad $O(N^2)$ en la lectura de `/proc/mountinfo` para DroidGuard.
 * **[INFORME_TECNICO_Y_REPRODUCCION.md](./historico/INFORME_TECNICO_Y_REPRODUCCION.md):** Reporte de fases tempranas del laboratorio emulando Xiaomi Redmi 5 Plus (`vince`) en Android 14.
 * **[HERMES_REPORTES_GUIDE.md](./historico/HERMES_REPORTES_GUIDE.md):** Guía de automatización local y extracción de reportes de telemetría en host CachyOS.

@@ -24,7 +24,7 @@ En la interfaz de ProteoMesh (grilla de dispositivos / rack), cada contenedor An
 ## 2. ¿Por qué existe esta dualidad? (Fundamento de Arquitectura y Rendimiento)
 
 ### A. Limitaciones de Hardware en la Granja de Contenedores
-ProteoMesh está diseñado para correr granjas de múltiples contenedores ReDroid concurrentes sobre estaciones de trabajo Linux con procesadores como el **AMD Ryzen 7 5700G (8 núcleos / 16 hilos, GPU integrada Vega 8)**.
+ProteoMesh está diseñado para correr flotas de múltiples contenedores ReDroid concurrentes sobre estaciones de trabajo Linux con procesadores como el **AMD Ryzen 7 5700G (8 núcleos / 16 hilos, GPU integrada Vega 8)**.
 
 1. **Cuello de botella en el codificador ReDroid (C2):**
    * Cada instancia de ReDroid que emite video H.264 continuo debe codificar cuadros en tiempo real mediante el codec software `c2.android.avc.encoder`.

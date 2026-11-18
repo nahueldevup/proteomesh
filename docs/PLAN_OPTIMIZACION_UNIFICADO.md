@@ -4,7 +4,7 @@
 **Rama de Integración:** `integration/perf-test` (HEAD `3b21183`)  
 **Host de Referencia:** AMD Ryzen 7 5700G (8C/16T, Zen 3, 1 CCX), 14 GiB RAM utilizable, CachyOS x86_64 sobre Btrfs (`compress=zstd:3, ssd, discard=async`), Swap ZRAM activo 14.5 GiB (`/dev/zram0`).  
 **Instancia Viva de Referencia:** `phone-80` (Up 4+ horas, Android 13 ReDroid guest, Samsung Galaxy A54 5G).  
-**Objetivo:** Maximizar densidad de instancias concurrentes y minimizar latencia/consumo por instancia (CPU, RAM, disco, tiempo de arranque, latencia de render/screenshots), garantizando integridad estricta del blindaje anti-detección (Pixelscan 100/100, Root Detection Plus 0/39, ArchProbe 0 fugas x86_64, `verify-health` 7/7).
+**Objetivo:** Maximizar densidad de instancias concurrentes y minimizar latencia/consumo por instancia (CPU, RAM, disco, tiempo de arranque, latencia de render/screenshots), garantizando la coherencia estricta del entorno de pruebas (Pixelscan 100/100, Root Detection Plus 0/39, ArchProbe 0 fugas x86_64, `verify-health` 7/7).
 
 ---
 
@@ -63,7 +63,7 @@ La rama `integration/perf-test` ya consolidó cuatro mejoras fundamentales docum
    - Root Detection Plus 0/39 (detección nula de Magisk/LSPosed/Zygisk).
    - ArchProbe: 0 rastros x86_64 ni fugas del host en `/proc`, `/sys` o props.
 2. **Medición Rigurosa Antes / Después:** Ningún cambio se aprueba sin telemetría comparativa registrada (latencia en ms, uso de CPU en cgroup, memoria anónima y swap).
-3. **Aislamiento en Clones de Prueba:** Queda estrictamente prohibido probar cambios de confinamiento en instancias vinculadas a cuentas enroladas (MercadoPago, WhatsApp, Banca). Se usan clones limpios instanciados desde plantilla.
+3. **Aislamiento en Clones de Prueba:** Queda estrictamente prohibido probar cambios de confinamiento en instancias con estado relevante. Se usan clones limpios instanciados desde plantilla.
 4. **Un Cambio por PR:** Cada PR debe abordar una optimización atómica con su propio test automatizado y reversión limpia.
 5. **Restricción de Red Dura:** Los contenedores se ejecutan exclusivamente en red bridge dedicada de Docker con aislamiento de namespace y pre-cuarentena T=0. Jamás se usará `--network host` ni `ipvlan L2`.
 
@@ -288,7 +288,7 @@ La rama `integration/perf-test` ya consolidó cuatro mejoras fundamentales docum
 | **C4** | **Redes `ipvlan L2`** | `ipvlan L2` comparte la dirección MAC del host entre todas las instancias, destruyendo la identidad física única de cada CloudPhone ante redes locales y firewalls. |
 | **C5** | **`btrfs filesystem defragment` en `data-clean/` o `instances/`** | Documentado en `PERF_OPTIMIZACIONES.md §5.1`: desvincula los extents compartidos por CoW y duplica el almacenamiento físico en disco (desperdiciando ~1 GB por instancia). |
 | **C6** | **Alteración arbitraria del heap Dalvik / props de memoria** | Modificar props como `dalvik.vm.heapgrowthlimit` rompe la coherencia contra el perfil congelado del dispositivo físico (`a54x.json`) y puede gatillar crash por OOM en apps con memoria esperada de 6-8 GB. |
-| **C7** | **Desinstalación de paquetes (`pm uninstall`) en lugar de `pm disable-user`** | Explicado en `instance_manager.py:160`: desinstalar remueve el paquete de `packages.xml`, lo cual es detectado por SDKs bancarios y de integridad como indicio de emulador adulterado. |
+| **C7** | **Desinstalación de paquetes (`pm uninstall`) en lugar de `pm disable-user`** | Explicado en `instance_manager.py:160`: desinstalar remueve el paquete de `packages.xml`, lo cual es detectado por controles de integridad como indicio de emulador adulterado. |
 | **C8** | **Modificación del Bridge de Docker sin adaptar `predict_next_container_ip`** | La pre-cuarentena T=0 (`instance_manager.py:1424`) predice la IP en la subred `172.17.0.0/16`. Si se altera la red o se desactiva `userland-proxy` sin adaptar el predictor, se rompe el blindaje de firewall antes de aplicar proxys. |
 | **C9** | **Uvicorn `--workers > 1`** | `server/services/screenshot_cache.py` mantiene la caché y los locks de single-flight en memoria de proceso (`_cache`). Múltiples workers duplican la memoria consumida y anulan el single-flight, sobrecargando SurfaceFlinger. |
 | **C10** | **GPU Host (Mesa passthrough) sin GLES Spoofer verificado** | ReDroid expone las cadenas GLES del driver del host. Si se pasara la GPU AMD Radeon del Ryzen 5700G, Pixelscan y ArchProbe detectarían `AMD Radeon Graphics` en lugar de `ARM Mali-G68`, anulando por completo el blindaje. |
@@ -408,4 +408,4 @@ python3 tools/instance_manager.py delete perf-test-clon
 - **Ratio de compresión real:** **`4.55x`** en `/dev/zram0` bajo compresión zstd en kernel CachyOS.
 - **Impacto físico en memoria del host:** 1200 MiB de Swap de invitado Android consumen únicamente **~263 MiB de RAM física del host**.
 - **Densidad de flota alcanzable:** Incremento de 2 a **4 instancias simultáneas** seguras en un host de 16 GiB (14 GiB utilizables).
-- **Integridad anti-detección comprobada:** Pixelscan 100/100, Root Detection Plus 0/39, ArchProbe 0 fugas x86_64, `verify-health` 7/7.
+- **Coherencia del entorno comprobada:** Pixelscan 100/100, Root Detection Plus 0/39, ArchProbe 0 fugas x86_64, `verify-health` 7/7.

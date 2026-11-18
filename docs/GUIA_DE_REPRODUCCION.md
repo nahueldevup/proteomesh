@@ -96,7 +96,7 @@ python3 tools/instance_manager.py list-templates
 python3 tools/instance_manager.py list-carriers
 ```
 
-### B. Previsualizar Identidad Aleatoria en Rango (Estilo GeeLark)
+### B. Previsualizar Identidad Aleatoria en Rango
 Permite previsualizar los identificadores generados (IMEI con Luhn, MACs con OUI del fabricante, serial y SIM) antes de crear la instancia:
 ```bash
 python3 tools/instance_manager.py randomize --template samsung/a54x --carrier ar_personal
@@ -121,11 +121,11 @@ python3 tools/instance_manager.py create --name mi-a54-01 --template samsung/a54
 python3 tools/instance_manager.py create --name redmi-12-01 --template xiaomi/fire --carrier ar_personal --port 5586
 ```
 
-#### 2. Modo Bundle: Congelamiento de Hardware y Migración sin Alertas de Fraude (`--from-bundle`)
-Diseñado para cuentas valiosas (bancos, MercadoPago, WhatsApp) donde se requiere un **"backup de hardware"**:
+#### 2. Modo Bundle: Congelamiento de Identidad y Reproducibilidad (`--from-bundle`)
+Pensado para conservar una **"huella de hardware"** reproducible entre ejecuciones y hosts:
 - **Renderizado previo:** `python3 tools/render.py --template samsung/a54x --carrier ar_personal --seed 42 --name mi-perfil --out bundles/mi-a54` congela el hardware de forma pura y determinista.
 - **Creación exacta:** `python3 tools/instance_manager.py create --name mi-a54-prod --from-bundle bundles/mi-a54 --port 5588` aprovisiona la instancia respetando **al 100% y bit a bit** ese hardware (mismo IMEI, MAC, Android ID).
-- **Utilidad:** Si el contenedor se daña o se migra a otro host físico, se recrea con la misma huella congelada sin que los algoritmos antifraude bancarios detecten un "nuevo dispositivo".
+- **Utilidad:** Si el contenedor se daña o el laboratorio se migra a otro host físico, se recrea con la misma huella congelada, de modo que las pruebas comparativas arrojen resultados idénticos y no se introduzcan variables por cambio de dispositivo.
 
 ### D. Iniciar y Verificar la Instancia
 Arranca el contenedor con los parámetros exactos de pantalla (resolución, DPI, Hz), aplica los límites de recursos de Docker (`--memory`, `--cpuset-cpus`, `--pids-limit`), conecta ADB, sincroniza la zona horaria y verifica la salud:

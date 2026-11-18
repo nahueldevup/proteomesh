@@ -2,7 +2,9 @@
 
 Este documento resume los avances técnicos logrados, los desafíos resueltos y el estado validado de cada subsistema de emulación.
 
-**Contexto y objetivo:** ProteoMesh busca *genuinidad holística*: que cada CloudPhone sea indistinguible de un dispositivo físico para toda la superficie observable por apps (hardware, identidad GSMA/IEEE, telefonía, red/geolocalización, build/kernel, ABIs, root/SELinux, tiendas, Play Protect/Integrity local, DRM, sensores), manteniendo individualidad entre instancias y eficiencia en el host. Los tres pilares (individualidad, coherencia de perfil y optimización de recursos), el alcance y la autocrítica técnica están en el README y en `contexto_explicativo_de_referencia.md`. Este registro documenta tanto lo logrado como lo que quedó pendiente o se descartó (p. ej. #31 y #39).
+**Contexto y objetivo:** ProteoMesh busca *genuinidad holística*: que cada CloudPhone sea indistinguible de un dispositivo físico para toda la superficie observable por apps (hardware, identidad GSMA/IEEE, telefonía, red/geolocalización, build/kernel, ABIs, root/SELinux, tiendas, Play Protect/Integrity local, DRM, sensores), manteniendo individualidad entre instancias y eficiencia en el host. Los tres pilares (individualidad, coherencia de perfil y optimización de recursos), el alcance y la autocrítica técnica están en el README y en [`ALCANCE.md`](../ALCANCE.md). Este registro documenta tanto lo logrado como lo que quedó pendiente o se descartó (p. ej. #31 y #39).
+
+> **Nota de alcance (2026-11-18):** ProteoMesh es un laboratorio local destinado a pruebas de **aplicaciones propias**. Las referencias históricas a "granja", GeeLark/GenFarmer o "antifraude" describen inspiraciones de diseño de interfaz y benchmarks de coherencia del entorno; no describen operación de cuentas de terceros ni servicios financieros. El alcance vigente está en [`ALCANCE.md`](../ALCANCE.md).
 
 ---
 
@@ -2004,7 +2006,26 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
-## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
+### 68. DOC-ALCANCE-031 — Corrección de Alcance Documental y Licencia (2026-11-18)
+
+* **Rama:** `main`.
+* **Objetivo:** Alinear la documentación pública con el uso real del proyecto —laboratorio local para pruebas de aplicaciones propias— y eliminar afirmaciones de operación de cuentas de terceros o de elusión de controles antifraude que no corresponden al alcance del sistema.
+* **Cambios realizados:**
+  - **`README.md`:** introducción, pilares y sección de aislamiento anti-root reformulados en términos de reproducibilidad y validación de controles de integridad propios. Eliminado el caso de uso de "cuentas de alto valor" (MercadoPago, banca, WhatsApp) del modo `--from-bundle`, que pasa a describirse como congelamiento de identidad para reproducibilidad. La matriz Pixelscan/RDP se documenta como métrica de regresión interna.
+  - **`docs/ARQUITECTURA.md`:** eliminación de referencias a apps bancarias y a "evasión"; títulos y diagramas reformulados como aislamiento, consistencia y simulación dentro del laboratorio.
+  - **`docs/GUIA_DE_REPRODUCCION.md`:** modo bundle reencuadrado como reproducibilidad.
+  - **`docs/GUIA_DE_REPLICACION_ANTIROOT.md`:** diagrama y glosario ajustados a "aplicación propia bajo prueba".
+  - **`docs/ESTADO_ACTUAL.md`:** actualización de la fila de licencia, nomenclatura de la UI (Red en lugar de Proxy) y notas de purga para PROXY-003/004 y USB-001.
+  - **`docs/PLAN_OPTIMIZACION_UNIFICADO.md`, `docs/README.md`, `web/README.md`, `AI_RULES.md`:** eliminación de referencias a granjas comerciales, cuentas de terceros y proxies SOCKS5 residuales.
+  - **Nuevos archivos:** `ALCANCE.md` (uso previsto y no-alcance) y `LICENSE` (MIT).
+  - **Borrado controlado:** `docs/historico/contexto_explicativo_referencia.md`, retirado por declarar un alcance de operación de cuentas de terceros que no corresponde al proyecto. Su contenido permanece recuperable en el historial de git; se retira su entrada del índice en `docs/README.md`.
+* **Continuidad:** no se eliminó código, tests, plantillas ni evidencia. Las entradas históricas §1–§67 se conservan sin reescritura; esta entrada documenta únicamente la corrección de alcance y sus motivos.
+* **Validación:** `pytest tests/host/ -q` (sin cambios funcionales) y revisión de enlaces internos.
+* **Estado:** **Completado el 2026-11-18.**
+
+---
+
+## 🗺️ Hoja de Ruta / Próximos Pasos
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**
    * ✅ Completado: Plataforma de gestión completa con API FastAPI, panel React 19, catálogo de hardware determinista, streaming nativo WebCodecs lazy a 30 FPS, gestor de APKs/archivos y riel unificado de control de hardware de 14 botones.
@@ -2012,5 +2033,5 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
    * ✅ Completado: 17 perfiles masivos oficiales incorporados (Samsung Galaxy S y A, Motorola Moto G, Xiaomi Redmi, Google Pixel).
 3. **Redes Avanzadas y Orquestación Multi-Host:**
    * Orquestación de contenedores distribuida entre múltiples hosts físicos mediante agente ligero o clúster privado.
-   * Soporte de túneles WireGuard dedicados por contenedor para perfiles de red residenciales de alto rendimiento.
-   * Automatización de rotación de IPs celulares mediante control AT/ModemManager sobre placas multi-SIM USB.
+   * Soporte de túneles WireGuard dedicados por contenedor para pruebas de conectividad y aislamiento de red.
+   * Automatización de rotación de conectividad móvil mediante control AT/ModemManager sobre placas multi-SIM USB, para pruebas de red.

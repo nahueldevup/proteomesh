@@ -1,7 +1,7 @@
 # CONTEXTO TÉCNICO Y AUDITORÍA DE CAMBIOS — PROTEOMESH 🛡️📱
 
 **Fecha:** 2026-10-24  
-**Propósito:** Este documento describe exhaustivamente qué se modificó en el flujo de creación de perfiles/instancias y en la interfaz web, por qué se hizo, qué archivos se tocaron y **por qué ninguna regla sensible de hardening, antifraude o genuinidad fue vulnerada ni alterada**. Sirve como guía de auditoría para que cualquier agente o desarrollador verifique la integridad del sistema.
+**Propósito:** Este documento describe exhaustivamente qué se modificó en el flujo de creación de perfiles/instancias y en la interfaz web, por qué se hizo, qué archivos se tocaron y **por qué ninguna regla sensible de hardening, controles de integridad o genuinidad fue vulnerada ni alterada**. Sirve como guía de auditoría para que cualquier agente o desarrollador verifique la integridad del sistema.
 
 ---
 

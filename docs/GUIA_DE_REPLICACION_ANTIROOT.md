@@ -30,13 +30,13 @@ En la instancia de validación (`f05-main`, puerto ADB 5601; creada desde el `da
 
 ---
 
-## 2. Arquitectura de Tres Capas de Evasión Anti-Root
+## 2. Arquitectura de Tres Capas de Aislamiento Anti-Root
 
 El blindaje opera coordinadamente en tres niveles sin parchar el kernel del host Linux:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│  Aplicación Cliente / SDK Antifraude (ej. Root Detection Plus, Bancos) │
+│  Aplicación propia bajo prueba (ej. Root Detection Plus, QA)           │
 └────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -276,5 +276,5 @@ A continuación se detalla cada componente del repositorio que fue creado o modi
 - **Propósito:** Actualizado para reflejar formalmente la Capa 3 de Mount Namespace Isolation (Zygisk NoHello) y los nuevos interceptores de paquetes y entorno en las capas Java y Bionic.
 
 ### 10. `docs/BITACORA_Y_ESTADO.md` (Bitácora Histórica del Proyecto)
-- **Propósito:** Registro cronológico de hitos técnicos. Se añadió la sección **§49** documentando el problema de evasión en apps ARM64, el diagnóstico de ART/LSPosed, la corrección del bug de Xposed y los resultados obtenidos (0/39 en Root Detection Plus y 100/100 en Pixelscan).
+- **Propósito:** Registro cronológico de hitos técnicos. Se añadió la sección **§49** documentando el problema de compatibilidad en apps ARM64, el diagnóstico de ART/LSPosed, la corrección del bug de Xposed y los resultados obtenidos (0/39 en Root Detection Plus y 100/100 en Pixelscan).
 

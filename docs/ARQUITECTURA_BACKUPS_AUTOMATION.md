@@ -2,7 +2,7 @@
 
 ## 1. Visión General y Motivación
 
-En una granja de virtualización móvil como ProteoMesh, las identidades de hardware de cada contenedor (IMEI, MEID, número de serie, MAC de Wi-Fi/Bluetooth, DRM Device ID, Android ID) y la base de datos de estado (`proteomesh.db`) representan los activos operativos más críticos:
+En un laboratorio de virtualización móvil como ProteoMesh, las identidades de hardware de cada contenedor (IMEI, MEID, número de serie, MAC de Wi-Fi/Bluetooth, DRM Device ID, Android ID) y la base de datos de estado (`proteomesh.db`) representan los activos operativos más críticos:
 - **Determinismo y persistencia:** La identidad asignada a cada contenedor debe ser recuperable ante caídas de hardware, migraciones de servidor o desastres en disco.
 - **Seguridad y confidencialidad:** Las identidades y credenciales de red no deben almacenarse en texto plano sin protección en entornos de producción.
 - **Automatización de impacto cero:** El resguardo debe ejecutarse de forma desatendida, periódica (diaria/semanal) y con cero consumo de recursos en reposo, garantizando al mismo tiempo la no saturación del almacenamiento mediante políticas de retención y rotación activa.

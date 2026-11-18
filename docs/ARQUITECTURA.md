@@ -1,8 +1,8 @@
 # Arquitectura del Sistema ProteoMesh
 
-ProteoMesh es un framework de endurecimiento (*hardening*), enmascaramiento y simulación de hardware móvil para contenedores Android (**ReDroid 13 / API 33**) sobre kernels Linux x86_64. Su diseño profile-driven permite transformar dinámicamente un contenedor virtual en cualquiera de **17 dispositivos comerciales oficiales** (Samsung Galaxy, Xiaomi Redmi, Motorola Moto G y Google Pixel) con operadoras móviles y geolocalizaciones coherentes (arquitectura de CloudPhones estilo GeeLark / GenFarmer).
+ProteoMesh es un framework de endurecimiento (*hardening*) y simulación de hardware móvil para un laboratorio local de contenedores Android (**ReDroid 13 / API 33**) sobre kernels Linux x86_64. Su diseño profile-driven permite transformar dinámicamente un contenedor virtual en cualquiera de **17 perfiles de dispositivos comerciales oficiales** (Samsung Galaxy, Xiaomi Redmi, Motorola Moto G y Google Pixel) con operadoras móviles y geolocalizaciones coherentes.
 
-El sistema neutraliza las heurísticas de detección de emuladores, virtualización y análisis de integridad local de aplicaciones bancarias, tiendas oficiales y utilidades de diagnóstico (`Device Info`, `DevCheck`, `Pixelscan Android Checker`, `Google Play Protect`, `FingerprintJS`).
+El sistema reproduce respuestas coherentes frente a las heurísticas de detección de emuladores, virtualización y análisis de integridad local que aplican tiendas oficiales, utilidades de diagnóstico y aplicaciones propias bajo prueba (`Device Info`, `DevCheck`, `Pixelscan Android Checker`, `Google Play Protect`, `FingerprintJS`), de modo que el operador pueda validar la robustez de su propio software.
 
 ---
 
@@ -12,7 +12,7 @@ El sistema opera mediante tres capas coordinadas sin requerir parches en el kern
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│  Aplicaciones Android / Tiendas / SDKs Antifraude      │
+│  Apps propias bajo prueba / Tiendas / QA               │
 │  (Play Store, Google Search, Pixelscan, DevCheck)      │
 └────────────────────────────────────────────────────────┘
                            │
@@ -26,7 +26,7 @@ El sistema opera mediante tres capas coordinadas sin requerir parches en el kern
 │  - android.view.Display (modos, Hz, xdpi/ydpi)         │
 │  - android.net.wifi.WifiManager & WifiInfo             │
 │  - android.telephony.TelephonyManager & Subscriptions  │
-│  - GmsDeviceComplianceResponse (Play Protect Bypass)  │
+│  - GmsDeviceComplianceResponse (compliance GMS)        │
 │  - Intercepción de PackageManager (Brand Stores)       │
 │  - Anti-Root / Modding Cloak (hidePkgHook NameNotFound)│
 │  - Sanitización de entorno (ProcessEnvironment, Os)   │
@@ -137,7 +137,7 @@ redroid-integrity-lab/
 
 ---
 
-## 3. Flujo de Generación y Despliegue de Instancias (GeeLark Architecture)
+## 3. Flujo de Generación y Despliegue de Instancias
 
 El gestor de instancias (`tools/instance_manager.py`) implementa la separación estricta entre plantillas inmutables e instancias congeladas de usuario:
 
@@ -162,24 +162,24 @@ El gestor de instancias (`tools/instance_manager.py`) implementa la separación 
 
 ---
 
-## 4. Técnicas Específicas de Evasión y Hardening
+## 4. Técnicas Específicas de Aislamiento y Hardening
 
-### A. Consistencia de Tienda de Fabricante (Brand Store Evasion)
-* **Reto:** SDKs antifraude como Pixelscan verifican si un dispositivo Samsung, Xiaomi o Huawei posee su tienda OEM (`com.sec.android.app.samsungapps`, `com.xiaomi.mipicks`, `com.huawei.appmarket`), penalizando como emulador (`Brand Store Missing`) si falta.
+### A. Consistencia de Tienda de Fabricante
+* **Reto:** Herramientas de verificación de integridad como Pixelscan comprueban si un dispositivo Samsung, Xiaomi o Huawei posee su tienda OEM (`com.sec.android.app.samsungapps`, `com.xiaomi.mipicks`, `com.huawei.appmarket`), penalizando como emulador (`Brand Store Missing`) si falta.
 * **Mecanismo:**
   * Se instalan APKs stub nativos (~4.1 KB) con `MainActivity` lanzable y `classes.dex` mínimas: LSPosed marca como `obsolete package` y elimina del scope a todo paquete sin componentes (`ConfigManager.cacheScopes()`), por lo que el stub debe declarar al menos una activity. Constan físicamente en `/data/system/packages.xml` y la tienda es lanzable como una real (sin ejecutar procesos en segundo plano). Se reconstruyen con `tools/build_stubs.sh`.
   * Se interceptan llamadas Java de `PackageManager.getPackageInfo` y `ApplicationPackageManager`.
   * Se hookea la rutina de comprobación interna `net.pixelscan.check.MainActivity.s` devolviendo `true` para la tienda asociada a la marca activa.
   * **Puntaje verificado:** **100/100 Low Risk** en Pixelscan con cero advertencias de tienda (validación vigente; ver `docs/ESTADO_ACTUAL.md`).
 
-### B. Bypass de Certificación de Google Play Protect
+### B. Simulación de Certificación de Google Play Protect
 * **Reto:** ReDroid con GMS bloquea el acceso a Google Play Store con la pantalla *"Dispositivo no certificado por Play Protect"*.
 * **Mecanismo:**
   * En `FakeWifiHook.java`, se intercepta el constructor y el deserializador Parcel (`CREATOR.createFromParcel`) de la clase `com.google.android.gms.gmscompliance.GmsDeviceComplianceResponse`.
   * Se fuerza en memoria `isCompliant = true` y `pendingIntent = null`.
   * Se hookea `UncertifiedDeviceActivity.onCreate` invocando de inmediato `finish()`.
   * Las apps de Google (`com.android.vending`, `com.google.android.gms`, `com.google.android.googlequicksearchbox`) están incorporadas en el scope de Zygisk/LSPosed.
-  * **Resultado:** Acceso directo a la interfaz oficial de autenticación y descarga.
+  * **Resultado:** Acceso a la interfaz oficial de autenticación y descarga dentro del laboratorio, para instalar y probar aplicaciones propias.
 
 ### C. Stack de Red Chromium Cronet en Google Search
 * **Reto:** La app del buscador de Google arrojaba `"Ocurrió un error"` al despachar consultas web debido a que el linker dinámico de Bionic en Android 13 bloqueaba la carga de `libcronet.so` por restricciones de namespace (`classloader-namespace`).
