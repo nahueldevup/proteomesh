@@ -28,7 +28,7 @@ export const BatchTeleportModal: React.FC<BatchTeleportModalProps> = ({
   const selPhones = instances.filter((p) => isPhoneAtLocation(p, sel));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-4">
+    <div className="flex flex-col p-4 pb-0">
       <div className="mb-2 flex items-center justify-between">
         <h3 className={sectionTitleClass}>
           Teletransportar a <span className="normal-case tracking-normal">· {selPhones.length} aquí</span>
@@ -71,7 +71,7 @@ export const BatchTeleportModal: React.FC<BatchTeleportModalProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 grid-cols-2 content-start gap-1.5 overflow-auto">
+        <div className="grid grid-cols-2 content-start gap-1.5">
           {instances.map((p) => {
             const on = targets.includes(p.instance_name);
             const here = isPhoneAtLocation(p, sel);
@@ -131,7 +131,7 @@ export const BatchTeleportModal: React.FC<BatchTeleportModalProps> = ({
         </div>
       )}
 
-      <div className="mt-auto pt-3">
+      <div className="sticky bottom-0 bg-surface pt-3 pb-4">
         <button
           type="button"
           onClick={onTeleport}
