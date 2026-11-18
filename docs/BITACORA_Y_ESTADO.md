@@ -1969,6 +1969,41 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 66. FEAT(UI-FOCUS-029) — Consolidación de Streaming Único ScrcpyLiveScreen (H.264 WebCodecs) en FocusView (2026-11-18)
+
+* **Rama:** `feat/clean-focus-view-stream-controls` (fusionada a `main`).
+* **Objetivo:** Simplificar y optimizar el visor enfocado (`FocusView.tsx`) erradicando controles de streaming alternativos o redundantes y consolidando `ScrcpyLiveScreen` como la vía única de visualización en tiempo real acelerada por hardware (WebCodecs H.264 directo vía WebSocket `ws-scrcpy`).
+* **Cambios realizados:**
+  - `web/src/components/focus/FocusView.tsx`: Poda de selectores de modo de visualización legacy o duplicados, reducción de overhead de estado en el renderizado y estabilización del layout vertical para dar prioridad absoluta al lienzo interactivo de baja latencia (30 FPS).
+* **Validación:** Build de Vite exitoso sin errores de tipos ni regresiones en la interacción táctil/teclado.
+* **Estado:** **Completado y validado el 2026-11-18.**
+
+---
+
+### 67. REFACTOR(NET-PURGE-030) — Purga Integral de Legacy SOCKS5 y Consolidación Definitiva de Red USB & Cuarentena (2026-11-18)
+
+* **Rama:** `refactor/purge-legacy-socks5` (fusionada a `main`).
+* **Objetivo:** Erradicar de raíz toda la infraestructura legacy y código residual de SOCKS5 y proxies externos del repositorio (backend, scripts de red, contratos de API y frontend), consolidando el "Centro de Red USB" (NET-USB-001) como la única y definitiva vía de conectividad externa de los CloudPhones.
+* **Módulos y Cambios Implementados:**
+  - **Desacoplamiento Crítico de Cuarentena:** Se extrajo de `server/services/network/transport.py` la lógica de aislamiento iptables (`quarantine.sh.tmpl` / `unquarantine.sh.tmpl`) hacia un módulo dedicado e independiente `server/services/network/container_quarantine.py` (`quarantine_container`, `unquarantine_container`, `is_quarantined`).
+  - **Reconexión de Clientes de Cuarentena:** Se actualizaron `server/services/usb_network_service.py`, `server/routes/network.py` y `tools/instance_manager.py` para usar `container_quarantine`, blindando la cuarentena a T=0 del Centro de Red USB.
+  - **Eliminación de Archivos Obsoletos:**
+    - `server/routes/proxies.py` y `server/routes/routes.py`.
+    - `server/services/proxy_service.py`, `route_store.py`, `lease_registry.py` y `transport.py`.
+    - Scripts `tools/network/route-socks5.sh.tmpl`, `teardown-socks5.sh.tmpl` y `start_ssh_tunnel.sh`.
+    - Tests `tests/host/test_proxies.py`.
+  - **Limpieza de Modelos y Servidor:** Purgados esquemas `ProxyConfig`, `ProxyTestRequest`, `ProxyTestResponse`, `InstanceProxyUpdate` en `server/models/schemas.py`, campos `proxy` en `manager_bridge.py`, y routers/startup hooks en `server/main.py`.
+  - **Frontend Refactorizado:** Eliminada interfaz `ProxyConfig` y campo `proxy?` de `types.ts`, poda de referencias en `FocusMetadataGrid.tsx` y `DeviceCard.tsx`. Renombrado semántico de archivos:
+    - `FocusProxyTab.tsx` → `FocusUsbNetworkTab.tsx`.
+    - `StepGpsProxy.tsx` → `StepGpsLocation.tsx`.
+  - **Tests Actualizados:** Reescritura de `tests/host/test_network_transports.py` para validar exclusivamente el aislamiento de contenedores (`TestContainerIsolationScripts`) y la inexistencia de rutas legacy (`TestUsbNetworkApiSanity`); actualización de `tests/host/test_db_persistence.py`.
+* **Validación:**
+  - Backend: 245 tests pasados, 1 skipped, 0 fallos (`pytest tests/host/ -q`).
+  - Frontend: `npm --prefix web run build` exitoso en <500ms con 0 errores de TypeScript y empaquetado limpio en `dist/`.
+* **Estado:** **Completado y validado el 2026-11-18.**
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

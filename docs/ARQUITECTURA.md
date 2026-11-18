@@ -96,20 +96,25 @@ redroid-integrity-lab/
 ├── server/                        # API REST + streaming (FastAPI)
 │   ├── main.py                    # Composición de la app y registro de routers
 │   ├── config.py                  # Variables de entorno (WS_SCRCPY_URL, APK_REPO_DIR, ALLOWED_FILE_ROOTS)
-│   ├── models/schemas.py          # Contratos Pydantic V2 (instancias, grupo, apks, files)
-│   ├── routes/                    # instances, templates, carriers, locations, proxies, apks, files
+│   ├── models/schemas.py          # Contratos Pydantic V2 (instancias, grupo, apks, files, network)
+│   ├── routes/                    # instances, templates, carriers, locations, apks, files, network, backups, custom_locations
 │   └── services/
 │       ├── manager_bridge.py      # Puente CLI↔API, ADB directo y streaming
 │       ├── apk_repository.py      # Repositorio SQLite, hashing SHA-256 y metadatos AAPT2
 │       ├── file_manager.py        # Gestor de archivos /sdcard/ con whitelist dual y send-to
 │       ├── screenshot_cache.py    # Caché TTL 8s + single-flight para miniaturas de pantalla
-│       └── proxy_service.py       # Verificación de proxies y geolocalización
+│       ├── usb_network_service.py # Centro de red por anclaje USB, rotación de IP y cola FIFO de módems
+│       └── network/
+│           ├── container_quarantine.py # Aislamiento estricto de contenedor (iptables PM_QUARANTINE)
+│           ├── ip_ledger.py            # Libro mayor persistente de IPs históricas por instancia
+│           └── usb_store.py            # Persistencia SQLite de bindings módem USB
 ├── web/                           # Panel React 19 + TypeScript + Vite 8 + Tailwind 4
 │   ├── src/
 │   │   ├── App.tsx                # Estado de rack/focus, selección, modo grupo y pestañas
 │   │   ├── components/grid/       # Rack: DeviceGrid, DeviceCard, DeviceControlRail, Popovers, BulkBar
-│   │   ├── components/farm/       # ScrcpyLiveScreen (WebCodecs canvas), PhoneScreen (JPEG reposo)
-│   │   ├── components/focus/      # FocusView (split-screen de control y diagnóstico)
+│   │   ├── components/farm/       # ScrcpyLiveScreen (WebCodecs canvas H.264), PhoneScreen (JPEG reposo)
+│   │   ├── components/focus/      # FocusView (ScrcpyLiveScreen unificado, FocusUsbNetworkTab, FocusHealthTab)
+│   │   ├── components/network/    # UsbNetworkCenter (gestión integral de módems USB y leases)
 │   │   ├── components/files/      # ApkFileManager (gestión de APKs y explorador /sdcard/)
 │   │   ├── lib/scrcpy/            # protocol.ts, coords.ts, fps.ts, useFps.ts, useScrcpyStream.ts, watchdog.ts
 │   │   ├── lib/popoverStore.ts    # Store pub/sub de popovers exclusivos (1 activo en toda la UI)
