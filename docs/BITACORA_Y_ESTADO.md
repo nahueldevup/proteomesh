@@ -1925,6 +1925,50 @@ Este documento resume los avances técnicos logrados, los desafíos resueltos y 
 
 ---
 
+### 64. UI-BACKUPS-027 — Rediseño Lovable Dark Tech de Backups e Identidades (2026-11-18)
+
+* **Rama:** `feat/redesign-backups-identities` (fusionada a `main`).
+* **Objetivo:** Refactorizar el monolito frontend `BackupsManager.tsx` (+1,400 líneas) en componentes modulares, sobrios y sin dependencias mockeadas, alineados al sistema de diseño *Lovable Dark Tech*.
+* **Módulos implementados:**
+  - `web/src/components/backups/BackupsManager.tsx`: Orquestador principal, navegación por pestañas (`Backups de Seguridad`, `Identidades de Flota`), header fijo de 55px (`h-[55px]`), métricas KPI rápidas y layout split-view.
+  - `web/src/components/backups/BackupInspector.tsx`: Panel lateral (`w-[380px]`) para inspección profunda de bundles individuales con tabs de *Verificar Criptografía* y *Restaurar*. Input de passphrases desacoplado con toggles de visibilidad y estados de carga asíncronos reales.
+  - `web/src/components/backups/BackupDialogs.tsx`: Diálogos nativos Radix (`CreateBackupDialog`, `ScheduleDialog`, `DeleteBackupDialog`) renderizados vía portales (`document.body`) con backdrop desenfocado (`backdrop-blur-sm`), bordes sobrios (`rounded-lg`), sin emojis.
+  - `web/src/components/backups/FleetIdentities.tsx`: Pestaña para inspección tabular de identidades de hardware de toda la flota (IMEI, MAC, Android ID, número telefónico, modelo, operadora, chip y estado de cifrado) con panel inspector lateral y copiado rápido.
+  - `web/src/components/backups/ScheduleCard.tsx`: Tarjeta de visualización y control del temporizador systemd (`backup_schedule.json`) con KVs estilizados y botón de ejecución manual.
+  - `web/src/components/backups/BackupPrimitives.tsx`: Primitivas visuales reutilizables (`MetricCell`, `SectionLabel`, `KV`, `PassphraseInput`, `Stepper`, `Segmented`, `OptionRow`, `btn`).
+  - `web/src/components/backups/backupFormat.ts`: Funciones puras de formateo de datos, tamaños y tiempos relativos.
+* **Invariantes garantizados:**
+  - Eliminación total de emojis en favor de íconos semánticos `lucide-react`.
+  - Asides laterales con ancho estricto `w-[380px]` sin bordes laterales redundantes para evitar saltos de layout en resoluciones estándar (1366x768).
+  - Cero dependencias mockeadas; consumo directo de endpoints REST y TanStack Query.
+* **Validación:** `npm --prefix web run build` limpio (0 errores TS/Vite) y 263 tests passing en pytest.
+
+---
+
+### 65. UI-LOCATIONS-028 — Ergonomía, Scroll Unificado y Zoom Discreto en Mapas y Ubicaciones (2026-11-18)
+
+* **Rama:** `fix/locations-inspector-scroll` (fusionada a `main`).
+* **Problema identificado:** En pantallas de 1366x768 (y laptops estándar), el panel derecho de "Mapas y Ubicaciones" ocultaba la sección "Teletransportar a" y su botón de confirmación azul, debido a que el bloque de detalles de la ubicación no tenía scroll propio y aplastaba el flexbox inferior. Además, al cargar la sección no se abría directamente el menú de creación y el zoom con la rueda del ratón resultaba excesivamente brusco y descalibrado.
+* **Cambios implementados:**
+  1. **Scroll unificado en inspector (`LocationsInspector.tsx`):**
+     - Envoltorio de todo el contenido interior (detalles + teletransportación) en un contenedor con `overflow-y-auto` y `min-h-0 flex-1`.
+     - Garantiza que en pantallas de 768px de alto o menores, todo el contenido scrollee de forma coherente y continua sin truncar elementos.
+  2. **Botón de teletransportación sticky (`BatchTeleportModal.tsx`):**
+     - Se reemplazó el `mt-auto pt-3` por un contenedor con posición `sticky bottom-0 bg-surface pt-3 pb-4`.
+     - El botón de acción ("Elegí teléfonos destino" / "Teletransportar X teléfonos") permanece permanentemente visible y anclado al fondo del área visible del scroll.
+     - El grid de dispositivos se expande naturalmente con scroll fluido cuando hay múltiples teléfonos en la flota.
+  3. **Auto-apertura de creación al entrar (`CustomLocationsManager.tsx`):**
+     - Al cargar el catálogo e inicializar el mapa con la ubicación predeterminada, se activa automáticamente el estado `creating: true`.
+     - El usuario entra directamente al formulario de "Nueva ubicación" con el marcador listo en el centro de la ciudad predeterminada para reposicionarlo libremente.
+  4. **Zoom suave con rueda y zoom inicial (`MapPicker.tsx`, `LocationsMapHero.tsx`):**
+     - Se configuró Leaflet con `wheelPxPerZoomLevel: 120` y `wheelDebounceTime: 40` en `MapPicker.tsx`, requiriendo el doble de desplazamiento de la ruedita por cada nivel de zoom y permitiendo un acercamiento suave orientado al puntero del ratón.
+     - Se ajustó el `initialZoom` de `LocationsMapHero.tsx` de 15 a 13 para un enfoque equilibrado y discreto a nivel de ciudad completa (mostrando el trazado urbano y barrios sin aproximarse excesivamente a nivel de cuadras).
+* **Validación:**
+  - `npm --prefix web run build`: compilación limpia en 391 ms.
+  - `pytest tests/host/ -q`: 263 pasados, 1 omitido, 86 subtests pasados.
+
+---
+
 ## 🗺️ Hoja de Ruta / Próximos Pasos (Hacia la Granja de Dispositivos Tipo GeeLark/GenFarmer)
 
 1. **Plataforma de Gestión y Orquestación (Panel Web / CLI):**

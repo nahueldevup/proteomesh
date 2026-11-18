@@ -156,7 +156,14 @@
   5. *`web/src/components/backups/BackupsManager.tsx`:* Caché localStorage `pm-backup-schedule-cache` para el modal de programación. Sincronización reactiva al recibir datos del backend (`useEffect` sobre `schedule`).
   6. *`tools/setup_backup_schedule.sh`:* `Persistent=false` en el timer systemd (fix: eliminado el "catch-up trigger" que ejecutaba backups al encender el servidor). Funciones `load_schedule_config` / `save_schedule_config` que preservan todos los parámetros (frecuencia, hora, retención, cifrado) al deshabilitar el timer.
   7. *`server/routes/backups.py`:* `PUT /api/v1/backups/schedule` pasa todos los parámetros al script incluso cuando `enabled=false`.
-  8. *`tests/host/test_api_settings.py`:* 8 tests (3 originales + 5 nuevos de edge cases: validación de `memory_limit` y `cpu_limit` inválidos/válidos, 404 en clave inexistente, dict vacío). 8/8 pasando.
+  8. *`tests/host/test_api_settings.py`:* 8 tests (3 originales + 5 nuevos de edge cases: validación de `memory_limit` y `cpu_limit` inválidos/válidos, 404 en clave inexistente, dict vacío). 8/8 pasados.
+- **UI-BACKUPS-027 — Rediseño Lovable Dark Tech de Backups e Identidades:** **cerrada el 2026-11-18.** Descomposición del monolito `BackupsManager.tsx` en 6 submódulos limpios: `BackupInspector.tsx`, `BackupDialogs.tsx`, `FleetIdentities.tsx`, `ScheduleCard.tsx`, `BackupPrimitives.tsx` y `backupFormat.ts`. Estandarización de cabecera fija de 55px (`h-[55px]`), asides laterales con ancho estricto `w-[380px]` sin bordes redundantes (fix para evitar desplazamiento de layout en resoluciones 1366x768), eliminación de todos los emojis por iconografía `lucide-react`, eliminación completa de mocks y migración a Radix Dialog vía portales `document.body`.
+- **UI-LOCATIONS-028 — Ergonomía, Scroll Unificado y Zoom Discreto en Mapas y Ubicaciones:** **cerrada el 2026-11-18.**
+  1. *Scroll unificado en inspector (`LocationsInspector.tsx`):* Wrapper interior con `overflow-y-auto` que previene el colapso de la sección "Teletransportar a" y asegura visibilidad del botón de acción en resoluciones pequeñas (1366x768).
+  2. *Botón de teletransportación sticky (`BatchTeleportModal.tsx`):* Anclaje `sticky bottom-0 bg-surface` y grid de dispositivos fluido para soportar cualquier cantidad de dispositivos sin recortarse fuera del viewport.
+  3. *Auto-creación al ingresar (`CustomLocationsManager.tsx`):* Al cargar el catálogo, se abre automáticamente el modo de creación (`setCreating(true)`) con el marcador inicializado en la ubicación predeterminada.
+  4. *Zoom suave con rueda y zoom inicial (`MapPicker.tsx`, `LocationsMapHero.tsx`):* Incremento de `wheelPxPerZoomLevel: 120` y `wheelDebounceTime: 40` para un acercamiento gradual orientado al puntero del mouse; ajuste del zoom inicial a 13 para un enfoque discreto y equilibrado de la ciudad.
+
   9. *`tests/host/test_db_persistence.py`:* Actualizado para verificar versión 5 de migración.
 
 ## 6. Regla de uso

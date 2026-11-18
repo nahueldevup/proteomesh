@@ -212,3 +212,23 @@ if not payload.enabled:
 ```
 
 Esto garantiza que `save_schedule_config` reciba los parámetros correctos y la próxima consulta de estado devuelva los valores reales, no los por defecto.
+
+---
+
+## 8. Frontend Modular: Rediseño Lovable Dark Tech (UI-BACKUPS-027)
+
+El frontend de backups e identidades (`web/src/components/backups/`) fue rediseñado y refactorizado bajo los estándares estéticos y funcionales de *Lovable Dark Tech*:
+
+- **Descomposición modular:**
+  - `BackupsManager.tsx`: Orquestador principal, navegación por pestañas (`Backups de Seguridad`, `Identidades de Flota`), barra de cabecera con altura estandarizada de 55px (`h-[55px]`), métricas KPI rápidas y layout split-view (lista de respaldos + inspector de detalle).
+  - `BackupInspector.tsx`: Panel lateral (`w-[380px]`) para inspección profunda de bundles individuales con pestañas internas de *Verificar Criptografía* y *Restaurar*. Contiene input de passphrases desacoplado con toggles de visibilidad y estados de carga asíncronos reales.
+  - `BackupDialogs.tsx`: Diálogos nativos Radix (`CreateBackupDialog`, `ScheduleDialog`, `DeleteBackupDialog`) renderizados a través de portales (`document.body`) con backdrop desenfocado (`backdrop-blur-sm`), bordes sobrios (`rounded-lg`), sin emojis y completamente libres de mocks.
+  - `FleetIdentities.tsx`: Pestaña dedicada para inspección tabular de identidades de hardware de toda la flota (IMEI, MAC, Android ID, número telefónico, modelo, operadora, chip y estado de cifrado de almacenamiento) con panel inspector lateral y copiado rápido al portapapeles.
+  - `ScheduleCard.tsx`: Tarjeta de visualización y control del temporizador systemd (`backup_schedule.json`) con KVs estilizados y disparador manual de ejecución.
+  - `BackupPrimitives.tsx`: Componentes atómicos reutilizables (`MetricCell`, `SectionLabel`, `KV`, `PassphraseInput`, `Stepper`, `Segmented`, `OptionRow`, `btn`).
+  - `backupFormat.ts`: Utilidades puras de formateo de bytes, fechas, tiempos relativos y badges de frescura.
+- **Invariantes de interfaz garantizados:**
+  - Ausencia de emojis; reemplazados por iconografía semántica de `lucide-react`.
+  - Paneles laterales con ancho estricto `w-[380px]` sin bordes laterales redundantes para evitar saltos de layout en resoluciones estándar (1366x768).
+  - Cero dependencias mockeadas; consumo directo de endpoints REST y TanStack Query.
+
