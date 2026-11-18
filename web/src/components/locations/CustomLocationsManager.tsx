@@ -131,6 +131,8 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
   const [isMapInitialized, setIsMapInitialized] = useState(false);
 
   // Inicializar el mapa con la ubicación predeterminada general al cargar (en render)
+  // y abrir automáticamente el formulario de creación para que el primer
+  // ingreso muestre el panel de nueva ubicación en lugar de la lista vacía.
   if (!isMapInitialized && catalog.default_location) {
     setIsMapInitialized(true);
     setMapLat(catalog.default_location.latitude);
@@ -138,6 +140,7 @@ export const CustomLocationsManager: React.FC<CustomLocationsManagerProps> = ({
     setMapCity(catalog.default_location.city);
     if (catalog.default_location.timezone) setLocTimezone(catalog.default_location.timezone);
     if (catalog.default_location.altitude) setLocAltitude(catalog.default_location.altitude);
+    setCreating(true);
   }
 
   /* ── Derivados ─────────────────────────────────────────────────────────── */
