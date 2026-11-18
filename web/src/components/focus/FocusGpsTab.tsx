@@ -9,6 +9,8 @@ import {
   Check,
   Loader2,
   Navigation,
+  MapPin,
+  Star,
 } from 'lucide-react';
 import type {
   CustomLocation,
@@ -89,7 +91,7 @@ export function FocusGpsTab({
   return (
     <div className="flex flex-col gap-2.5 pt-2.5 flex-1 min-h-0">
       {/* Cabecera de acción con Selector Custom, Guardar Custom, Presets y Actualizar */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Popover: Selector de Ubicación Custom */}
           <Popover open={customSelectorPopover.open} onOpenChange={customSelectorPopover.onOpenChange}>
@@ -343,7 +345,7 @@ export function FocusGpsTab({
                       : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
                   )}
                 >
-                  {isDefaultPreset && <span className="text-[9px] text-amber-500">⭐</span>}
+                  {isDefaultPreset && <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500 shrink-0" />}
                   <span>{c.name}</span>
                 </button>
               );
@@ -378,7 +380,7 @@ export function FocusGpsTab({
                     className="h-1.5 w-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: grp?.color || '#10b981' }}
                   />
-                  {isDefaultLoc && <span className="text-[9px] text-amber-500 shrink-0">⭐</span>}
+                  {isDefaultLoc && <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500 shrink-0" />}
                   <span className="truncate">{loc.name}</span>
                 </button>
               );
@@ -390,7 +392,7 @@ export function FocusGpsTab({
         <button
           disabled={mapBusy}
           onClick={onSaveGps}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 shadow-sm shrink-0"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-sans text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 shadow-sm shrink-0 cursor-pointer"
         >
           {mapBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Navigation className="h-3.5 w-3.5" />}
           <span>
@@ -399,20 +401,20 @@ export function FocusGpsTab({
         </button>
       </div>
 
-      {/* Mapa Interactivo Leaflet */}
-      <div className="rounded-lg border border-border overflow-hidden h-[190px] relative">
+      {/* Mapa Interactivo Leaflet: Se expande flexiblemente para llenar todo el alto disponible */}
+      <div className="relative flex-1 min-h-[200px] w-full overflow-hidden rounded-lg border border-border">
         <Suspense
           fallback={
-            <div className="flex h-full items-center justify-center bg-muted/20">
+            <div className="flex h-full w-full items-center justify-center bg-muted/20">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           }
         >
           <MapPicker
+            fill
             latitude={mapLat}
             longitude={mapLon}
             city={mapCity}
-            height="190px"
             showPresets={false}
             showInfoOverlay={false}
             onChange={(lat, lon, cityName) => {
@@ -425,12 +427,13 @@ export function FocusGpsTab({
       </div>
 
       {/* Coordenadas seleccionadas y Nombre Custom Activo */}
-      <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+      <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground shrink-0">
         <div className="flex items-center gap-1.5 truncate">
           {selectedCustomLoc ? (
             <>
+              <MapPin className="h-3 w-3 text-primary shrink-0" />
               <span className="font-bold text-primary truncate">
-                📍 {selectedCustomLoc.name}
+                {selectedCustomLoc.name}
               </span>
               <span className="text-[10px] opacity-75 truncate">
                 ({mapCity}: {mapLat.toFixed(4)}, {mapLon.toFixed(4)})
@@ -438,7 +441,7 @@ export function FocusGpsTab({
               <button
                 type="button"
                 onClick={() => setSelectedCustomLoc(null)}
-                className="text-[9px] text-muted-foreground hover:text-foreground underline ml-1"
+                className="text-[9px] text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
               >
                 Limpiar
               </button>
