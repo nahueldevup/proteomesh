@@ -8,7 +8,7 @@ import {
 import type { InstanceUsbNetworkState } from '../../types';
 import { cn } from '../../lib/utils';
 
-export interface FocusProxyTabProps {
+export interface FocusUsbNetworkTabProps {
   networkState: InstanceUsbNetworkState | null | undefined;
   networkBusy: boolean;
   onRotateIp: () => void;
@@ -16,13 +16,13 @@ export interface FocusProxyTabProps {
   onClaimUsb: () => void;
 }
 
-export function FocusProxyTab({
+export function FocusUsbNetworkTab({
   networkState,
   networkBusy,
   onRotateIp,
   onQuarantine,
   onClaimUsb,
-}: FocusProxyTabProps) {
+}: FocusUsbNetworkTabProps) {
   return (
     <div className="flex flex-col gap-3 pt-2.5 flex-1 min-h-0 overflow-y-auto">
       <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/50 shrink-0 flex-wrap">

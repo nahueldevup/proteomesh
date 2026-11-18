@@ -29,8 +29,6 @@ from server.routes import (
     carriers_router,
     locations_router,
     instances_router,
-    proxies_router,
-    routes_router,
     network_router,
     apks_router,
     files_router,
@@ -62,9 +60,7 @@ app.include_router(instances_router, prefix=API_PREFIX)
 app.include_router(templates_router, prefix=API_PREFIX)
 app.include_router(carriers_router, prefix=API_PREFIX)
 app.include_router(locations_router, prefix=API_PREFIX)
-app.include_router(proxies_router, prefix=API_PREFIX)
 app.include_router(network_router, prefix=API_PREFIX)
-app.include_router(routes_router, prefix=API_PREFIX)
 app.include_router(apks_router, prefix=API_PREFIX)
 app.include_router(files_router, prefix=API_PREFIX)
 app.include_router(metrics_router, prefix=API_PREFIX)
@@ -95,9 +91,7 @@ def startup_event():
         logger.warning(f"No se pudo inicializar ws-scrcpy en arranque: {e}")
 
     try:
-        from server.services.network.lease_registry import lease_registry
         from server.services.network.host_firewall import host_firewall
-
         res = subprocess.run(
             ["docker", "ps", "--format", "{{.Names}}"],
             capture_output=True,
@@ -106,12 +100,9 @@ def startup_event():
         )
         if res.returncode == 0:
             running = set(line.strip() for line in res.stdout.splitlines() if line.strip())
-            released = lease_registry.reconcile(running)
-            if released > 0:
-                logger.info(f"[Startup] Se liberaron {released} leases de IP huérfanos.")
             host_firewall.reconcile(running)
     except Exception as e:
-        logger.error(f"[Startup] Error en reconciliación de red/leases: {e}")
+        logger.error(f"[Startup] Error en reconciliación de red: {e}")
 
 
 @app.get("/", tags=["Estado del Servidor"])
@@ -128,7 +119,7 @@ def root():
             "templates": f"{API_PREFIX}/templates",
             "carriers": f"{API_PREFIX}/carriers",
             "locations": f"{API_PREFIX}/locations",
-            "proxies": f"{API_PREFIX}/proxies/test",
+            "network": f"{API_PREFIX}/network/status",
             "metrics": f"{API_PREFIX}/metrics",
         }
     }

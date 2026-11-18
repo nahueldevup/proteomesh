@@ -53,15 +53,6 @@ export interface CustomLocationsCatalog {
   default_location?: DefaultLocation;
 }
 
-export interface ProxyConfig {
-  type: string;
-  host: string;
-  port: number;
-  username?: string | null;
-  password?: string | null;
-  exit_ip?: string | null;
-}
-
 export interface Instance {
   instance_name: string;
   template?: string;
@@ -70,7 +61,6 @@ export interface Instance {
   running: boolean;
   docker_status?: string;
   location?: LocationData;
-  proxy?: ProxyConfig;
   limits?: {
     memory?: string;
     cpus?: string;

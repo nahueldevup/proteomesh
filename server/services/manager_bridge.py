@@ -51,7 +51,6 @@ from server.models.schemas import (
     LocationResponse,
     CarrierSchema,
     TemplateItem,
-    ProxyConfig,
     InstanceCreateRequest,
     InstanceResponse,
     HealthReport,
@@ -182,7 +181,6 @@ def get_instances_list() -> List[InstanceResponse]:
             loc_data = meta.get("location")
             location_obj = LocationSchema(**loc_data) if loc_data else None
             proxy_data = meta.get("proxy")
-            proxy_obj = ProxyConfig(**proxy_data) if proxy_data else None
 
             res.append(InstanceResponse(
                 instance_name=name,
@@ -192,7 +190,6 @@ def get_instances_list() -> List[InstanceResponse]:
                 running=is_running,
                 docker_status=stat,
                 location=location_obj,
-                proxy=proxy_obj,
                 limits=meta.get("limits"),
                 identity=meta.get("identity"),
                 display=meta.get("display")
@@ -213,8 +210,6 @@ def get_single_instance(name: str) -> InstanceResponse:
     stat = running_map.get(name, "Detenido (Offline)")
     loc_data = meta.get("location")
     location_obj = LocationSchema(**loc_data) if loc_data else None
-    proxy_data = meta.get("proxy")
-    proxy_obj = ProxyConfig(**proxy_data) if proxy_data else None
 
     return InstanceResponse(
         instance_name=name,
@@ -224,7 +219,6 @@ def get_single_instance(name: str) -> InstanceResponse:
         running=stat.startswith("Up"),
         docker_status=stat,
         location=location_obj,
-        proxy=proxy_obj,
         limits=meta.get("limits"),
         identity=meta.get("identity"),
         display=meta.get("display")
@@ -316,17 +310,7 @@ async def create_instance_async(req: InstanceCreateRequest) -> InstanceResponse:
         except Exception as e:
             logger.warning(f"Error registrando nueva instancia '{req.name}' en SQLite: {e}")
 
-    # Asignar proxy residencial si fue provisto
-    if req.raw_proxy or req.proxy:
-        try:
-            from server.services.proxy_service import parse_proxy_string, set_instance_proxy
-            p_cfg = parse_proxy_string(req.raw_proxy) if req.raw_proxy else req.proxy
-            if p_cfg:
-                await set_instance_proxy(req.name, p_cfg, auto_sync_location=False)
-        except Exception:
-            pass
-
-    # Instalar APKs marcados como default tras el arranque en background (nunca bloquea la creación)
+    # Registrar instancia en SQLite Instalar APKs marcados como default tras el arranque en background (nunca bloquea la creación)
     if req.start:
         asyncio.create_task(_install_default_apks(req.name, req.default_apks))
 

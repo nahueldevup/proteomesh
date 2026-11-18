@@ -672,8 +672,8 @@ class UsbNetworkService:
             raise RuntimeError(f"Fallo al aplicar enrutamiento en el host para {instance_name}.")
 
         try:
-            from server.services.proxy_service import proxy_service
-            await proxy_service.unquarantine(instance_name)
+            from server.services.network.container_quarantine import unquarantine_container
+            await unquarantine_container(instance_name)
         except Exception as e:
             logger.warning(f"No se pudo desaplicar cuarentena interna en {instance_name}: {e}")
 
@@ -720,8 +720,8 @@ class UsbNetworkService:
             await host_firewall.apply_quarantine(instance_name, cip)
 
         try:
-            from server.services.proxy_service import proxy_service
-            await proxy_service.quarantine(instance_name)
+            from server.services.network.container_quarantine import quarantine_container
+            await quarantine_container(instance_name)
         except Exception as e:
             logger.warning(f"No se pudo aplicar cuarentena interna en {instance_name}: {e}")
 
